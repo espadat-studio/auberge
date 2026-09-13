@@ -417,7 +417,7 @@ mod tests {
 
     fn repos() -> Vec<String> {
         vec![
-            "sripwoud/auberge".to_string(),
+            "espadat-studio/auberge".to_string(),
             "sripwoud/dotfiles".to_string(),
         ]
     }
@@ -430,7 +430,7 @@ mod tests {
             gh.calls(),
             vec![
                 "api user --jq .login".to_string(),
-                "api --method PUT repos/sripwoud/auberge/collaborators/fleet-bot -f permission=push"
+                "api --method PUT repos/espadat-studio/auberge/collaborators/fleet-bot -f permission=push"
                     .to_string(),
                 "api --method PUT repos/sripwoud/dotfiles/collaborators/fleet-bot -f permission=push"
                     .to_string(),
@@ -486,7 +486,7 @@ mod tests {
     #[test]
     fn verify_reports_an_unaccepted_invite_as_pending() {
         let mut gh = MockGh::new();
-        gh.pushable = vec!["sripwoud/auberge".to_string()];
+        gh.pushable = vec!["espadat-studio/auberge".to_string()];
         gh.pending = vec!["sripwoud/dotfiles".to_string()];
         let report = verify_access(&gh, "fleet-bot", &repos(), "tok").unwrap();
         let dotfiles = report
@@ -516,8 +516,13 @@ mod tests {
     #[test]
     fn public_read_only_access_does_not_count_as_reachable() {
         let gh = MockGh::new();
-        let report =
-            verify_access(&gh, "fleet-bot", &["sripwoud/auberge".to_string()], "tok").unwrap();
+        let report = verify_access(
+            &gh,
+            "fleet-bot",
+            &["espadat-studio/auberge".to_string()],
+            "tok",
+        )
+        .unwrap();
         assert_eq!(report.repos[0].state, RepoState::Unreachable);
     }
 
@@ -525,12 +530,12 @@ mod tests {
     fn bot_and_repos_splits_the_space_separated_allowlist() {
         let config = Config::from_toml_str(
             "github_bot_login = \"fleet-bot\"\n\
-             github_bot_repos = \"sripwoud/auberge sripwoud/dotfiles\"",
+             github_bot_repos = \"espadat-studio/auberge sripwoud/dotfiles\"",
         )
         .unwrap();
         let (bot, repos) = bot_and_repos(&config).unwrap();
         assert_eq!(bot, "fleet-bot");
-        assert_eq!(repos, vec!["sripwoud/auberge", "sripwoud/dotfiles"]);
+        assert_eq!(repos, vec!["espadat-studio/auberge", "sripwoud/dotfiles"]);
     }
 
     #[test]
@@ -546,7 +551,8 @@ mod tests {
 
     #[test]
     fn bot_and_repos_rejects_a_missing_login() {
-        let config = Config::from_toml_str("github_bot_repos = \"sripwoud/auberge\"").unwrap();
+        let config =
+            Config::from_toml_str("github_bot_repos = \"espadat-studio/auberge\"").unwrap();
         assert!(
             bot_and_repos(&config)
                 .unwrap_err()
