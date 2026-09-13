@@ -1,4 +1,6 @@
-# auberge bichon verify-coverage
+---
+title: "auberge bichon verify-coverage"
+---
 
 ## Synopsis
 
@@ -10,7 +12,7 @@ auberge bichon verify-coverage --host <HOST> --account <EMAIL> --folder <NAME> -
 
 Proves, message by message, that the Email Archive covers one folder's mail older than a cutoff — by identity, not by count.
 
-Counts are not identities: the archive is append-only, so after a folder's first expunge it permanently out-counts the mailbox for any window, and a count-based check passes on surplus while specific messages have no archived counterpart. The one class of mail that produces such messages is exactly the one the archive's hourly run cannot see: mail entering a Synced Folder below the [Archive Cursor](cli-reference/bichon/rescan.md) (moved, bulk-imported, or backdated — a message-date watermark misses all three).
+Counts are not identities: the archive is append-only, so after a folder's first expunge it permanently out-counts the mailbox for any window, and a count-based check passes on surplus while specific messages have no archived counterpart. The one class of mail that produces such messages is exactly the one the archive's hourly run cannot see: mail entering a Synced Folder below the [Archive Cursor](/cli-reference/bichon/rescan/) (moved, bulk-imported, or backdated — a message-date watermark misses all three).
 
 Bichon's Internal Store syncs by UID and has no date blindspot, so it knows that mail. The check compares the store's in-window envelopes for the folder against the sidecars' canonical `message_id` set (ADR-0013) and names every store message the archive cannot vouch for.
 
@@ -59,7 +61,7 @@ What this does **not** prove: that the live Upstream Mailbox holds nothing the s
 
 ## Access
 
-Needs both the Bichon API (account lookup and envelope search — same base URL resolution and `bichon_api_token` as [reconcile-folders](cli-reference/bichon/reconcile-folders.md)) and SSH to the host (the sidecar walk runs under `sudo`).
+Needs both the Bichon API (account lookup and envelope search — same base URL resolution and `bichon_api_token` as [reconcile-folders](/cli-reference/bichon/reconcile-folders/)) and SSH to the host (the sidecar walk runs under `sudo`).
 
 ## Examples
 
@@ -74,4 +76,4 @@ auberge bichon verify-coverage --host auberge --account me@example.com \
 
 ## When a gap is found
 
-Run [`auberge bichon rescan --host <HOST> --account <EMAIL>`](cli-reference/bichon/rescan.md): a full pass archives everything the cursor skipped, and a re-run of this command then reports `covered`.
+Run [`auberge bichon rescan --host <HOST> --account <EMAIL>`](/cli-reference/bichon/rescan/): a full pass archives everything the cursor skipped, and a re-run of this command then reports `covered`.

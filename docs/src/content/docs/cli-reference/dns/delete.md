@@ -1,4 +1,6 @@
-# auberge dns delete
+---
+title: "auberge dns delete"
+---
 
 Delete the Cloudflare A record for a subdomain. Alias: `auberge d d`.
 
@@ -28,7 +30,9 @@ auberge dns delete -s calibre --production --yes   # CI / no prompts
 
 ## Gotchas
 
-!> `--production` deletes require retyping the subdomain name to confirm; without it the prompt is a plain `[y/N]`. Non-TTY without `--yes` exits without deleting (CI-safe).
+:::caution
+`--production` deletes require retyping the subdomain name to confirm; without it the prompt is a plain `[y/N]`. Non-TTY without `--yes` exits without deleting (CI-safe).
+:::
 
 <details>
 <summary>JSON output schema</summary>

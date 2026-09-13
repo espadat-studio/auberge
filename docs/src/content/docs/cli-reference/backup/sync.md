@@ -1,4 +1,6 @@
-# auberge backup sync
+---
+title: "auberge backup sync"
+---
 
 Create backup, push to restic, prune, and clean up local staging
 
@@ -26,11 +28,13 @@ auberge backup sync [OPTIONS]
 
 The local staging copy is ephemeral — restic handles long-term retention with content-addressable, deduplicated storage.
 
-?> Sync reports what it did; it does not read the repository back. [backup verify](cli-reference/backup/verify.md) asserts the snapshot actually landed and is fresh — run it before anything destructive depends on the backup existing.
+:::tip
+Sync reports what it did; it does not read the repository back. [backup verify](/cli-reference/backup/verify/) asserts the snapshot actually landed and is fresh — run it before anything destructive depends on the backup existing.
+:::
 
 ## Prerequisites
 
-Same as [backup push](cli-reference/backup/push.md) — requires `restic_repository` and `restic_password` config values, plus `restic` and `rclone` installed.
+Same as [backup push](/cli-reference/backup/push/) — requires `restic_repository` and `restic_password` config values, plus `restic` and `rclone` installed.
 
 ## Examples
 

@@ -1,4 +1,6 @@
-# auberge host remove
+---
+title: "auberge host remove"
+---
 
 Remove a host from configuration
 

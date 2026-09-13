@@ -1,4 +1,6 @@
-# Agent of Empires
+---
+title: "Agent of Empires"
+---
 
 The phone control plane for [ruche](https://github.com/sripwoud/auberge/issues/747), the disposable agent Host: tmux sessions that know whether an agent is idle, working, blocked or done, plus a web dashboard that installs as a PWA and pushes a notification when a session blocks or finishes ([ADR-0054](https://github.com/sripwoud/auberge/blob/master/meta/adr/0054-agent-workloads-run-on-a-dedicated-disposable-host.md)). Upstream: [agent-of-empires/agent-of-empires](https://github.com/agent-of-empires/agent-of-empires)
 
@@ -15,7 +17,7 @@ auberge deploy ruche -H ruche    # the whole agent tier
 > [!IMPORTANT]
 > The role is guarded on `when: "'agent' in group_names"`, so the Host must carry `tags = ["agent"]` in `hosts.toml` or the deploy is a green no-op that installs nothing. `auberge host list` shows the TAGS column. Not to be confused with `tailnet_tag = "agent"`, an unrelated field naming the ACL tier.
 
-[Set up the agent tier's DNS zone](configuration/agent-tier-dns-zone.md) first — the vhost needs a certificate for `essaim.{agents_domain}`, and DNS-01 is the only challenge a Host with no public ingress can answer.
+[Set up the agent tier's DNS zone](/configuration/agent-tier-dns-zone/) first — the vhost needs a certificate for `essaim.{agents_domain}`, and DNS-01 is the only challenge a Host with no public ingress can answer.
 
 ## Required config
 
@@ -87,7 +89,9 @@ Pairing binds the device, and a bound device stays signed in across token rotati
 > main "$@"
 > ```
 
-!> The token rides in the query string, so the vhost's access log cuts the whole query out of every logged request (`format filter` over `request>uri`). Caddy redacts `Authorization` and `Cookie` on its own and nothing else. `tests/aoe_dashboard_exposure.rs` runs the filter's own regexp over a URI carrying a token and asserts the path survives and the token does not.
+:::caution
+The token rides in the query string, so the vhost's access log cuts the whole query out of every logged request (`format filter` over `request>uri`). Caddy redacts `Authorization` and `Cookie` on its own and nothing else. `tests/aoe_dashboard_exposure.rs` runs the filter's own regexp over a URI carrying a token and asserts the path survives and the token does not.
+:::
 
 ## Reachability
 
@@ -120,6 +124,8 @@ ssh ruche 'journalctl --user -u aoe -f'
 ssh ruche 'aoe serve --status'   # the daemon's own view: PID, mode, URLs, log path
 ```
 
-!> A redeploy restarts the unit, and `KillMode=` is systemd's default, so a version bump may take tmux sessions **started from the dashboard** with it (sessions started from the TUI over ssh live in their own scope and are unaffected). Whether they share the unit's cgroup is the same open question `MemoryMax` waits on — see below. Until it is answered, stop agents before bumping the pin.
+:::caution
+A redeploy restarts the unit, and `KillMode=` is systemd's default, so a version bump may take tmux sessions **started from the dashboard** with it (sessions started from the TUI over ssh live in their own scope and are unaffected). Whether they share the unit's cgroup is the same open question `MemoryMax` waits on — see below. Until it is answered, stop agents before bumping the pin.
+:::
 
 `MemoryHigh` is declared at 4G and **`MemoryMax` deliberately is not**. `MemoryHigh` throttles and reclaims; `MemoryMax` is where the kernel kills. aoe supervises tmux sessions running agents it did not fork, and until it is observed which cgroup those land in, a kill line risks OOM-killing an agent mid-run. Set one once that is known.

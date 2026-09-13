@@ -1,18 +1,20 @@
-# SSH Problems
+---
+title: "SSH Problems"
+---
 
 ## Quick reference
 
 `auberge ansible bootstrap` and `auberge ansible run --playbook bootstrap.yml` compare `~/.ssh/known_hosts` against the key the target offers. On a mismatch it prints the stale and offered fingerprints and asks whether to drop the entry; `--force` drops it and warns. Declining, or a non-TTY run without `--force`, aborts with the exact `ssh-keygen -R` to run. Entries are keyed by the host's name (`HostKeyAlias`), independent of its address or port.
 
-| Symptom                                               | Likely cause                   | Fix                                                                                                                 |
-| ----------------------------------------------------- | ------------------------------ | ------------------------------------------------------------------------------------------------------------------- |
-| `Connection refused`                                  | Wrong port after bootstrap     | `auberge config get ssh_port`; connect with `-p PORT`                                                               |
-| `Permission denied (publickey)`                       | Wrong or missing key           | `ssh -i ~/.ssh/identities/vps/ansible ansible@vps-ip -p $SSH_PORT`                                                  |
-| `Host key verification failed`                        | VPS reinstalled                | Bootstrap shows both fingerprints and offers removal; else run every `ssh-keygen -R` it prints                      |
-| `Host key verification failed` right after an upgrade | Alias not yet in `known_hosts` | Self-repairing — the roster read migrates it before the connection; see below                                       |
-| `Connection timed out`                                | Wrong IP or VPS offline        | `auberge host list`; check provider console                                                                         |
-| Ansible hangs (ControlPersist)                        | Stale socket                   | `rm -rf ~/.ssh/ctl-*`                                                                                               |
-| Unreachable at a `100.x.x.x` address                  | Stale or down tailnet route    | `auberge --via public host detect-tailscale-ip <name>`; see [Tailnet Transport](configuration/tailnet-transport.md) |
+| Symptom                                               | Likely cause                   | Fix                                                                                                                |
+| ----------------------------------------------------- | ------------------------------ | ------------------------------------------------------------------------------------------------------------------ |
+| `Connection refused`                                  | Wrong port after bootstrap     | `auberge config get ssh_port`; connect with `-p PORT`                                                              |
+| `Permission denied (publickey)`                       | Wrong or missing key           | `ssh -i ~/.ssh/identities/vps/ansible ansible@vps-ip -p $SSH_PORT`                                                 |
+| `Host key verification failed`                        | VPS reinstalled                | Bootstrap shows both fingerprints and offers removal; else run every `ssh-keygen -R` it prints                     |
+| `Host key verification failed` right after an upgrade | Alias not yet in `known_hosts` | Self-repairing — the roster read migrates it before the connection; see below                                      |
+| `Connection timed out`                                | Wrong IP or VPS offline        | `auberge host list`; check provider console                                                                        |
+| Ansible hangs (ControlPersist)                        | Stale socket                   | `rm -rf ~/.ssh/ctl-*`                                                                                              |
+| Unreachable at a `100.x.x.x` address                  | Stale or down tailnet route    | `auberge --via public host detect-tailscale-ip <name>`; see [Tailnet Transport](/configuration/tailnet-transport/) |
 
 ## `Host key verification failed` right after an upgrade
 
@@ -57,7 +59,9 @@ Bootstrap changes the SSH port and deploys keys. If you can't connect afterwards
 
 4. Fix the root cause, then re-run bootstrap.
 
-!> Configuring the provider firewall to allow the custom SSH port **before** running bootstrap prevents this lockout.
+:::caution
+Configuring the provider firewall to allow the custom SSH port **before** running bootstrap prevents this lockout.
+:::
 
 ## Key permission errors
 

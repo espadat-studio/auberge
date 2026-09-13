@@ -1,4 +1,6 @@
-# auberge backup restore
+---
+title: "auberge backup restore"
+---
 
 Restore application data from a backup. Alias: `auberge b r`.
 
@@ -44,7 +46,9 @@ Every path the backup directory holds, including optional ones. `backup create -
 
 ## Gotchas
 
-!> Cross-host migration runs a pre-flight check (SSH, services, disk ≥120% of backup size), creates an emergency backup tagged `pre-migration-{timestamp}` on the target, then requires you to retype the target hostname to confirm. After restore, Ansible playbooks run automatically to fix ownership and permissions. Use `--skip-playbook-unsafe` only as a last resort; if skipped, run manually: `cd ansible && ansible-playbook playbooks/apps.yml --tags <apps>`.
+:::caution
+Cross-host migration runs a pre-flight check (SSH, services, disk ≥120% of backup size), creates an emergency backup tagged `pre-migration-{timestamp}` on the target, then requires you to retype the target hostname to confirm. After restore, Ansible playbooks run automatically to fix ownership and permissions. Use `--skip-playbook-unsafe` only as a last resort; if skipped, run manually: `cd ansible && ansible-playbook playbooks/apps.yml --tags <apps>`.
+:::
 
 - **SSH/service failures**: verify key and run `auberge ansible run` to install missing apps first.
 - **Insufficient disk**: free space or exclude large apps with `--apps`.

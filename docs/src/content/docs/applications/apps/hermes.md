@@ -1,4 +1,6 @@
-# Hermes
+---
+title: "Hermes"
+---
 
 Self-improving personal AI assistant (Nous Research) that connects to Telegram and routes queries to your chosen LLM provider. Docs: [hermes-agent.nousresearch.com](https://hermes-agent.nousresearch.com/docs)
 
@@ -25,7 +27,9 @@ Optional: `hermes_exa_api_key` (web search), `hermes_telegram_allowed_users` (co
 
 ## Notes
 
-?> `hermes_llm_provider` must match the provider set in `~/.config/hermes/config.yaml`, which is synced to the VPS on deploy.
+:::tip
+`hermes_llm_provider` must match the provider set in `~/.config/hermes/config.yaml`, which is synced to the VPS on deploy.
+:::
 
 After deploy, verify the service and send a test message to your bot:
 

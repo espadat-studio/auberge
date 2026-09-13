@@ -1,4 +1,6 @@
-# Colporteur
+---
+title: "Colporteur"
+---
 
 Newsletter-to-feed converter: reads IMAP mailboxes, strips tracking pixels, and serves Atom XML feeds via HTTP basic auth. Repo: [github.com/sripwoud/colporteur](https://github.com/sripwoud/colporteur)
 
@@ -32,7 +34,9 @@ senders = ["hello@newsletter.com"]
 
 ## Notes
 
-?> Set `colporteur_freshrss_sync = true` in `~/.config/auberge/config.toml` to auto-import feeds into [FreshRSS](applications/apps/freshrss.md) on each deploy. Requires FreshRSS on the same server.
+:::tip
+Set `colporteur_freshrss_sync = true` in `~/.config/auberge/config.toml` to auto-import feeds into [FreshRSS](/applications/apps/freshrss/) on each deploy. Requires FreshRSS on the same server.
+:::
 
 Runs every 15 minutes via systemd timer. Check status:
 

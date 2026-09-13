@@ -1,4 +1,6 @@
-# Caddy
+---
+title: "Caddy"
+---
 
 Reverse proxy with automatic HTTPS certificate management via Let's Encrypt.
 
@@ -20,5 +22,5 @@ Auberge configures Caddy to:
 
 ## Related
 
-- [Cloudflare Setup](dns/cloudflare-setup.md)
-- [Applications Overview](applications/overview.md)
+- [Cloudflare Setup](/dns/cloudflare-setup/)
+- [Applications Overview](/applications/overview/)

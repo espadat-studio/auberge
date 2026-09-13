@@ -1,4 +1,6 @@
-# OpenCode
+---
+title: "OpenCode"
+---
 
 The agent runtime on [ruche](https://github.com/sripwoud/auberge/issues/747), the disposable agent Host. Model-agnostic, driven through OpenRouter. Docs: [opencode.ai/docs](https://opencode.ai/docs/)
 
@@ -35,7 +37,9 @@ The role deploys `/etc/opencode/opencode.json`: allow-all per tool plus an expli
 | root- and `$HOME`-anchored `rm -rf`, `mkfs`, `dd` | recoverable only by rebuilding the Host          |
 | reading `*.env` and `/etc/opencode/*`             | keeps credentials out of transcripts by default  |
 
-!> **This is a guard rail, not a boundary.** It stops an agent doing these things in the course of its work; it does not stop one that is trying. A config source the agent can write which names a deny pattern verbatim hoists that key above its block's catch-all and inverts it — measured against 1.18.25 and recorded in ADR-0065. The boundaries that hold are the tailnet ACL (`tag:agent`), the sudoers password requirement, the box being disposable, and — for `master` — this repo's `main` ruleset (`non_fast_forward`, admin-only bypass, machine user invited at `push`). Force-pushing a _non-default_ branch, or any branch in a repo with no rules of its own, is covered by nothing but the rail above.
+:::caution
+**This is a guard rail, not a boundary.** It stops an agent doing these things in the course of its work; it does not stop one that is trying. A config source the agent can write which names a deny pattern verbatim hoists that key above its block's catch-all and inverts it — measured against 1.18.25 and recorded in ADR-0065. The boundaries that hold are the tailnet ACL (`tag:agent`), the sudoers password requirement, the box being disposable, and — for `master` — this repo's `main` ruleset (`non_fast_forward`, admin-only bypass, machine user invited at `push`). Force-pushing a _non-default_ branch, or any branch in a repo with no rules of its own, is covered by nothing but the rail above.
+:::
 
 `bash` is allow-all, so the `read` denies do **not** stop `cat` reaching `.env` or the key file. They keep those out of context by default, which matters because transcripts leave the box.
 

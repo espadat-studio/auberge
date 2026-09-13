@@ -1,4 +1,6 @@
-# Cockpit
+---
+title: "Cockpit"
+---
 
 Web-based Linux server administration panel providing browser access to systemd services, logs, resource monitoring, and a terminal.
 
@@ -29,6 +31,6 @@ Cockpit itself listens on `127.0.0.1:9090` (localhost only) via a systemd socket
 
 ## Related
 
-- [Caddy](applications/infrastructure/caddy.md)
-- [Tailscale](applications/networking/tailscale.md)
-- [Applications Overview](applications/overview.md)
+- [Caddy](/applications/infrastructure/caddy/)
+- [Tailscale](/applications/networking/tailscale/)
+- [Applications Overview](/applications/overview/)

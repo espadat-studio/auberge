@@ -1,4 +1,6 @@
-# auberge host show
+---
+title: "auberge host show"
+---
 
 Show detailed host information
 

@@ -1,4 +1,6 @@
-# auberge ansible run
+---
+title: "auberge ansible run"
+---
 
 Run an Ansible playbook on a target host. Alias: `auberge a r`.
 
@@ -17,7 +19,9 @@ auberge ansible run [OPTIONS]
 | `--skip-tags TAGS`    | Comma-separated tags to skip                                               | None        |
 | `-f, --force`         | Skip confirmation prompts (CI/CD)                                          | `false`     |
 
-?> **Auto-resolution**: when `--tags` is set and `--playbook` is omitted, app tags (e.g. `paperless`) trigger a full `infrastructure.yml` run first (idempotent), then `apps.yml` with only those tags. A tag matching a standalone playbook name (e.g. `hermes`, `calibre`) runs that playbook in full, after any aggregator runs. Aggregator tags win: `gokapi` resolves as an `apps.yml` tag, not the standalone playbook. Pass `--playbook` to bypass.
+:::tip
+**Auto-resolution**: when `--tags` is set and `--playbook` is omitted, app tags (e.g. `paperless`) trigger a full `infrastructure.yml` run first (idempotent), then `apps.yml` with only those tags. A tag matching a standalone playbook name (e.g. `hermes`, `calibre`) runs that playbook in full, after any aggregator runs. Aggregator tags win: `gokapi` resolves as an `apps.yml` tag, not the standalone playbook. Pass `--playbook` to bypass.
+:::
 
 ## Examples
 
@@ -53,7 +57,9 @@ List all tags for a playbook with `cd ansible && ansible-playbook playbooks/apps
 | `<app-name>` (e.g. `baikal`, `freshrss`, `paperless`) | Single app               |
 | `security` / `network` / `storage` / `web`            | Category                 |
 
-!> **bootstrap.yml**: configure your VPS provider firewall to allow your custom `ssh_port` _before_ running, or you'll be locked out. **apps.yml**: requires `cloudflare_dns_api_token` (Zone:Read + DNS:Edit) and port 853/tcp open in the provider firewall (Blocky DoT).
+:::caution
+**bootstrap.yml**: configure your VPS provider firewall to allow your custom `ssh_port` _before_ running, or you'll be locked out. **apps.yml**: requires `cloudflare_dns_api_token` (Zone:Read + DNS:Edit) and port 853/tcp open in the provider firewall (Blocky DoT).
+:::
 
 <details>
 <summary>Check mode limitations</summary>
@@ -64,4 +70,4 @@ Tasks that depend on previous tasks may report failures in check mode that would
 
 ## Troubleshooting
 
-- **`Host key verification failed` on `--playbook bootstrap.yml`**: the target was rebuilt and offers a new key. The run prints both fingerprints and offers to drop the stale `known_hosts` entry; `--force` drops it without asking. See [SSH problems](troubleshooting/ssh-problems.md).
+- **`Host key verification failed` on `--playbook bootstrap.yml`**: the target was rebuilt and offers a new key. The run prints both fingerprints and offers to drop the stale `known_hosts` entry; `--force` drops it without asking. See [SSH problems](/troubleshooting/ssh-problems/).

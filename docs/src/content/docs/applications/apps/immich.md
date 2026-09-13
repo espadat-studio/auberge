@@ -1,4 +1,6 @@
-# Immich
+---
+title: "Immich"
+---
 
 Self-hosted photo and video management. The repo's one containerized App: upstream supports only docker compose, so the official compose stack (server, machine-learning, valkey, postgres) runs wrapped in a systemd unit. Docs: [immich.app](https://immich.app)
 

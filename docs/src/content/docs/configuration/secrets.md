@@ -1,4 +1,6 @@
-# Secrets Management
+---
+title: "Secrets Management"
+---
 
 Auberge stores all configuration, including sensitive values, in `config.toml`.
 

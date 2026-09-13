@@ -1,4 +1,6 @@
-# Radio
+---
+title: "Radio"
+---
 
 Continuous streams of your own music, one per station, gated by a single shared password. Icecast2 + Liquidsoap, both from apt. Docs: [icecast.org](https://icecast.org), [liquidsoap.info](https://www.liquidsoap.info)
 

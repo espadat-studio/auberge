@@ -1,4 +1,6 @@
-# Host-scoped Config
+---
+title: "Host-scoped Config"
+---
 
 `config.toml` is fleet-wide by default: every key applies to every host. The reserved `[hosts.<name>]` table scopes keys to one host — for that host's runs, its entries override the top level in preflight validation and in the variables passed to Ansible.
 

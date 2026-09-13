@@ -1,4 +1,6 @@
-# auberge host detect-tailscale-ip
+---
+title: "auberge host detect-tailscale-ip"
+---
 
 Detect and cache the host's Tailscale IPv4 address.
 
@@ -20,7 +22,7 @@ If `NAME` is omitted, you'll be prompted to select a host.
 
 ## Why
 
-The address is a **fact**, not a decision: this command never sets or clears `prefer_tailnet`, so caching an address for a host never starts routing over it. Enabling the route is [`auberge host edit`](edit.md).
+The address is a **fact**, not a decision: this command never sets or clears `prefer_tailnet`, so caching an address for a host never starts routing over it. Enabling the route is [`auberge host edit`](/cli-reference/host/edit/).
 
 Once cached, `auberge dns set-all --host <name>` automatically points tailnet-only subdomains (apps with `tailnet_only: true` in their playbook meta — currently `bichon` and `paperless`) at this IP, without needing per-app `<app>_tailscale_ip` keys in `config.toml`.
 
@@ -52,7 +54,7 @@ tailscale_ip = "100.99.62.26"
 
 ## Related
 
-- [auberge dns set-all](cli-reference/dns/set-all.md) — consumer of `tailscale_ip`
-- [Tailnet Transport](configuration/tailnet-transport.md) — the other consumer: `prefer_tailnet`
-- [Tailnet-only Subdomains](cli-reference/dns/set-all.md#tailnet-only-apps)
-- [Hosts Configuration](configuration/hosts.md)
+- [auberge dns set-all](/cli-reference/dns/set-all/) — consumer of `tailscale_ip`
+- [Tailnet Transport](/configuration/tailnet-transport/) — the other consumer: `prefer_tailnet`
+- [Tailnet-only Subdomains](/cli-reference/dns/set-all/#tailnet-only-apps)
+- [Hosts Configuration](/configuration/hosts/)

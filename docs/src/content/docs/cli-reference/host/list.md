@@ -1,4 +1,6 @@
-# auberge host list
+---
+title: "auberge host list"
+---
 
 List all configured hosts. Alias: `auberge h l`.
 
@@ -13,7 +15,7 @@ auberge host list [OPTIONS]
 | `-t, --tags TAGS`     | Filter by tags (comma-separated) | All hosts |
 | `-o, --output FORMAT` | `human` or `json`                | `human`   |
 
-The human table's `TIER` column shows the ADR-0055 trust tier, `-` when unset, and `ROUTE` shows which address the CLI connects to — `public` or `tailnet` ([Tailnet Transport](configuration/tailnet-transport.md)). `ADDRESS` is always the declared public address, whatever `ROUTE` says. `--tags` filters on inventory groups, not on either column.
+The human table's `TIER` column shows the ADR-0055 trust tier, `-` when unset, and `ROUTE` shows which address the CLI connects to — `public` or `tailnet` ([Tailnet Transport](/configuration/tailnet-transport/)). `ADDRESS` is always the declared public address, whatever `ROUTE` says. `--tags` filters on inventory groups, not on either column.
 
 ## Examples
 

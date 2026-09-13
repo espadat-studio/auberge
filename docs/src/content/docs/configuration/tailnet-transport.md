@@ -1,4 +1,6 @@
-# Tailnet Transport
+---
+title: "Tailnet Transport"
+---
 
 By default the CLI reaches a host at the public `address` in its `hosts.toml` entry. A host that sets `prefer_tailnet = true` is reached at its `tailscale_ip` instead — by SSH, scp, rsync **and** Ansible, together.
 
@@ -59,7 +61,7 @@ auberge --via tailnet deploy --host ruche         # prove a route before declari
 
 Headscale runs on `auberge`, so the tailnet route to the backup target depends on a service that target hosts. This is bounded rather than fixed: no node key on this tailnet expires, so a running `tailscaled` keeps its WireGuard peers through a Headscale outage. Losing the route needs Headscale down **and** a `tailscaled` restart in the same window.
 
-When that happens, `--via public` is the way out — see [Cross-Host Migration](backup-restore/cross-host-migration.md#when-the-tailnet-route-is-down).
+When that happens, `--via public` is the way out — see [Cross-Host Migration](/backup-restore/cross-host-migration/#when-the-tailnet-route-is-down).
 
 ## What still uses the public address
 

@@ -1,4 +1,6 @@
-# Cloudflare Setup
+---
+title: "Cloudflare Setup"
+---
 
 Auberge uses Cloudflare for DNS management and DNS-01 ACME certificate provisioning.
 

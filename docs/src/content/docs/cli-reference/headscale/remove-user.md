@@ -1,4 +1,6 @@
-# auberge headscale remove-user
+---
+title: "auberge headscale remove-user"
+---
 
 Remove a Headscale user
 

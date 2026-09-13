@@ -1,4 +1,6 @@
-# Architecture
+---
+title: "Architecture"
+---
 
 Auberge: Rust CLI → Ansible → systemd services
 

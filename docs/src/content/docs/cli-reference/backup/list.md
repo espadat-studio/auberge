@@ -1,4 +1,6 @@
-# auberge backup list
+---
+title: "auberge backup list"
+---
 
 List available local backups. Alias: `auberge b ls`.
 

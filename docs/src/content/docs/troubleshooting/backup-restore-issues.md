@@ -1,4 +1,6 @@
-# Backup/Restore Issues
+---
+title: "Backup/Restore Issues"
+---
 
 ## Backup creation
 
@@ -17,7 +19,9 @@ rm -rf ~/.ssh/ctl-*
 auberge backup create --host my-vps
 ```
 
-?> If a backup **or a restore** is interrupted (network drop, SIGKILL, laptop suspend), stopped services restart automatically via a Host-side deadman timer — one hour per step, armed on the target itself so it survives the driver process dying. Verify: `ssh ansible@vps "systemctl list-timers | grep auberge-deadman"`. A timer that fired leaves a marker the next backup or restore of that App reports.
+:::tip
+If a backup **or a restore** is interrupted (network drop, SIGKILL, laptop suspend), stopped services restart automatically via a Host-side deadman timer — one hour per step, armed on the target itself so it survives the driver process dying. Verify: `ssh ansible@vps "systemctl list-timers | grep auberge-deadman"`. A timer that fired leaves a marker the next backup or restore of that App reports.
+:::
 
 ## Restore
 

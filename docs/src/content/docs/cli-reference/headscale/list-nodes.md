@@ -1,4 +1,6 @@
-# auberge headscale list-nodes
+---
+title: "auberge headscale list-nodes"
+---
 
 List nodes connected to a Headscale instance. Alias: `auberge hs ln`.
 

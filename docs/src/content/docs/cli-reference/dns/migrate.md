@@ -1,4 +1,6 @@
-# auberge dns migrate
+---
+title: "auberge dns migrate"
+---
 
 Update all existing Cloudflare A records to a new IP. Alias: `auberge d m`.
 
@@ -71,8 +73,10 @@ dig +short cal.example.com    # verify
 
 Rows appear in the order Cloudflare listed the zone; neither array is sorted.
 
-!> `--dry-run` reports the same `skipped` rows as a real run, but every `migrated` row carries `success: true` without a write. `set-all` avoids this by discriminating on a top-level `outcome` and holding its untouched candidates in `planned` (ADR-0044); `migrate` has no such field yet, so on a dry run treat `migrated` as the plan, not the result.
+:::caution
+`--dry-run` reports the same `skipped` rows as a real run, but every `migrated` row carries `success: true` without a write. `set-all` avoids this by discriminating on a top-level `outcome` and holding its untouched candidates in `planned` (ADR-0044); `migrate` has no such field yet, so on a dry run treat `migrated` as the plan, not the result.
+:::
 
-Unlike [`set-all`](set-all.md)'s `skipped`, these rows carry no `app`: `migrate` reads the zone rather than the app roster, so a skipped subdomain need not name an app at all. `reason` is the vocabulary the two share.
+Unlike [`set-all`](/cli-reference/dns/set-all/)'s `skipped`, these rows carry no `app`: `migrate` reads the zone rather than the app roster, so a skipped subdomain need not name an app at all. `reason` is the vocabulary the two share.
 
 JSON goes to stdout; banners and info messages go to stderr.

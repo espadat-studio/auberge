@@ -1,8 +1,10 @@
-# Paperless-ngx
+---
+title: "Paperless-ngx"
+---
 
 Document management system for organizing and searching scanned documents. Docs: [docs.paperless-ngx.com](https://docs.paperless-ngx.com)
 
-- **URL**: tailnet only — see [Tailnet-only apps](cli-reference/dns/set-all.md#tailnet-only-apps)
+- **URL**: tailnet only — see [Tailnet-only apps](/cli-reference/dns/set-all/#tailnet-only-apps)
 - **Port**: internal (Caddy proxy)
 - **Data**: `/opt/paperless/data`, `/opt/paperless/media`
 
@@ -27,6 +29,10 @@ Bare-metal (no Docker). Requires Tailscale deployed first.
 
 ## Notes
 
-!> `auberge backup create --apps paperless` backs up data and media directories only. The PostgreSQL database is **not** included — see [#105](https://github.com/sripwoud/auberge/issues/105).
+:::caution
+`auberge backup create --apps paperless` backs up data and media directories only. The PostgreSQL database is **not** included — see [#105](https://github.com/sripwoud/auberge/issues/105).
+:::
 
-?> A version bump is an outage. The four `paperless-*` units are stopped before the release swap and started after `manage.py migrate`, so nothing serves for the length of the install — minutes, most of it the venv rebuild. A failed install leaves them stopped: fix the cause and re-run `auberge deploy paperless`.
+:::tip
+A version bump is an outage. The four `paperless-*` units are stopped before the release swap and started after `manage.py migrate`, so nothing serves for the length of the install — minutes, most of it the venv rebuild. A failed install leaves them stopped: fix the cause and re-run `auberge deploy paperless`.
+:::

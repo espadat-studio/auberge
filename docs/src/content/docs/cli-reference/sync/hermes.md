@@ -1,4 +1,6 @@
-# auberge sync hermes
+---
+title: "auberge sync hermes"
+---
 
 Sync `~/.config/hermes/config.yaml` to `~/.hermes/config.yaml` on a remote host and restart `hermes-gateway`. Alias: `auberge sy h`.
 

@@ -1,4 +1,6 @@
-# auberge ansible bootstrap
+---
+title: "auberge ansible bootstrap"
+---
 
 Bootstrap a fresh VPS: create the `ansible` user, harden SSH, change the SSH port, configure UFW. Run **once per VPS**. Alias: `auberge a b`.
 
@@ -6,7 +8,9 @@ Bootstrap a fresh VPS: create the `ansible` user, harden SSH, change the SSH por
 auberge ansible bootstrap [HOST] [OPTIONS]
 ```
 
-!> Configure your VPS provider's firewall to allow your custom `ssh_port` **before** running. Bootstrap changes the SSH port — without the firewall rule, you're locked out.
+:::caution
+Configure your VPS provider's firewall to allow your custom `ssh_port` **before** running. Bootstrap changes the SSH port — without the firewall rule, you're locked out.
+:::
 
 ## Options
 
@@ -48,4 +52,4 @@ auberge ansible bootstrap my-vps --ip 203.0.113.10 --force      # non-interactiv
 
 - **Locked out**: provider firewall blocks the new port. Use the provider's web/VNC console: `sudo ufw disable`, fix SSH, re-enable.
 - **`User already exists`**: bootstrap already ran. Use `auberge ansible run` for subsequent changes.
-- **`Host key verification failed`**: the target was rebuilt and offers a new key. Bootstrap prints both fingerprints and offers to drop the stale `known_hosts` entry; `--force` drops it without asking. See [SSH problems](troubleshooting/ssh-problems.md).
+- **`Host key verification failed`**: the target was rebuilt and offers a new key. Bootstrap prints both fingerprints and offers to drop the stale `known_hosts` entry; `--force` drops it without asking. See [SSH problems](/troubleshooting/ssh-problems/).

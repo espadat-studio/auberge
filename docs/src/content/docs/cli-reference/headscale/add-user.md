@@ -1,4 +1,6 @@
-# auberge headscale add-user
+---
+title: "auberge headscale add-user"
+---
 
 Create a user and generate a pre-auth key
 

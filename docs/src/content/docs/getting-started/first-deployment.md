@@ -1,4 +1,6 @@
-# First Deployment
+---
+title: "First Deployment"
+---
 
 ## Prerequisites
 
@@ -30,7 +32,9 @@ auberge config set ssh_port 22022
 
 ## Step 4: Bootstrap VPS
 
-!> Configure your VPS provider's firewall to allow your custom SSH port **before** running bootstrap, or you will lose SSH access.
+:::caution
+Configure your VPS provider's firewall to allow your custom SSH port **before** running bootstrap, or you will lose SSH access.
+:::
 
 ```bash
 auberge ansible bootstrap my-vps --ip 203.0.113.10
@@ -48,7 +52,9 @@ auberge config set gokapi_admin_user admin
 auberge config set gokapi_admin_password your-password
 ```
 
-?> Run `auberge config init` (no flags) to print all known config keys.
+:::tip
+Run `auberge config init` (no flags) to print all known config keys.
+:::
 
 ## Step 6: Deploy full stack
 

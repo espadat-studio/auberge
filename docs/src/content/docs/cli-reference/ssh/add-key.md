@@ -1,4 +1,6 @@
-# auberge ssh add-key
+---
+title: "auberge ssh add-key"
+---
 
 Authorize an SSH public key on a remote host's `~/.ssh/authorized_keys`. Alias: `auberge ss ak`.
 

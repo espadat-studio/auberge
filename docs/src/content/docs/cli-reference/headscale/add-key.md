@@ -1,4 +1,6 @@
-# auberge headscale add-key
+---
+title: "auberge headscale add-key"
+---
 
 Mint a pre-auth key for an existing user
 

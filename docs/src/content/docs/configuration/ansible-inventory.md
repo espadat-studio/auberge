@@ -1,4 +1,6 @@
-# Ansible Inventory
+---
+title: "Ansible Inventory"
+---
 
 Location: `ansible/inventory.yml`
 
@@ -64,5 +66,5 @@ auberge ssh keygen --host my-host --user ansible
 
 ## Related
 
-- [Hosts Configuration](configuration/hosts.md) - hosts.toml management
-- [SSH Keys](configuration/ssh-keys.md) - SSH key configuration
+- [Hosts Configuration](/configuration/hosts/) - hosts.toml management
+- [SSH Keys](/configuration/ssh-keys/) - SSH key configuration

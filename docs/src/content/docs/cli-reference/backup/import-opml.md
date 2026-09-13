@@ -1,4 +1,6 @@
-# auberge backup import-opml
+---
+title: "auberge backup import-opml"
+---
 
 Import feed subscriptions from an OPML file into FreshRSS. Alias: `auberge b io`.
 

@@ -1,4 +1,6 @@
-# auberge deploy
+---
+title: "auberge deploy"
+---
 
 Deploy one or more apps — or a whole Host composition — to a host. Hardening runs first automatically, then infrastructure dependencies are resolved. Alias: `auberge dp`.
 
@@ -30,7 +32,7 @@ auberge deploy ruche --host ruche                       # a whole composition
 
 ## Execution order
 
-Every deploy runs `hardening → infrastructure → apps` in that order. Hardening (firewall, fail2ban, kernel) is mandatory and untagged. To skip it, use [`auberge ansible run`](cli-reference/ansible/run.md) directly.
+Every deploy runs `hardening → infrastructure → apps` in that order. Hardening (firewall, fail2ban, kernel) is mandatory and untagged. To skip it, use [`auberge ansible run`](/cli-reference/ansible/run/) directly.
 
 The CLI shows the resolved plan before running (suppress with `-f`):
 
@@ -61,9 +63,9 @@ Execution plan:
 
 `bootstrap` is deliberately not a deploy target, because it is a lifecycle operation rather than a convergence:
 
-| Playbook    | Run it with                                                       | Why not `deploy`                                           |
-| ----------- | ----------------------------------------------------------------- | ---------------------------------------------------------- |
-| `bootstrap` | [`auberge ansible bootstrap`](cli-reference/ansible/bootstrap.md) | connects as root on port 22 before the ansible user exists |
+| Playbook    | Run it with                                                      | Why not `deploy`                                           |
+| ----------- | ---------------------------------------------------------------- | ---------------------------------------------------------- |
+| `bootstrap` | [`auberge ansible bootstrap`](/cli-reference/ansible/bootstrap/) | connects as root on port 22 before the ansible user exists |
 
 A name that is _both_ an apps.yml role and a standalone playbook (calibre, immich, gokapi, hermes) keeps going through the roster, which is where those apps have always deployed from.
 
@@ -85,7 +87,7 @@ Select app(s) or playbook(s) to deploy (space to toggle, enter to confirm)>
 
 The marker reads `(playbook)` and not `(composition)` because only `ruche` is a Composition — a Playbook whose roster is several Apps. `aoe`, `opencode` and `memsearch` are plain standalone Playbooks, and one word has to cover all four.
 
-`[all apps]` selects the roster and nothing else — the same set `--all` deploys. A playbook is opt-in by name, because a deploy builds its [Preflight](cli-reference/config/overview.md) for the whole plan before the first task runs: sweeping `ruche` into `[all apps]` would make every host in the fleet demand `aoe_passphrase`, `opencode_openrouter_api_key` and `agents_domain` ([ADR-0077](https://github.com/sripwoud/auberge/blob/master/meta/adr/0077-the-deploy-menu-offers-every-target-but-all-stays-the-roster.md)). Picking `[all apps]` alongside individual entries deploys the union.
+`[all apps]` selects the roster and nothing else — the same set `--all` deploys. A playbook is opt-in by name, because a deploy builds its [Preflight](/cli-reference/config/overview/) for the whole plan before the first task runs: sweeping `ruche` into `[all apps]` would make every host in the fleet demand `aoe_passphrase`, `opencode_openrouter_api_key` and `agents_domain` ([ADR-0077](https://github.com/sripwoud/auberge/blob/master/meta/adr/0077-the-deploy-menu-offers-every-target-but-all-stays-the-roster.md)). Picking `[all apps]` alongside individual entries deploys the union.
 
 ## Substrate Apps
 
@@ -99,7 +101,7 @@ auberge ansible run -t blocky
 
 After each app's playbook run (not in `--check`). A run's apps are its tags where it has them, and its roster where it does not — so a composition is checked through the apps on it:
 
-- **Tailnet-only apps** (apps declaring `{app}_tailscale_ip`): the tailnet's Blocky is queried on UDP/53 and must answer with the app's own address. Blocky is the host whose config answers [`blocky_subdomain`](configuration/host-scoped-config.md), at the `tailscale_ip` that [`auberge host detect-tailscale-ip`](cli-reference/host/detect-tailscale-ip.md) cached for it — a different host from the app's as soon as the fleet grows.
+- **Tailnet-only apps** (apps declaring `{app}_tailscale_ip`): the tailnet's Blocky is queried on UDP/53 and must answer with the app's own address. Blocky is the host whose config answers [`blocky_subdomain`](/configuration/host-scoped-config/), at the `tailscale_ip` that [`auberge host detect-tailscale-ip`](/cli-reference/host/detect-tailscale-ip/) cached for it — a different host from the app's as soon as the fleet grows.
 - **Public apps**: opt-in via `--verify-public-dns`. `1.1.1.1` is queried; the A record must match `ansible_host`. Opt-in because Cloudflare propagation can lag.
 
 A mismatch aborts the deploy:
@@ -114,4 +116,6 @@ So does not knowing which host answers for the tailnet — a tailnet-only app's 
 Cannot verify essaim.example.com on the tailnet: 2 Hosts answer `blocky_subdomain` (auberge, ruche), but the tailnet has one resolver (ADR-0052); withdraw the gate on the others with `[hosts.<name>] blocky_subdomain = ""`
 ```
 
-?> App names are derived from roles in `apps.yml`, plus the standalone playbooks above. Run `auberge deploy` without args to see the multi-select list; it offers both. Roles declared in `infrastructure.yml` are rejected with a pointer to [`auberge ansible run`](cli-reference/ansible/run.md) `-t <role>`.
+:::tip
+App names are derived from roles in `apps.yml`, plus the standalone playbooks above. Run `auberge deploy` without args to see the multi-select list; it offers both. Roles declared in `infrastructure.yml` are rejected with a pointer to [`auberge ansible run`](/cli-reference/ansible/run/) `-t <role>`.
+:::

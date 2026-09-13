@@ -1,4 +1,6 @@
-# auberge versions
+---
+title: "auberge versions"
+---
 
 Report every version pin the repo declares, per [ADR-0017](https://github.com/sripwoud/auberge/blob/master/meta/adr/0017-app-versions-declared-in-playbook-meta.md): the App Version from each app's Playbook Meta (`ansible/playbooks/<app>.meta.yml`), and the Tool Versions from `# renovate:` annotations in role defaults (`ansible/roles/<role>/defaults/main.yml`) — `lego`, `uv`, Caddy's plugins. Alias: `auberge v`.
 
@@ -122,4 +124,6 @@ auberge versions --check-upstream -o json
 
 `latest` and `status` are omitted without `--check-upstream`.
 
-?> Set the `GITHUB_TOKEN` env var to authenticate GitHub API calls with `--check-upstream` and avoid anonymous rate limits.
+:::tip
+Set the `GITHUB_TOKEN` env var to authenticate GitHub API calls with `--check-upstream` and avoid anonymous rate limits.
+:::

@@ -1,4 +1,6 @@
-# Hosts & Inventory
+---
+title: "Hosts & Inventory"
+---
 
 `hosts.toml` is the single source of truth for host data. `inventory.yml` provides Ansible group-level vars only.
 
@@ -46,4 +48,6 @@ auberge ssh keygen --host my-vps --user ansible
 auberge ansible bootstrap my-vps --ip 203.0.113.10
 ```
 
-?> `auberge host add` (no args) detects `~/.ssh/config` and offers to import existing hosts.
+:::tip
+`auberge host add` (no args) detects `~/.ssh/config` and offers to import existing hosts.
+:::

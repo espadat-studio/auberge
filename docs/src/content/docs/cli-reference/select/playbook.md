@@ -1,4 +1,6 @@
-# auberge select playbook
+---
+title: "auberge select playbook"
+---
 
 Interactively select an Ansible playbook and print its full path to stdout. Alias: `auberge se p`.
 
@@ -29,6 +31,8 @@ ansible-lint "$(auberge select playbook)"
 yq '.[0].roles' "$(auberge select playbook)"
 ```
 
-!> The printed path points at the extracted copy, not your checkout. Edits there are overwritten on the next version bump — change playbooks in the repo.
+:::caution
+The printed path points at the extracted copy, not your checkout. Edits there are overwritten on the next version bump — change playbooks in the repo.
+:::
 
 Exit 0 on selection, 1 on cancel (Esc) or error.

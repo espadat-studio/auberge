@@ -1,4 +1,6 @@
-# auberge headscale register
+---
+title: "auberge headscale register"
+---
 
 Approve a pending interactive enrollment
 

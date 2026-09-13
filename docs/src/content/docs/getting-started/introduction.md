@@ -1,4 +1,6 @@
-# Introduction
+---
+title: "Introduction"
+---
 
 Auberge (French for _inn_) shelters your self-hosted services. It's a Rust CLI that wraps Ansible to deploy a complete FOSS stack on a minimal VPS — without containers.
 
@@ -32,4 +34,4 @@ Backups, DNS sync, and offsite restic snapshots are first-class CLI verbs.
 
 _Selfware_: direct control, no abstraction layers, transparent operations.
 
-Continue: [Quick Start](getting-started/quick-start.md) · [Installation](getting-started/installation.md) · [First Deployment](getting-started/first-deployment.md)
+Continue: [Quick Start](/getting-started/quick-start/) · [Installation](/getting-started/installation/) · [First Deployment](/getting-started/first-deployment/)

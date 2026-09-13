@@ -1,4 +1,6 @@
-# DNS Issues
+---
+title: "DNS Issues"
+---
 
 ## Authentication & permissions
 
@@ -34,7 +36,9 @@ sudo dscacheutil -flushcache          # macOS
 auberge dns list --subdomain cal
 ```
 
-?> Default TTL is 5 minutes. Wait before concluding the record is broken.
+:::tip
+Default TTL is 5 minutes. Wait before concluding the record is broken.
+:::
 
 ## Migration
 
@@ -55,7 +59,9 @@ auberge dns set --subdomain cal --ip 10.0.0.1
 auberge dns set --subdomain rss --ip 10.0.0.1
 ```
 
-!> CGNAT addresses (100.64.0.0/10) are skipped by `dns migrate` — use `dns set-all` explicitly for Tailscale IPs.
+:::caution
+CGNAT addresses (100.64.0.0/10) are skipped by `dns migrate` — use `dns set-all` explicitly for Tailscale IPs.
+:::
 
 ## Batch operations
 

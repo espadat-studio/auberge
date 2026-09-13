@@ -1,10 +1,12 @@
-# memsearch
+---
+title: "memsearch"
+---
 
-Semantic memory for the agent Host: agents accumulate memory across sessions and across worktrees, and it survives the box. Docs: [github.com/zilliztech/memsearch](https://github.com/zilliztech/memsearch). Decision record: [ADR-0064](../../../meta/adr/0064-agent-memory-pools-in-one-directory.md).
+Semantic memory for the agent Host: agents accumulate memory across sessions and across worktrees, and it survives the box. Docs: [github.com/zilliztech/memsearch](https://github.com/zilliztech/memsearch). Decision record: [ADR-0064](https://github.com/sripwoud/auberge/blob/master/meta/adr/0064-agent-memory-pools-in-one-directory.md).
 
 - **URL**: none; a CLI and a library, not a service
 - **Data**: `/srv/agent-memory/.memsearch/memory` (markdown, replicated off-box), `~/.memsearch/milvus.db` (index, disposable)
-- **Backup**: none, by decision — the agent Host holds no state a backup is the answer for ([ADR-0054](../../../meta/adr/0054-agent-workloads-run-on-a-dedicated-disposable-host.md))
+- **Backup**: none, by decision — the agent Host holds no state a backup is the answer for ([ADR-0054](https://github.com/sripwoud/auberge/blob/master/meta/adr/0054-agent-workloads-run-on-a-dedicated-disposable-host.md))
 
 ## Deploy
 

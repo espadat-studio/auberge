@@ -1,4 +1,6 @@
-# auberge host edit
+---
+title: "auberge host edit"
+---
 
 Edit host configuration interactively
 
@@ -15,7 +17,7 @@ Opens an interactive prompt to edit an existing host's configuration. Allows upd
 
 If `NAME` is omitted, you'll be prompted to select a host.
 
-Note: Host name cannot be changed through this command — the name is a foreign key into the key directory layout, the remote hostname, and restic snapshot grouping. Use [`auberge host rename`](rename.md), which migrates all three.
+Note: Host name cannot be changed through this command — the name is a foreign key into the key directory layout, the remote hostname, and restic snapshot grouping. Use [`auberge host rename`](/cli-reference/host/rename/), which migrates all three.
 
 ## Arguments
 
@@ -32,7 +34,7 @@ Note: Host name cannot be changed through this command — the name is a foreign
 - **Tags**: Comma-separated tags
 - **Description**: Host description
 - **Tailnet trust tier**: picked from `(none)`, `trusted`, `data`, `agent`, `standby` (ADR-0055), current value preselected. A picker rather than a text field because the set is closed — a typo would otherwise surface as a `hosts.toml` parse failure on some later, unrelated command
-- **Route over the tailnet address** (`prefer_tailnet`): asked only when the host has a cached `tailscale_ip`. Without one the prompt is skipped and says so, because the write would refuse the answer anyway and you would lose the seven you just gave. See [Tailnet Transport](configuration/tailnet-transport.md)
+- **Route over the tailnet address** (`prefer_tailnet`): asked only when the host has a cached `tailscale_ip`. Without one the prompt is skipped and says so, because the write would refuse the answer anyway and you would lose the seven you just gave. See [Tailnet Transport](/configuration/tailnet-transport/)
 
 ## Examples
 

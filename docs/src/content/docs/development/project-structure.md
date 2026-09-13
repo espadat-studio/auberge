@@ -1,4 +1,6 @@
-# Project Structure
+---
+title: "Project Structure"
+---
 
 ```
 auberge/

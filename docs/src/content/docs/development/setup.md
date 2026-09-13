@@ -1,4 +1,6 @@
-# Development Setup
+---
+title: "Development Setup"
+---
 
 ## Quick Start
 

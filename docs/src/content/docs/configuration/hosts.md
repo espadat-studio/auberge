@@ -1,4 +1,6 @@
-# Hosts Configuration
+---
+title: "Hosts Configuration"
+---
 
 Hosts can be managed in two ways depending on your use case.
 
@@ -44,9 +46,9 @@ prefer_tailnet = true          # optional, see below
 
 ### Optional fields
 
-- `tailscale_ip` — cached Tailscale CGNAT IPv4 of the host. Populated by [`auberge host detect-tailscale-ip <name>`](cli-reference/host/detect-tailscale-ip.md) and consumed by `auberge dns set-all` to auto-fill DNS records for tailnet-only apps without per-app overrides.
-- `prefer_tailnet` — reach this host at its `tailscale_ip` instead of its public `address`, for SSH, scp, rsync and Ansible alike. A policy, where `tailscale_ip` is a fact: caching the address never implies routing over it. Requires `tailscale_ip`, refused at every write without one. Set by `auberge host edit` and shown as the `ROUTE` column in `auberge host list`. Strict — no fallback to the public address — with `--via public` as the per-command escape. See [Tailnet Transport](configuration/tailnet-transport.md).
-- `tailnet_tag` — the host's tailnet trust tier: `trusted`, `data`, `agent`, or `standby`. One of exactly those four; anything else fails to parse, naming the legal values. Set by `auberge host add --tailnet-tag` or `auberge host edit` and shown as the `TIER` column in `auberge host list`. Never reaches Ansible; its consumer is the [per-run pre-auth mint](applications/networking/headscale.md), which stamps it on the key it mints so a host lands in its tier at enrollment.
+- `tailscale_ip` — cached Tailscale CGNAT IPv4 of the host. Populated by [`auberge host detect-tailscale-ip <name>`](/cli-reference/host/detect-tailscale-ip/) and consumed by `auberge dns set-all` to auto-fill DNS records for tailnet-only apps without per-app overrides.
+- `prefer_tailnet` — reach this host at its `tailscale_ip` instead of its public `address`, for SSH, scp, rsync and Ansible alike. A policy, where `tailscale_ip` is a fact: caching the address never implies routing over it. Requires `tailscale_ip`, refused at every write without one. Set by `auberge host edit` and shown as the `ROUTE` column in `auberge host list`. Strict — no fallback to the public address — with `--via public` as the per-command escape. See [Tailnet Transport](/configuration/tailnet-transport/).
+- `tailnet_tag` — the host's tailnet trust tier: `trusted`, `data`, `agent`, or `standby`. One of exactly those four; anything else fails to parse, naming the legal values. Set by `auberge host add --tailnet-tag` or `auberge host edit` and shown as the `TIER` column in `auberge host list`. Never reaches Ansible; its consumer is the [per-run pre-auth mint](/applications/networking/headscale/), which stamps it on the key it mints so a host lands in its tier at enrollment.
 
 > [!IMPORTANT]
 > `tags` and `tailnet_tag` are different axes and must stay that way. `tags`

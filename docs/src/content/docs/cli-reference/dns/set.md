@@ -1,4 +1,6 @@
-# auberge dns set
+---
+title: "auberge dns set"
+---
 
 Create or update a Cloudflare A record for a subdomain. Alias: `auberge d s`.
 

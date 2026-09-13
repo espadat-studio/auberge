@@ -1,4 +1,6 @@
-# fail2ban
+---
+title: "fail2ban"
+---
 
 Intrusion prevention system that protects against brute-force attacks by banning suspicious IPs.
 
@@ -26,4 +28,4 @@ Default thresholds are defined in `ansible/roles/fail2ban/defaults/main.yml`.
 
 ## Related
 
-- [Applications Overview](applications/overview.md)
+- [Applications Overview](/applications/overview/)

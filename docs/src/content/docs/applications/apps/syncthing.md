@@ -1,4 +1,6 @@
-# Syncthing
+---
+title: "Syncthing"
+---
 
 Continuous file synchronization between devices. Docs: [syncthing.net](https://syncthing.net)
 

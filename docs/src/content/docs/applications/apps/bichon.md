@@ -1,8 +1,10 @@
-# Bichon
+---
+title: "Bichon"
+---
 
 Email archiving service with continuous IMAP sync and full-text search. Docs: [github.com/rustmailer/bichon](https://github.com/rustmailer/bichon)
 
-- **URL**: tailnet only — see [Tailnet-only apps](cli-reference/dns/set-all.md#tailnet-only-apps)
+- **URL**: tailnet only — see [Tailnet-only apps](/cli-reference/dns/set-all/#tailnet-only-apps)
 - **Port**: internal (Caddy proxy)
 - **Data**: `/opt/bichon/data` (internal store), `/var/lib/bichon-archive` (EML mirror) — both backed up
 - **Timers**: `bichon-archive.timer` (hourly archive), `bichon-uidvalidity-watch.timer` (hourly [rebuild alert](#uidvalidity-rebuild-alert))
@@ -25,7 +27,9 @@ Bare-metal (no Docker). Requires Tailscale deployed first.
 
 `bichon_api_token`: mint in Bichon's UI after first deploy, paste into `config.toml`, re-run.
 
-!> `bichon_encryption_password` cannot be changed after first deploy. Changing it makes all encrypted data unreadable. The role enforces this: subsequent runs fail if the value differs.
+:::caution
+`bichon_encryption_password` cannot be changed after first deploy. Changing it makes all encrypted data unreadable. The role enforces this: subsequent runs fail if the value differs.
+:::
 
 ## Notes
 
@@ -99,7 +103,9 @@ sudo rm /var/lib/bichon-uidvalidity-watch/rebuilds.log
 sudo systemctl start bichon-uidvalidity-watch.service   # exits 0, clears the failed state
 ```
 
-!> Acknowledge only after restoring. Nothing else records that a purge happened, so deleting the latch without restoring discards the only notice you get. The first run after deploy reports rebuilds already in the retained journal — that is deliberate, not a false alarm.
+:::caution
+Acknowledge only after restoring. Nothing else records that a purge happened, so deleting the latch without restoring discards the only notice you get. The first run after deploy reports rebuilds already in the retained journal — that is deliberate, not a false alarm.
+:::
 
 See [ADR-0014](https://github.com/sripwoud/auberge/blob/master/meta/adr/0014-uidvalidity-rebuild-alert-is-a-latched-failing-unit.md). The alert is passive by design: it carries no push channel, so it reaches you when you look at the Host or Cockpit.
 
@@ -116,7 +122,9 @@ See [ADR-0014](https://github.com/sripwoud/auberge/blob/master/meta/adr/0014-uid
 
 The script imports every `.eml` into the folder its sidecar records, then replays `tags.json` onto the imported messages with `action: Add`, so re-running the tag replay never removes anything. `--dry-run` prints the folder and tag-set plan without touching the API. It reports `imported / tagged / skipped / failed` counts and exits non-zero on any failure.
 
-!> Re-running a completed restore duplicates messages — Bichon's import mints a new envelope id per message. And messages that arrived without a `Message-ID` header carry a synthetic one that does not survive re-import: their tags are logged and counted as skipped, the bodies restore fine.
+:::caution
+Re-running a completed restore duplicates messages — Bichon's import mints a new envelope id per message. And messages that arrived without a `Message-ID` header carry a synthetic one that does not survive re-import: their tags are logged and counted as skipped, the bodies restore fine.
+:::
 
 **Archived-then-expunge ordering** (do not skip steps):
 
@@ -126,10 +134,12 @@ The script imports every `.eml` into the folder its sidecar records, then replay
    ```bash
    auberge backup verify --app bichon
    ```
-   Exit `0` means the newest offsite snapshot contains the archive and is younger than 24h. Anything else: stop, do not expunge. See [backup verify](cli-reference/backup/verify.md).
+   Exit `0` means the newest offsite snapshot contains the archive and is younger than 24h. Anything else: stop, do not expunge. See [backup verify](/cli-reference/backup/verify/).
 4. Operator expunges manually (e.g. `himalaya`).
 
-!> Check journal for errors before expunging — do not rely on archive mtime or message count alone. Unticked folders are not archived. Do not automate expunge on a cron.
+:::caution
+Check journal for errors before expunging — do not rely on archive mtime or message count alone. Unticked folders are not archived. Do not automate expunge on a cron.
+:::
 
 **Reference script**: [`examples/bichon-expunge.sh`](https://github.com/sripwoud/auberge/blob/master/examples/bichon-expunge.sh) turns the ordering above into five gates and, once they all pass, executes the expunge.
 
@@ -151,11 +161,15 @@ A preflight runs before the gates, resolving one value at a time: tools on `PATH
 
 `--account` must be the mailbox email address. himalaya account names are arbitrary labels, but bichon keys archive directories by email (`sanitize_email` in `bichon-archive.sh.j2`) and the script passes one value to both — so the himalaya account has to be named after the address. The menu offers only accounts present on both sides; a mismatched `--account` is rejected by name before gate 1.
 
-!> The ssh user must be in the `bichon` group. The archive is `0750 bichon:bichon` and gate 3 reads `.meta.json` sidecars without sudo, so without it the gate cannot read anything. Grant with `ssh <host> 'sudo usermod -aG bichon $(whoami)'`, then reconnect.
+:::caution
+The ssh user must be in the `bichon` group. The archive is `0750 bichon:bichon` and gate 3 reads `.meta.json` sidecars without sudo, so without it the gate cannot read anything. Grant with `ssh <host> 'sudo usermod -aG bichon $(whoami)'`, then reconnect.
+:::
 
 Deletion is `himalaya flag add … deleted` followed by `himalaya folder expunge` — messages are removed in place, not moved to Trash, so mailbox quota is actually reclaimed.
 
-!> The expunge needs an interactive TTY. There is no `--yes`/`--force`; `--no-input` and non-TTY stdin run every gate and then refuse to expunge. Per [ADR-0007](https://github.com/sripwoud/auberge/blob/master/meta/adr/0007-auberge-folder-reconcile-scope.md) no unattended expunge path exists, and the script is not shipped in the `auberge` binary.
+:::caution
+The expunge needs an interactive TTY. There is no `--yes`/`--force`; `--no-input` and non-TTY stdin run every gate and then refuse to expunge. Per [ADR-0007](https://github.com/sripwoud/auberge/blob/master/meta/adr/0007-auberge-folder-reconcile-scope.md) no unattended expunge path exists, and the script is not shipped in the `auberge` binary.
+:::
 
 **Expunge Sweep**: `--sweep` walks every eligible (account, Synced Folder) pair on the Host with one window, instead of one operator-chosen pair (ADR-0007, amendment 2026-08-03). Excludes `--folder`.
 

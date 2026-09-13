@@ -1,4 +1,6 @@
-# auberge dns list
+---
+title: "auberge dns list"
+---
 
 List DNS records for your domain from Cloudflare. Alias: `auberge d l`.
 

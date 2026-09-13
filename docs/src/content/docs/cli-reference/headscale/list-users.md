@@ -1,4 +1,6 @@
-# auberge headscale list-users
+---
+title: "auberge headscale list-users"
+---
 
 List registered Headscale users
 

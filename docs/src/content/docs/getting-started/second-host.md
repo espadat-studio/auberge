@@ -1,6 +1,8 @@
-# Adding a Second Host
+---
+title: "Adding a Second Host"
+---
 
-First host: see [First Deployment](getting-started/first-deployment.md). A second host reuses the fleet-wide config; you scope what differs.
+First host: see [First Deployment](/getting-started/first-deployment/). A second host reuses the fleet-wide config; you scope what differs.
 
 ## Step 1: Add the host
 
@@ -13,7 +15,7 @@ The name is permanent identity: bootstrap sets it as the machine's hostname, and
 
 ## Step 2: Scope the config
 
-Every top-level `config.toml` key applies to every host. In particular, `infrastructure.yml` deploys `headscale` and `blocky` wherever their `*_subdomain` keys answer — withdraw them on hosts that must not serve them (see [Host-scoped Config](configuration/host-scoped-config.md)):
+Every top-level `config.toml` key applies to every host. In particular, `infrastructure.yml` deploys `headscale` and `blocky` wherever their `*_subdomain` keys answer — withdraw them on hosts that must not serve them (see [Host-scoped Config](/configuration/host-scoped-config/)):
 
 ```toml
 [hosts.agent-box]
@@ -23,7 +25,9 @@ blocky_subdomain = ""
 
 ## Step 3: Bootstrap, harden, infrastructure
 
-!> Allow your custom `ssh_port` in the provider firewall **before** bootstrap.
+:::caution
+Allow your custom `ssh_port` in the provider firewall **before** bootstrap.
+:::
 
 ```bash
 auberge ansible bootstrap agent-box --ip 203.0.113.20
@@ -41,7 +45,9 @@ That works because the host declared its trust tier when you added it:
 auberge host add agent-box --ip 203.0.113.20 --tailnet-tag agent
 ```
 
-?> A host with no `tailnet_tag` still enrolls, but its key carries no tag — under the default-deny [ACL policy](applications/networking/headscale.md) it reaches nothing. The run warns and names `auberge host edit`.
+:::tip
+A host with no `tailnet_tag` still enrolls, but its key carries no tag — under the default-deny [ACL policy](/applications/networking/headscale/) it reaches nothing. The run warns and names `auberge host edit`.
+:::
 
 ## Step 5: Verify
 

@@ -1,4 +1,6 @@
-# Backup & Restore Overview
+---
+title: "Backup & Restore Overview"
+---
 
 Auberge provides built-in backup and restore functionality for all self-hosted applications. Backups are stored locally and can be restored to the same host or migrated to a different host using the cross-host restore feature.
 
@@ -84,11 +86,11 @@ Local backups can be pushed to an offsite restic repository for disaster recover
 1. Create a local backup with `auberge backup create`
 2. Push it offsite with `auberge backup push`
 3. Apply retention policies with `auberge backup prune` (7 daily, 4 weekly, 12 monthly)
-4. Confirm it landed with `auberge backup verify` — the only step that reads the repository back. See [backup verify](cli-reference/backup/verify.md)
+4. Confirm it landed with `auberge backup verify` — the only step that reads the repository back. See [backup verify](/cli-reference/backup/verify/)
 
-For automated daily backups, use `auberge backup sync` which runs the full pipeline (create → push → prune → cleanup) in one command and removes local staging after a successful push. Prune failures are non-fatal. See [backup sync](cli-reference/backup/sync.md).
+For automated daily backups, use `auberge backup sync` which runs the full pipeline (create → push → prune → cleanup) in one command and removes local staging after a successful push. Prune failures are non-fatal. See [backup sync](/cli-reference/backup/sync/).
 
-For the full end-to-end setup guide (installing dependencies, configuring rclone, setting auberge config), see [backup push](cli-reference/backup/push.md#setup).
+For the full end-to-end setup guide (installing dependencies, configuring rclone, setting auberge config), see [backup push](/cli-reference/backup/push/#setup).
 
 ### Excluded Files
 

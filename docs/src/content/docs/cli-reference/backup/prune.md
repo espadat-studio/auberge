@@ -1,4 +1,6 @@
-# auberge backup prune
+---
+title: "auberge backup prune"
+---
 
 Prune old snapshots from the offsite restic repository
 
@@ -22,7 +24,7 @@ Retention applies per host: each snapshot is tagged with its host name at push, 
 
 ## Prerequisites
 
-Same as [backup push](cli-reference/backup/push.md) — requires `restic_repository` and `restic_password` config values.
+Same as [backup push](/cli-reference/backup/push/) — requires `restic_repository` and `restic_password` config values.
 
 ## Examples
 

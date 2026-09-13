@@ -1,4 +1,6 @@
-# auberge dns set-all
+---
+title: "auberge dns set-all"
+---
 
 Batch-create Cloudflare A records for all configured app subdomains. Alias: `auberge d sa`.
 
@@ -43,7 +45,9 @@ Apps whose playbook meta declares `tailnet_only: true` (currently `bichon`, `coc
 | Implicit (no `--subdomains`)                       | Skipped silently with `Skipping (tailnet-only — published via Blocky): <apps>` |
 | Explicit (`--subdomains` names a tailnet-only app) | Hard-error before any record is written. Use `auberge deploy <app>` instead.   |
 
-!> A 500 ms delay is inserted between API calls to respect Cloudflare rate limits.
+:::caution
+A 500 ms delay is inserted between API calls to respect Cloudflare rate limits.
+:::
 
 ## Exit codes
 

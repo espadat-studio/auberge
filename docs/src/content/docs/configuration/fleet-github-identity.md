@@ -1,4 +1,6 @@
-# Fleet GitHub Identity
+---
+title: "Fleet GitHub Identity"
+---
 
 The AI agent fleet ([ruche](https://github.com/sripwoud/auberge/issues/747)) commits and opens PRs as a **GitHub machine user**, never the personal account ([ADR-0054](https://github.com/sripwoud/auberge/blob/master/meta/adr/0054-agent-workloads-run-on-a-dedicated-disposable-host.md), [ADR-0056](https://github.com/sripwoud/auberge/blob/master/meta/adr/0056-github-machine-user-access-is-cli-provisioned.md)):
 

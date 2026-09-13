@@ -1,4 +1,6 @@
-# auberge host add
+---
+title: "auberge host add"
+---
 
 Add host to configuration
 

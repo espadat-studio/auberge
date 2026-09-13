@@ -1,4 +1,6 @@
-# auberge backup export-opml
+---
+title: "auberge backup export-opml"
+---
 
 Export FreshRSS feed subscriptions to an OPML file. Alias: `auberge b eo`.
 

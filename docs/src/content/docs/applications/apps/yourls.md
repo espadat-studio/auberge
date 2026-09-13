@@ -1,4 +1,6 @@
-# YOURLS
+---
+title: "YOURLS"
+---
 
 Self-hosted URL shortener. Docs: [yourls.org](https://yourls.org)
 

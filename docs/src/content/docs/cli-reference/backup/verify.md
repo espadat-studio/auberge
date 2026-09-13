@@ -1,4 +1,6 @@
-# auberge backup verify
+---
+title: "auberge backup verify"
+---
 
 Assert that an offsite restic snapshot is fresh — for a host, or for one app's backup. Read-only — it never writes to the repository. Alias: `auberge b v`.
 
@@ -74,7 +76,7 @@ auberge backup verify --app bichon --output json
 
 ## Prerequisites
 
-Same as [backup push](cli-reference/backup/push.md) — requires `restic_repository` and `restic_password` config values.
+Same as [backup push](/cli-reference/backup/push/) — requires `restic_repository` and `restic_password` config values.
 
 <details>
 <summary>JSON output schema</summary>
@@ -127,4 +129,6 @@ JSON goes to stdout; human-format chrome goes to stderr.
 
 </details>
 
-?> A snapshot belongs to a host if [backup push](cli-reference/backup/push.md) tagged it with the host name — the same tag [backup prune](cli-reference/backup/prune.md) groups retention by, so both commands agree on which snapshots are a host's. Snapshots pushed before tagging landed carry no tags and are matched by their `…/backups/<host>/<timestamp>` path instead, so an existing repository verifies without a re-push.
+:::tip
+A snapshot belongs to a host if [backup push](/cli-reference/backup/push/) tagged it with the host name — the same tag [backup prune](/cli-reference/backup/prune/) groups retention by, so both commands agree on which snapshots are a host's. Snapshots pushed before tagging landed carry no tags and are matched by their `…/backups/<host>/<timestamp>` path instead, so an existing repository verifies without a re-push.
+:::

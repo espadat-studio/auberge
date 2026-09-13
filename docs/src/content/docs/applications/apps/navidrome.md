@@ -1,4 +1,6 @@
-# Navidrome
+---
+title: "Navidrome"
+---
 
 Music streaming server compatible with Subsonic/Airsonic clients. Docs: [navidrome.org](https://navidrome.org)
 
@@ -19,4 +21,4 @@ Sync music files to the VPS:
 auberge sync music --host my-vps --source ~/Music
 ```
 
-Backed up by default (database and config only; music excluded to save space). To include music: `auberge backup create --include-music`. Restore takes no such flag — it pushes back whatever the backup holds, `/srv/music` included. See [Backup & Restore](backup-restore/overview.md).
+Backed up by default (database and config only; music excluded to save space). To include music: `auberge backup create --include-music`. Restore takes no such flag — it pushes back whatever the backup holds, `/srv/music` included. See [Backup & Restore](/backup-restore/overview/).

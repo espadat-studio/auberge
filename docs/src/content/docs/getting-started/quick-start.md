@@ -1,4 +1,6 @@
-# Quick Start
+---
+title: "Quick Start"
+---
 
 Get Auberge running in 5 minutes.
 

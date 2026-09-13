@@ -1,4 +1,6 @@
-# auberge host rename
+---
+title: "auberge host rename"
+---
 
 Rename a host: remote hostname, hosts.toml entry, and key directory
 
@@ -14,7 +16,7 @@ auberge host rename <OLD> <NEW> [--yes]
 Renames a host everywhere its name is load-bearing, in one command:
 
 1. **Remote**: `hostnamectl set-hostname <NEW>` and the matching `/etc/hosts` entries (via sudo over SSH).
-2. **Local**: the `hosts.toml` entry, the key directory `~/.ssh/identities/<OLD>` → `<NEW>`, and the configured `ssh_key` path when it points inside that directory. A custom `ssh_key` outside the derived tree is left untouched — file and path. The generated `~/.ssh/config.d/auberge.conf` is rewritten, so `ssh <NEW>` works immediately (see [SSH keys](../../configuration/ssh-keys.md)).
+2. **Local**: the `hosts.toml` entry, the key directory `~/.ssh/identities/<OLD>` → `<NEW>`, and the configured `ssh_key` path when it points inside that directory. A custom `ssh_key` outside the derived tree is left untouched — file and path. The generated `~/.ssh/config.d/auberge.conf` is rewritten, so `ssh <NEW>` works immediately (see [SSH keys](/configuration/ssh-keys/)).
 
 Preflight bails before touching anything: `<OLD>` must exist in `hosts.toml`, `<NEW>` must not, the key directories must not collide, and SSH to the host must succeed.
 

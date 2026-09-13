@@ -1,4 +1,6 @@
-# auberge backup push
+---
+title: "auberge backup push"
+---
 
 Push local backups to an offsite restic repository. Alias: `auberge b p`.
 
@@ -8,7 +10,9 @@ auberge backup push [OPTIONS]
 
 The repository is initialized automatically on first push.
 
-?> `push` is upload-only — it never applies the retention policy. [backup sync](cli-reference/backup/sync.md) is the retention-enforcing entrypoint (it runs prune after push); standalone pushes accumulate snapshots until the next `sync` or manual [backup prune](cli-reference/backup/prune.md).
+:::tip
+`push` is upload-only — it never applies the retention policy. [backup sync](/cli-reference/backup/sync/) is the retention-enforcing entrypoint (it runs prune after push); standalone pushes accumulate snapshots until the next `sync` or manual [backup prune](/cli-reference/backup/prune/).
+:::
 
 ## Options
 
@@ -36,7 +40,9 @@ auberge config set restic_password "your-encryption-passphrase"
 
 Any [restic-supported repository string](https://restic.readthedocs.io/en/stable/030_preparing_a_new_repo.html) works; `rclone:` remotes keep provider credentials in rclone's own config, so no extra environment variables are needed.
 
-?> `restic_password` is NOT your storage provider's password — it is restic's own encryption key. Store it in a password manager; losing it means losing access to all snapshots. Both values support `!` command syntax: `auberge config set restic_password '!pass show auberge/restic'`.
+:::tip
+`restic_password` is NOT your storage provider's password — it is restic's own encryption key. Store it in a password manager; losing it means losing access to all snapshots. Both values support `!` command syntax: `auberge config set restic_password '!pass show auberge/restic'`.
+:::
 
 ## Examples
 

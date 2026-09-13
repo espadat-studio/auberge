@@ -1,4 +1,6 @@
-# UFW
+---
+title: "UFW"
+---
 
 Uncomplicated Firewall - simple firewall configuration for Linux.
 
@@ -23,4 +25,4 @@ All other ports are blocked by default.
 
 ## Related
 
-- [Applications Overview](applications/overview.md)
+- [Applications Overview](/applications/overview/)

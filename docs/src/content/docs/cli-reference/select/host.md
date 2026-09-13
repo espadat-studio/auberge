@@ -1,4 +1,6 @@
-# auberge select host
+---
+title: "auberge select host"
+---
 
 Interactively select a host and print its name to stdout. Alias: `auberge se h`.
 

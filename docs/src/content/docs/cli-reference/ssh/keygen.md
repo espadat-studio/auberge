@@ -1,4 +1,6 @@
-# auberge ssh keygen
+---
+title: "auberge ssh keygen"
+---
 
 Generate an ED25519 SSH key pair for host authentication. Alias: `auberge ss k`.
 

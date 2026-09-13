@@ -1,4 +1,6 @@
-# Blocky
+---
+title: "Blocky"
+---
 
 Recursive DNS resolver with built-in ad/tracker blocking. [Upstream docs](https://0xerr0r.github.io/blocky).
 
@@ -18,7 +20,9 @@ auberge ansible run --tags blocky
 | `tailscale_api_key`        | Optional. When set, Blocky auto-registers itself as the tailnet DNS nameserver and enables MagicDNS. |
 | `cloudflare_dns_api_token` | Required. Provisions the public `blocky.{domain}` A record.                                          |
 
-!> Public exposure is **DoT only** (853/tcp). Plain 53/udp is bound to the Tailscale interface.
+:::caution
+Public exposure is **DoT only** (853/tcp). Plain 53/udp is bound to the Tailscale interface.
+:::
 
 ## Off-tailnet DoT clients
 

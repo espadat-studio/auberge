@@ -1,4 +1,6 @@
-# Contributing
+---
+title: "Contributing"
+---
 
 ## Process
 
@@ -38,4 +40,4 @@ cargo build       # Build
 cargo test        # Test
 ```
 
-See [Development Setup](development/setup.md) for details.
+See [Development Setup](/development/setup/) for details.

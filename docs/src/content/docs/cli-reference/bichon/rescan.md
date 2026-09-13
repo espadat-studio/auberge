@@ -1,4 +1,6 @@
-# auberge bichon rescan
+---
+title: "auberge bichon rescan"
+---
 
 ## Synopsis
 
@@ -46,7 +48,7 @@ Off a TTY, `--host` is required and the error names it; `--account` omitted mean
 
 ## Access
 
-Needs both the Bichon API (account list — same base URL resolution and `bichon_api_token` as [reconcile-folders](cli-reference/bichon/reconcile-folders.md)) and SSH to the host (cursor reset, service start, journal read).
+Needs both the Bichon API (account list — same base URL resolution and `bichon_api_token` as [reconcile-folders](/cli-reference/bichon/reconcile-folders/)) and SSH to the host (cursor reset, service start, journal read).
 
 ## Examples
 

@@ -1,13 +1,19 @@
-# Agent Tier DNS Zone
+---
+title: "Agent Tier DNS Zone"
+---
 
 The AI agent fleet ([ruche](https://github.com/sripwoud/auberge/issues/747)) answers ACME's DNS-01 challenge with a Cloudflare API token scoped to its own domain, never the token that guards the parent domain ([ADR-0054](https://github.com/sripwoud/auberge/blob/master/meta/adr/0054-agent-workloads-run-on-a-dedicated-disposable-host.md), [ADR-0068](https://github.com/sripwoud/auberge/blob/master/meta/adr/0068-the-agent-tier-holds-its-own-dns-zone.md)):
 
 - **Blast-radius containment** — a Cloudflare token is zone-scoped, not record-scoped. A token able to complete DNS-01 for the parent domain can rewrite MX and every other record in that zone; a token scoped to a separate domain can only touch the agent tier.
 - **`ruche` is assumed compromisable** (ADR-0054) — the token it holds must cost only the agent tier if it leaks.
 
-!> The agent tier's domain is a **separate registered domain, not a subdomain** of the parent domain. Cloudflare only supports delegating a subdomain as its own independently-managed zone on Enterprise plans; on Free/Pro the dashboard refuses it outright ("provide the root domain, not a subdomain"). A second domain sidesteps that and reuses the existing Cloudflare integration unchanged.
+:::caution
+The agent tier's domain is a **separate registered domain, not a subdomain** of the parent domain. Cloudflare only supports delegating a subdomain as its own independently-managed zone on Enterprise plans; on Free/Pro the dashboard refuses it outright ("provide the root domain, not a subdomain"). A second domain sidesteps that and reuses the existing Cloudflare integration unchanged.
+:::
 
-!> `essaim.{agents_domain}` becomes the aoe dashboard's origin (#740). An installed PWA binds to its exact origin, so settle the domain before the first install — changing it later forces a delete-and-reinstall on every device.
+:::caution
+`essaim.{agents_domain}` becomes the aoe dashboard's origin (#740). An installed PWA binds to its exact origin, so settle the domain before the first install — changing it later forces a delete-and-reinstall on every device.
+:::
 
 ## Config keys
 
@@ -17,7 +23,7 @@ The AI agent fleet ([ruche](https://github.com/sripwoud/auberge/issues/747)) ans
 | `agents_cloudflare_dns_api_token` | yes    | API token scoped to the `agents_domain` zone only            |
 | `aoe_subdomain`                   | no     | the agent tier's serving gate — **host-scope it**, see below |
 
-`aoe_subdomain` decides which Host's Caddy answers for this zone. Set it under [`[hosts.<name>]`](configuration/host-scoped-config.md), never fleet-wide: a fleet-wide answer points _every_ Host's Caddy at the agent tier's token, and the parent domain's certificates then fail to renew.
+`aoe_subdomain` decides which Host's Caddy answers for this zone. Set it under [`[hosts.<name>]`](/configuration/host-scoped-config/), never fleet-wide: a fleet-wide answer points _every_ Host's Caddy at the agent tier's token, and the parent domain's certificates then fail to renew.
 
 ## Provisioning
 

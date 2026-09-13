@@ -1,4 +1,6 @@
-# auberge bichon reconcile-folders
+---
+title: "auberge bichon reconcile-folders"
+---
 
 ## Synopsis
 
@@ -22,11 +24,15 @@ Policy:
 extra_excluded_folders = ["Newsletters", "Receipts/2019"]
 ```
 
-?> `extra_excluded_folders` matches the **full mailbox path, case-sensitively**. Use the exact name returned by Bichon's `list-mailboxes` API (e.g. `"Receipts/2019"`, not `"receipts/2019"`). Unlike the SPECIAL-USE / leaf-name fallback, this is intentionally precise so operators can target individual sub-folders without false positives.
+:::tip
+`extra_excluded_folders` matches the **full mailbox path, case-sensitively**. Use the exact name returned by Bichon's `list-mailboxes` API (e.g. `"Receipts/2019"`, not `"receipts/2019"`). Unlike the SPECIAL-USE / leaf-name fallback, this is intentionally precise so operators can target individual sub-folders without false positives.
+:::
 
 Default is dry-run (read-only).
 
-?> On Bichon >= 2.0 the remote folder list is served from a cache. On a cold cache Bichon lists the mailboxes in the background and the command polls until the list is ready (up to 120s) before computing the diff, so the first run after a Bichon restart can take noticeably longer.
+:::tip
+On Bichon >= 2.0 the remote folder list is served from a cache. On a cold cache Bichon lists the mailboxes in the background and the command polls until the list is ready (up to 120s) before computing the diff, so the first run after a Bichon restart can take noticeably longer.
+:::
 
 ## Options
 

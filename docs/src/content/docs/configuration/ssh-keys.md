@@ -1,4 +1,6 @@
-# SSH Keys
+---
+title: "SSH Keys"
+---
 
 Three-tier resolution. Precedence: `--ssh-key` flag > `host.ssh_key` in `hosts.toml` > default derivation.
 
@@ -18,7 +20,9 @@ port = 22
 ssh_key = "~/.ssh/identities/custom_key"
 ```
 
-?> When the derived path doesn't exist, commands fail and point at `auberge ssh keygen`. The only interactive picker lives in `auberge ssh add-key`, which scans `~/.ssh/`, `~/.ssh/identities/`, and `~/.ssh/identities/<host>/` to choose its connection and authorize keys; the selection is never saved to `hosts.toml`.
+:::tip
+When the derived path doesn't exist, commands fail and point at `auberge ssh keygen`. The only interactive picker lives in `auberge ssh add-key`, which scans `~/.ssh/`, `~/.ssh/identities/`, and `~/.ssh/identities/<host>/` to choose its connection and authorize keys; the selection is never saved to `hosts.toml`.
+:::
 
 ## SSH Include
 

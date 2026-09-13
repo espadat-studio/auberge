@@ -1,4 +1,6 @@
-# CI/CD Automation
+---
+title: "CI/CD Automation"
+---
 
 Auberge supports non-interactive deployments via `--force`, which skips confirmation prompts but always prints warnings.
 
@@ -67,7 +69,9 @@ jobs:
             --skip-tags bootstrap
 ```
 
-?> Verify config is applied with `auberge config list` if a step silently misbehaves.
+:::tip
+Verify config is applied with `auberge config list` if a step silently misbehaves.
+:::
 
 ## Version drift monitoring
 
@@ -99,4 +103,4 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 ```
 
-See [`auberge versions`](cli-reference/versions.md) for full command reference.
+See [`auberge versions`](/cli-reference/versions/) for full command reference.

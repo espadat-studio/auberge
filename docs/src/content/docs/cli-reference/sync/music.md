@@ -1,4 +1,6 @@
-# auberge sync music
+---
+title: "auberge sync music"
+---
 
 Synchronize a local music directory to `/srv/music` on a remote host. Alias: `auberge sy m`.
 

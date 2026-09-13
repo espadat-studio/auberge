@@ -1,4 +1,6 @@
-# OPML Export/Import (FreshRSS)
+---
+title: "OPML Export/Import (FreshRSS)"
+---
 
 Export and import RSS feed subscriptions independently of full backups.
 

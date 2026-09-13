@@ -1,4 +1,6 @@
-# auberge headscale tag-node
+---
+title: "auberge headscale tag-node"
+---
 
 Replace an enrolled node's ACL tags. Alias: `auberge hs tn`.
 

@@ -1,4 +1,6 @@
-# auberge config
+---
+title: "auberge config"
+---
 
 Manage user configuration
 

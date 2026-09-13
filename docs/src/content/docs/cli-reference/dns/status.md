@@ -1,4 +1,6 @@
-# auberge dns status
+---
+title: "auberge dns status"
+---
 
 Show which configured subdomains have active Cloudflare A records and which are missing. Alias: `auberge d st`.
 
