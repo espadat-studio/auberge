@@ -47,7 +47,7 @@ Default credentials: `admin` / `admin@bichon`. Change after first login.
    sudo systemctl start bichon-archive.service
    ```
 
-**Backup**: `auberge backup create --apps bichon` rsyncs `/var/lib/bichon-archive` and `/opt/bichon/data`. The timer must have run at least once before the first backup. `bichon-archive.timer` is stopped for the duration of the window and started again after, so an hourly tick cannot restart bichon over a live copy of its store ([ADR-0032](https://github.com/sripwoud/auberge/blob/master/meta/adr/0032-a-recipe-quiesces-triggers-not-just-servers.md)). A restored store brings accounts, the API-token registry, tags, and search back with it; the archive replay below remains the path for purge recovery. See [ADR-0006](https://github.com/sripwoud/auberge/blob/master/meta/adr/0006-bichon-archive-feeds-backup-recipe.md) and [ADR-0031](https://github.com/sripwoud/auberge/blob/master/meta/adr/0031-bichon-internal-store-joins-the-backup-recipe.md).
+**Backup**: `auberge backup create --apps bichon` rsyncs `/var/lib/bichon-archive` and `/opt/bichon/data`. The timer must have run at least once before the first backup. `bichon-archive.timer` is stopped for the duration of the window and started again after, so an hourly tick cannot restart bichon over a live copy of its store ([ADR-0032](https://github.com/espadat-studio/auberge/blob/master/meta/adr/0032-a-recipe-quiesces-triggers-not-just-servers.md)). A restored store brings accounts, the API-token registry, tags, and search back with it; the archive replay below remains the path for purge recovery. See [ADR-0006](https://github.com/espadat-studio/auberge/blob/master/meta/adr/0006-bichon-archive-feeds-backup-recipe.md) and [ADR-0031](https://github.com/espadat-studio/auberge/blob/master/meta/adr/0031-bichon-internal-store-joins-the-backup-recipe.md).
 
 The archive holds one `.eml` per message (byte-exact), a `.meta.json` sidecar recording its folder and its `message_id`, and one `tags.json` per account mapping RFC 5322 `Message-ID` to tags. `tags.json` is rewritten in full on every archive run — tags are mutable, so they are snapshotted rather than captured once.
 
@@ -59,7 +59,7 @@ ssh <hostname> "sudo find /var/lib/bichon-archive -name '*.meta.json' \
   -exec jq -r .message_id {} + | sort -u | wc -l"
 ```
 
-The run skips a message it already holds on that identity too, not on the filename. `<envelope-id>.eml` exists answers only for ids Bichon has not re-minted since; after the v2 upgrade regenerated every one as a UUID it reported all 9,394 archived bodies as absent, and a single tick wrote 825 duplicates ([ADR-0019](https://github.com/sripwoud/auberge/blob/master/meta/adr/0019-archive-download-skip-is-a-message-id-membership-test.md)). Filenames are consequently mixed for good — old numeric ids beside new UUIDs — which costs nothing, because nothing reads a filename as identity. Each account logs the two decisions separately:
+The run skips a message it already holds on that identity too, not on the filename. `<envelope-id>.eml` exists answers only for ids Bichon has not re-minted since; after the v2 upgrade regenerated every one as a UUID it reported all 9,394 archived bodies as absent, and a single tick wrote 825 duplicates ([ADR-0019](https://github.com/espadat-studio/auberge/blob/master/meta/adr/0019-archive-download-skip-is-a-message-id-membership-test.md)). Filenames are consequently mixed for good — old numeric ids beside new UUIDs — which costs nothing, because nothing reads a filename as identity. Each account logs the two decisions separately:
 
 ```bash
 ssh <hostname> "journalctl -u bichon-archive.service -n 40 | grep processed="
@@ -68,9 +68,9 @@ ssh <hostname> "journalctl -u bichon-archive.service -n 40 | grep processed="
 
 `skipped` is a filename match and `deduped` an identity match, so a sustained non-zero `deduped` means Bichon's envelope ids moved and the archive is re-recognising bodies it already holds. That costs one download per re-listed message and clears within one overlap window (24h) as the cursor advances past them.
 
-Sidecars written before [ADR-0013](https://github.com/sripwoud/auberge/blob/master/meta/adr/0013-archive-message-identity-is-the-message-id.md) carry no `message_id`. The next `bichon-archive.service` run repairs every one of them and drops the inert `tags` field [ADR-0012](https://github.com/sripwoud/auberge/blob/master/meta/adr/0012-archive-splits-immutable-bodies-from-mutable-metadata.md) left behind; until it has, gate 3 of `bichon-expunge.sh` refuses to run.
+Sidecars written before [ADR-0013](https://github.com/espadat-studio/auberge/blob/master/meta/adr/0013-archive-message-identity-is-the-message-id.md) carry no `message_id`. The next `bichon-archive.service` run repairs every one of them and drops the inert `tags` field [ADR-0012](https://github.com/espadat-studio/auberge/blob/master/meta/adr/0012-archive-splits-immutable-bodies-from-mutable-metadata.md) left behind; until it has, gate 3 of `bichon-expunge.sh` refuses to run.
 
-A payload that is not a message is refused rather than archived — Bichon answers `200` with zero bytes when an envelope's blob store entry is empty, which `curl --fail` reads as success. One already in the archive is refetched by the envelope id in its filename on the next run ([ADR-0015](https://github.com/sripwoud/auberge/blob/master/meta/adr/0015-archive-publishes-a-body-only-if-it-is-a-message.md)). A body Bichon can no longer serve fails the unit on every run and is named in the journal; clearing it means deleting **both** the body and its sidecar, since a sidecar with no body fails the run too.
+A payload that is not a message is refused rather than archived — Bichon answers `200` with zero bytes when an envelope's blob store entry is empty, which `curl --fail` reads as success. One already in the archive is refetched by the envelope id in its filename on the next run ([ADR-0015](https://github.com/espadat-studio/auberge/blob/master/meta/adr/0015-archive-publishes-a-body-only-if-it-is-a-message.md)). A body Bichon can no longer serve fails the unit on every run and is named in the journal; clearing it means deleting **both** the body and its sidecar, since a sidecar with no body fails the run too.
 
 ```bash
 # bodies the archive should have refused (expect no output)
@@ -107,14 +107,14 @@ sudo systemctl start bichon-uidvalidity-watch.service   # exits 0, clears the fa
 Acknowledge only after restoring. Nothing else records that a purge happened, so deleting the latch without restoring discards the only notice you get. The first run after deploy reports rebuilds already in the retained journal — that is deliberate, not a false alarm.
 :::
 
-See [ADR-0014](https://github.com/sripwoud/auberge/blob/master/meta/adr/0014-uidvalidity-rebuild-alert-is-a-latched-failing-unit.md). The alert is passive by design: it carries no push channel, so it reaches you when you look at the Host or Cockpit.
+See [ADR-0014](https://github.com/espadat-studio/auberge/blob/master/meta/adr/0014-uidvalidity-rebuild-alert-is-a-latched-failing-unit.md). The alert is passive by design: it carries no push channel, so it reaches you when you look at the Host or Cockpit.
 
 **Restore ordering** (do not skip steps):
 
 1. `auberge deploy bichon`, then add the account via **Accounts → Add account** — restore does not create accounts.
 2. Let folders sync, then reconcile: `auberge bichon reconcile-folders --host <hostname> --apply`. Bichon only imports into folders it already knows.
 3. Restore `/var/lib/bichon-archive` from restic if it is not still on the Host.
-4. Run [`examples/bichon-restore.sh`](https://github.com/sripwoud/auberge/blob/master/examples/bichon-restore.sh):
+4. Run [`examples/bichon-restore.sh`](https://github.com/espadat-studio/auberge/blob/master/examples/bichon-restore.sh):
    ```bash
    BICHON_API_TOKEN=… bash examples/bichon-restore.sh \
      --host http://127.0.0.1:15630 --account you@example.com
@@ -141,7 +141,7 @@ Re-running a completed restore duplicates messages — Bichon's import mints a n
 Check journal for errors before expunging — do not rely on archive mtime or message count alone. Unticked folders are not archived. Do not automate expunge on a cron.
 :::
 
-**Reference script**: [`examples/bichon-expunge.sh`](https://github.com/sripwoud/auberge/blob/master/examples/bichon-expunge.sh) turns the ordering above into five gates and, once they all pass, executes the expunge.
+**Reference script**: [`examples/bichon-expunge.sh`](https://github.com/espadat-studio/auberge/blob/master/examples/bichon-expunge.sh) turns the ordering above into five gates and, once they all pass, executes the expunge.
 
 ```bash
 bash examples/bichon-expunge.sh --host <hostname> --account you@example.com
@@ -168,7 +168,7 @@ The ssh user must be in the `bichon` group. The archive is `0750 bichon:bichon` 
 Deletion is `himalaya flag add … deleted` followed by `himalaya folder expunge` — messages are removed in place, not moved to Trash, so mailbox quota is actually reclaimed.
 
 :::caution
-The expunge needs an interactive TTY. There is no `--yes`/`--force`; `--no-input` and non-TTY stdin run every gate and then refuse to expunge. Per [ADR-0007](https://github.com/sripwoud/auberge/blob/master/meta/adr/0007-auberge-folder-reconcile-scope.md) no unattended expunge path exists, and the script is not shipped in the `auberge` binary.
+The expunge needs an interactive TTY. There is no `--yes`/`--force`; `--no-input` and non-TTY stdin run every gate and then refuse to expunge. Per [ADR-0007](https://github.com/espadat-studio/auberge/blob/master/meta/adr/0007-auberge-folder-reconcile-scope.md) no unattended expunge path exists, and the script is not shipped in the `auberge` binary.
 :::
 
 **Expunge Sweep**: `--sweep` walks every eligible (account, Synced Folder) pair on the Host with one window, instead of one operator-chosen pair (ADR-0007, amendment 2026-08-03). Excludes `--folder`.

@@ -94,7 +94,7 @@ Renovate reads both locations via regex custom managers (`renovate.json`) and op
 
 CI tests assert every app playbook declares an App Version and every remaining `_version:` in role defaults carries a renovate annotation.
 
-See [ADR-0017](https://github.com/sripwoud/auberge/blob/master/meta/adr/0017-app-versions-declared-in-playbook-meta.md) for the rationale.
+See [ADR-0017](https://github.com/espadat-studio/auberge/blob/master/meta/adr/0017-app-versions-declared-in-playbook-meta.md) for the rationale.
 
 ## Best Practices
 

@@ -2,7 +2,7 @@
 title: "auberge versions"
 ---
 
-Report every version pin the repo declares, per [ADR-0017](https://github.com/sripwoud/auberge/blob/master/meta/adr/0017-app-versions-declared-in-playbook-meta.md): the App Version from each app's Playbook Meta (`ansible/playbooks/<app>.meta.yml`), and the Tool Versions from `# renovate:` annotations in role defaults (`ansible/roles/<role>/defaults/main.yml`) — `lego`, `uv`, Caddy's plugins. Alias: `auberge v`.
+Report every version pin the repo declares, per [ADR-0017](https://github.com/espadat-studio/auberge/blob/master/meta/adr/0017-app-versions-declared-in-playbook-meta.md): the App Version from each app's Playbook Meta (`ansible/playbooks/<app>.meta.yml`), and the Tool Versions from `# renovate:` annotations in role defaults (`ansible/roles/<role>/defaults/main.yml`) — `lego`, `uv`, Caddy's plugins. Alias: `auberge v`.
 
 ```bash
 auberge versions [OPTIONS]

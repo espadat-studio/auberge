@@ -23,7 +23,7 @@ auberge ansible run --tags headscale
 
 ## Enrollment keys
 
-A pre-auth key is one-shot and expires. The CLI mints one **per run** rather than storing it ([ADR-0063](https://github.com/sripwoud/auberge/blob/master/meta/adr/0063-a-pre-auth-key-is-minted-per-run-not-stored.md)): a run entering the `tailscale` role asks the target `tailscale status --json` — the role's own check — and if its `tailscaled` needs a login, mints a 1-hour key stamped with the target's [`tailnet_tag`](/configuration/hosts/) and injects it as `tailscale_authkey`. An already-enrolled target costs one probe and nothing else.
+A pre-auth key is one-shot and expires. The CLI mints one **per run** rather than storing it ([ADR-0063](https://github.com/espadat-studio/auberge/blob/master/meta/adr/0063-a-pre-auth-key-is-minted-per-run-not-stored.md)): a run entering the `tailscale` role asks the target `tailscale status --json` — the role's own check — and if its `tailscaled` needs a login, mints a 1-hour key stamped with the target's [`tailnet_tag`](/configuration/hosts/) and injects it as `tailscale_authkey`. An already-enrolled target costs one probe and nothing else.
 
 `tailscale_authkey` is therefore **not** required config. It stays a settable key for one case: bootstrapping the host that will _serve_ headscale, which has no coordinator to mint against. Set it there, or leave it unset everywhere else.
 
@@ -84,12 +84,12 @@ tailscale dns status        # Resolver should be the host's tailnet IP
 `headscale_split_dns_target_ip` stays available for pointing one domain at a different resolver — set it in inventory or via extra-vars; it is not a `config.toml` key. It is not how filtering reaches a client.
 
 :::tip
-Blocky is load-bearing for **all** tailnet DNS under this design, not only internal apps — see [ADR-0052](https://github.com/sripwoud/auberge/blob/master/meta/adr/0052-the-tailnets-global-resolver-is-the-hosts-blocky.md).
+Blocky is load-bearing for **all** tailnet DNS under this design, not only internal apps — see [ADR-0052](https://github.com/espadat-studio/auberge/blob/master/meta/adr/0052-the-tailnets-global-resolver-is-the-hosts-blocky.md).
 :::
 
 ## Tailnet ACL policy
 
-The tailnet runs a tag-based, default-deny policy ([ADR-0055](https://github.com/sripwoud/auberge/blob/master/meta/adr/0055-the-tailnet-runs-a-tag-based-acl-policy.md)). The role deploys `policy.hujson` beside `config.yaml` and points headscale at it with `policy.mode: file` — repo-owned, not a `headscale policy set` into the DB. Its presence flips the tailnet from allow-all to deny-by-default.
+The tailnet runs a tag-based, default-deny policy ([ADR-0055](https://github.com/espadat-studio/auberge/blob/master/meta/adr/0055-the-tailnet-runs-a-tag-based-acl-policy.md)). The role deploys `policy.hujson` beside `config.yaml` and points headscale at it with `policy.mode: file` — repo-owned, not a `headscale policy set` into the DB. Its presence flips the tailnet from allow-all to deny-by-default.
 
 Trust is a tag; which node carries which is set by `auberge headscale add-key -t tag:...` at enrollment or by [`auberge headscale tag-node`](/cli-reference/headscale/tag-node/) afterwards, so the policy names tiers, never nodes.
 
@@ -106,7 +106,7 @@ Every tag reaches the host's [Blocky](/applications/networking/blocky/) global r
 
 ### Rolling out a first policy
 
-A tailnet's first policy is deployed **twice** ([ADR-0061](https://github.com/sripwoud/auberge/blob/master/meta/adr/0061-a-first-acl-policy-is-rolled-out-in-two-stages.md)). Neither obvious order works: `tag-node` cannot run before a policy is loaded (see the warning above), and deploying the real policy onto an untagged tailnet matches nobody — including the DNS carve-out, whose `dst` is `tag:data:53` — so it partitions rather than confines.
+A tailnet's first policy is deployed **twice** ([ADR-0061](https://github.com/espadat-studio/auberge/blob/master/meta/adr/0061-a-first-acl-policy-is-rolled-out-in-two-stages.md)). Neither obvious order works: `tag-node` cannot run before a policy is loaded (see the warning above), and deploying the real policy onto an untagged tailnet matches nobody — including the DNS carve-out, whose `dst` is `tag:data:53` — so it partitions rather than confines.
 
 1. Deploy a **bridge**: the full `tagOwners` set with the ACL left at `{"src": ["*"], "dst": ["*:*"]}`. Reachability is unchanged; `tag-node` starts working.
 2. Tag every enrolled node into its tier.

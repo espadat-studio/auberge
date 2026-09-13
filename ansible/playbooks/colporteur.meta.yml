@@ -5,6 +5,6 @@ subdomain: colporteur
 version:
   value: "0.6.2"
   datasource: github-releases
-  depName: "sripwoud/colporteur"
+  depName: "espadat-studio/colporteur"
   extractVersion: "^v(?<version>.+)$"
 units: [colporteur, colporteur.timer]

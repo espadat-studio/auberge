@@ -2,7 +2,7 @@
 title: "Fleet GitHub Identity"
 ---
 
-The AI agent fleet ([ruche](https://github.com/sripwoud/auberge/issues/747)) commits and opens PRs as a **GitHub machine user**, never the personal account ([ADR-0054](https://github.com/sripwoud/auberge/blob/master/meta/adr/0054-agent-workloads-run-on-a-dedicated-disposable-host.md), [ADR-0056](https://github.com/sripwoud/auberge/blob/master/meta/adr/0056-github-machine-user-access-is-cli-provisioned.md)):
+The AI agent fleet ([ruche](https://github.com/espadat-studio/auberge/issues/747)) commits and opens PRs as a **GitHub machine user**, never the personal account ([ADR-0054](https://github.com/espadat-studio/auberge/blob/master/meta/adr/0054-agent-workloads-run-on-a-dedicated-disposable-host.md), [ADR-0056](https://github.com/espadat-studio/auberge/blob/master/meta/adr/0056-github-machine-user-access-is-cli-provisioned.md)):
 
 - **Blast-radius containment** — a credential leaked off a compromisable box acts only as the bot, never the owner, and touches no org membership.
 - **Honest review boundary** — the bot cannot approve its own PRs as the owner.
@@ -12,19 +12,19 @@ GitHub ToS permits one machine account alongside a personal one.
 
 ## PR flow
 
-| Repo class           | Mechanism                                                                                        | Provisioning                 |
-| -------------------- | ------------------------------------------------------------------------------------------------ | ---------------------------- |
-| Owned (`sripwoud/*`) | `push` collaborator → branches in origin, PR in-repo; `master` protected so the bot cannot merge | `auberge github invite`      |
-| External             | bot forks → pushes to its fork → cross-repo PR                                                   | none (public forks are free) |
+| Repo class                               | Mechanism                                                                                        | Provisioning                 |
+| ---------------------------------------- | ------------------------------------------------------------------------------------------------ | ---------------------------- |
+| Owned (`espadat-studio/*`, `sripwoud/*`) | `push` collaborator → branches in origin, PR in-repo; `master` protected so the bot cannot merge | `auberge github invite`      |
+| External                                 | bot forks → pushes to its fork → cross-repo PR                                                   | none (public forks are free) |
 
 ## Config keys
 
-| Key                | Secret | Holds                                                                      |
-| ------------------ | ------ | -------------------------------------------------------------------------- |
-| `github_bot_login` | no     | the machine account handle                                                 |
-| `github_bot_email` | no     | git author address, `<ID>+<login>@users.noreply.github.com`                |
-| `github_bot_repos` | no     | space-separated owned allowlist, e.g. `sripwoud/auberge sripwoud/dotfiles` |
-| `github_bot_token` | yes    | fine-grained PAT, e.g. `!pa show fleet/github-pat`                         |
+| Key                | Secret | Holds                                                                            |
+| ------------------ | ------ | -------------------------------------------------------------------------------- |
+| `github_bot_login` | no     | the machine account handle                                                       |
+| `github_bot_email` | no     | git author address, `<ID>+<login>@users.noreply.github.com`                      |
+| `github_bot_repos` | no     | space-separated owned allowlist, e.g. `espadat-studio/auberge sripwoud/dotfiles` |
+| `github_bot_token` | yes    | fine-grained PAT, e.g. `!pa show fleet/github-pat`                               |
 
 `github_bot_email` decides what a commit's author line says, and the noreply form is what links it to the bot's profile — the plain `<login>@users.noreply.github.com` form links to nothing on an account created after mid-2017. The address with the numeric ID is on the bot's [email settings](https://github.com/settings/emails) page, under _Keep my email addresses private_.
 
@@ -38,7 +38,7 @@ Account signup and token minting sit behind a login only a human holds — those
 
    ```bash
    auberge config set github_bot_login <handle>
-   auberge config set github_bot_repos "sripwoud/auberge sripwoud/dotfiles"
+   auberge config set github_bot_repos "espadat-studio/auberge sripwoud/dotfiles"
    auberge github invite
    ```
 
@@ -67,7 +67,7 @@ Account signup and token minting sit behind a login only a human holds — those
    auberge deploy ruche -H ruche
    ```
 
-   The token lands only in gh's own `~/.config/gh/hosts.yml` (`0600`) — never in `/etc/environment`, never on a command line ([ADR-0065](https://github.com/sripwoud/auberge/blob/master/meta/adr/0065-the-agent-permission-baseline-is-a-guard-rail-not-a-boundary.md)).
+   The token lands only in gh's own `~/.config/gh/hosts.yml` (`0600`) — never in `/etc/environment`, never on a command line ([ADR-0065](https://github.com/espadat-studio/auberge/blob/master/meta/adr/0065-the-agent-permission-baseline-is-a-guard-rail-not-a-boundary.md)).
 
 ## Rotation
 

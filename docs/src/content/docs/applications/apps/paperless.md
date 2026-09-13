@@ -30,7 +30,7 @@ Bare-metal (no Docker). Requires Tailscale deployed first.
 ## Notes
 
 :::caution
-`auberge backup create --apps paperless` backs up data and media directories only. The PostgreSQL database is **not** included — see [#105](https://github.com/sripwoud/auberge/issues/105).
+`auberge backup create --apps paperless` backs up data and media directories only. The PostgreSQL database is **not** included — see [#105](https://github.com/espadat-studio/auberge/issues/105).
 :::
 
 :::tip

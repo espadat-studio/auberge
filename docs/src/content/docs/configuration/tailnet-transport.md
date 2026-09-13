@@ -73,4 +73,4 @@ Enabling `prefer_tailnet` moves connections only. These keep reading the declare
 | `auberge deploy` public DNS check | Expected A record | Same record, verified                                                  |
 | fail2ban `ignoreip`               | Peer allowlist    | Both addresses are listed, so `--via public` recovery cannot be banned |
 
-See [ADR-0074](https://github.com/sripwoud/auberge/blob/master/meta/adr/0074-a-host-declares-which-of-its-two-addresses-the-cli-uses.md).
+See [ADR-0074](https://github.com/espadat-studio/auberge/blob/master/meta/adr/0074-a-host-declares-which-of-its-two-addresses-the-cli-uses.md).

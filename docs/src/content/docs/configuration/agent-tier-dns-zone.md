@@ -2,7 +2,7 @@
 title: "Agent Tier DNS Zone"
 ---
 
-The AI agent fleet ([ruche](https://github.com/sripwoud/auberge/issues/747)) answers ACME's DNS-01 challenge with a Cloudflare API token scoped to its own domain, never the token that guards the parent domain ([ADR-0054](https://github.com/sripwoud/auberge/blob/master/meta/adr/0054-agent-workloads-run-on-a-dedicated-disposable-host.md), [ADR-0068](https://github.com/sripwoud/auberge/blob/master/meta/adr/0068-the-agent-tier-holds-its-own-dns-zone.md)):
+The AI agent fleet ([ruche](https://github.com/espadat-studio/auberge/issues/747)) answers ACME's DNS-01 challenge with a Cloudflare API token scoped to its own domain, never the token that guards the parent domain ([ADR-0054](https://github.com/espadat-studio/auberge/blob/master/meta/adr/0054-agent-workloads-run-on-a-dedicated-disposable-host.md), [ADR-0068](https://github.com/espadat-studio/auberge/blob/master/meta/adr/0068-the-agent-tier-holds-its-own-dns-zone.md)):
 
 - **Blast-radius containment** — a Cloudflare token is zone-scoped, not record-scoped. A token able to complete DNS-01 for the parent domain can rewrite MX and every other record in that zone; a token scoped to a separate domain can only touch the agent tier.
 - **`ruche` is assumed compromisable** (ADR-0054) — the token it holds must cost only the agent tier if it leaks.
@@ -62,7 +62,7 @@ Getting a domain onto Cloudflare and minting a scoped token both sit behind an i
    aoe_subdomain = "essaim"
    ```
 
-   `infrastructure.yml` reads that gate and resolves Caddy's `caddy_dns_api_token` to `agents_cloudflare_dns_api_token` on that Host alone; every other Host keeps `cloudflare_dns_api_token` ([ADR-0072](https://github.com/sripwoud/auberge/blob/master/meta/adr/0072-the-agent-tiers-caddy-answers-for-its-own-zone.md)). `tests/caddy_acme_token.rs` asserts both directions.
+   `infrastructure.yml` reads that gate and resolves Caddy's `caddy_dns_api_token` to `agents_cloudflare_dns_api_token` on that Host alone; every other Host keeps `cloudflare_dns_api_token` ([ADR-0072](https://github.com/espadat-studio/auberge/blob/master/meta/adr/0072-the-agent-tiers-caddy-answers-for-its-own-zone.md)). `tests/caddy_acme_token.rs` asserts both directions.
 
 ## Rotation
 

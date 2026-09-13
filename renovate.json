@@ -55,7 +55,7 @@
     },
     {
       "description": "grimmory is auberge's own build output (build-grimmory.yml), not a dependency",
-      "matchDepNames": ["sripwoud/auberge"],
+      "matchDepNames": ["espadat-studio/auberge"],
       "enabled": false
     },
     {

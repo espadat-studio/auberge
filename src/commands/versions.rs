@@ -722,7 +722,7 @@ mod tests {
     async fn github_latest_extracts_versions_from_release_tags() -> Result<()> {
         let server = MockServer::start().await;
         Mock::given(method("GET"))
-            .and(path("/repos/sripwoud/auberge/releases"))
+            .and(path("/repos/espadat-studio/auberge/releases"))
             .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!([
                 { "tag_name": "v0.14.12" },
                 { "tag_name": "grimmory/v2.4.0" },
@@ -735,7 +735,7 @@ mod tests {
         let latest = client
             .latest(&pin(
                 "github-releases",
-                "sripwoud/auberge",
+                "espadat-studio/auberge",
                 Some("^grimmory/v(?<version>.+)$"),
             ))
             .await?;

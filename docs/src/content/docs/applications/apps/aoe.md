@@ -2,9 +2,9 @@
 title: "Agent of Empires"
 ---
 
-The phone control plane for [ruche](https://github.com/sripwoud/auberge/issues/747), the disposable agent Host: tmux sessions that know whether an agent is idle, working, blocked or done, plus a web dashboard that installs as a PWA and pushes a notification when a session blocks or finishes ([ADR-0054](https://github.com/sripwoud/auberge/blob/master/meta/adr/0054-agent-workloads-run-on-a-dedicated-disposable-host.md)). Upstream: [agent-of-empires/agent-of-empires](https://github.com/agent-of-empires/agent-of-empires)
+The phone control plane for [ruche](https://github.com/espadat-studio/auberge/issues/747), the disposable agent Host: tmux sessions that know whether an agent is idle, working, blocked or done, plus a web dashboard that installs as a PWA and pushes a notification when a session blocks or finishes ([ADR-0054](https://github.com/espadat-studio/auberge/blob/master/meta/adr/0054-agent-workloads-run-on-a-dedicated-disposable-host.md)). Upstream: [agent-of-empires/agent-of-empires](https://github.com/agent-of-empires/agent-of-empires)
 
-- **URL**: `https://essaim.{agents_domain}` — tailnet only, on the agent tier's own DNS zone ([ADR-0068](https://github.com/sripwoud/auberge/blob/master/meta/adr/0068-the-agent-tier-holds-its-own-dns-zone.md))
+- **URL**: `https://essaim.{agents_domain}` — tailnet only, on the agent tier's own DNS zone ([ADR-0068](https://github.com/espadat-studio/auberge/blob/master/meta/adr/0068-the-agent-tier-holds-its-own-dns-zone.md))
 - **Data**: nothing backed up. Sessions, worktrees and the push keypair are all rebuildable or disposable, which is the whole point of the Host
 
 ## Deploy
@@ -30,7 +30,7 @@ auberge deploy ruche -H ruche    # the whole agent tier
 | `aoe_passphrase`                  | the login passphrase, minimum 8 characters                             |
 | `admin_user_name`                 | the user the dashboard runs as, in that user's own systemd manager     |
 
-`aoe_tailscale_ip` is **fleet-wide, never host-scoped**: the Blocky that publishes the name runs on another Host and cannot read a value scoped to this one ([ADR-0059](https://github.com/sripwoud/auberge/blob/master/meta/adr/0059-a-tailnet-only-apps-address-is-per-app.md)). `aoe_subdomain` is the opposite — host-scope it, because it also decides which Host's Caddy holds the agent tier's ACME token ([ADR-0072](https://github.com/sripwoud/auberge/blob/master/meta/adr/0072-the-agent-tiers-caddy-answers-for-its-own-zone.md)).
+`aoe_tailscale_ip` is **fleet-wide, never host-scoped**: the Blocky that publishes the name runs on another Host and cannot read a value scoped to this one ([ADR-0059](https://github.com/espadat-studio/auberge/blob/master/meta/adr/0059-a-tailnet-only-apps-address-is-per-app.md)). `aoe_subdomain` is the opposite — host-scope it, because it also decides which Host's Caddy holds the agent tier's ACME token ([ADR-0072](https://github.com/espadat-studio/auberge/blob/master/meta/adr/0072-the-agent-tiers-caddy-answers-for-its-own-zone.md)).
 
 ```toml
 aoe_tailscale_ip = "100.64.0.9"

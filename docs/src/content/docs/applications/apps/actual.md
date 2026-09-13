@@ -30,5 +30,5 @@ Backed up by default (unit stopped, `/var/lib/actual` rsynced). Losing the serve
 :::
 
 :::tip
-With end-to-end encryption enabled (Settings → Encryption, client-side key), budget blobs and sync messages are ciphertext on disk and in restic snapshots. Enable Banking credentials in `account.sqlite` stay server-readable by design — the server performs the bank pulls. See [ADR-0016](https://github.com/sripwoud/auberge/blob/master/meta/adr/0016-actual-bare-metal-npm-enable-banking.md).
+With end-to-end encryption enabled (Settings → Encryption, client-side key), budget blobs and sync messages are ciphertext on disk and in restic snapshots. Enable Banking credentials in `account.sqlite` stay server-readable by design — the server performs the bank pulls. See [ADR-0016](https://github.com/espadat-studio/auberge/blob/master/meta/adr/0016-actual-bare-metal-npm-enable-banking.md).
 :::

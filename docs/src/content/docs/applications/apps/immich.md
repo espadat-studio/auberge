@@ -6,7 +6,7 @@ Self-hosted photo and video management. The repo's one containerized App: upstre
 
 - **URL**: `https://{subdomain}.{domain}`
 - **Data**: originals under `/var/lib/immich/upload`, postgres cluster under `/var/lib/immich/postgres`
-- **Ownership**: both are bind-mounted into containers that own their interior, so ansible creates them once and never re-asserts ownership or mode ([ADR-0036](https://github.com/sripwoud/auberge/blob/master/meta/adr/0036-container-owned-directories-are-created-not-maintained.md)). Postgres runs as its image's uid 999 and re-establishes that on every container start, so a directory left at `root:root 0700` by an older deploy is repaired by `systemctl restart immich` — or by `chown 999:999 /var/lib/immich/postgres` to avoid the bounce. The role will not repair it: a create-only task is a no-op on a directory that exists. A redeploy that reset the postgres directory to `root:root 0700` 500'd the web UI for 13h ([#630](https://github.com/sripwoud/auberge/issues/630)).
+- **Ownership**: both are bind-mounted into containers that own their interior, so ansible creates them once and never re-asserts ownership or mode ([ADR-0036](https://github.com/espadat-studio/auberge/blob/master/meta/adr/0036-container-owned-directories-are-created-not-maintained.md)). Postgres runs as its image's uid 999 and re-establishes that on every container start, so a directory left at `root:root 0700` by an older deploy is repaired by `systemctl restart immich` — or by `chown 999:999 /var/lib/immich/postgres` to avoid the bounce. The role will not repair it: a create-only task is a no-op on a directory that exists. A redeploy that reset the postgres directory to `root:root 0700` 500'd the web UI for 13h ([#630](https://github.com/espadat-studio/auberge/issues/630)).
 
 ## Deploy
 
@@ -18,7 +18,7 @@ Requires `immich_db_password` (A-Za-z0-9 only — upstream constraint), `immich_
 
 ## Backup
 
-Nightly on-host offsite backup to a dedicated B2 bucket ([#558](https://github.com/sripwoud/auberge/issues/558)): `immich-backup.timer` (04:15, randomized ≤30min) dumps the containerized database live (`pg_dumpall` is MVCC-consistent, zero downtime) and pushes the dump plus `/var/lib/immich/upload` in one restic snapshot. A failed run is a failed unit — the Cockpit surface.
+Nightly on-host offsite backup to a dedicated B2 bucket ([#558](https://github.com/espadat-studio/auberge/issues/558)): `immich-backup.timer` (04:15, randomized ≤30min) dumps the containerized database live (`pg_dumpall` is MVCC-consistent, zero downtime) and pushes the dump plus `/var/lib/immich/upload` in one restic snapshot. A failed run is a failed unit — the Cockpit surface.
 
 The box key is a crippled B2 application key created without `deleteFiles`, so a compromised Host can add but never destroy:
 
@@ -26,7 +26,7 @@ The box key is a crippled B2 application key created without `deleteFiles`, so a
 b2 key create --bucket <bucket> immich-box listBuckets,listFiles,readFiles,writeFiles
 ```
 
-Retention and the staleness watchdog run weekly from the laptop with the full key: [`examples/immich-b2-prune.sh`](https://github.com/sripwoud/auberge/blob/master/examples/immich-b2-prune.sh) (install instructions in its header).
+Retention and the staleness watchdog run weekly from the laptop with the full key: [`examples/immich-b2-prune.sh`](https://github.com/espadat-studio/auberge/blob/master/examples/immich-b2-prune.sh) (install instructions in its header).
 
 ### First seed
 
