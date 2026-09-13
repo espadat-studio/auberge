@@ -16,7 +16,7 @@ grimmory_admin_name: "{{ grimmory_admin_user }}"
 grimmory_admin_email: "{{ grimmory_admin_user }}@{{ domain }}"
 
 grimmory_github_repo: grimmory-tools/grimmory
-grimmory_jar_url: "https://github.com/sripwoud/auberge/releases/download/grimmory/v{{ grimmory_version }}/grimmory-api.jar"
+grimmory_jar_url: "https://github.com/espadat-studio/auberge/releases/download/grimmory/v{{ grimmory_version }}/grimmory-api.jar"
 grimmory_jvm_opts: "-Xmx768m -XX:+UseShenandoahGC -XX:+ExitOnOutOfMemoryError"
 
 # renovate: datasource=github-releases depName=adoptium/temurin25-binaries extractVersion=^jdk-(?<version>[\d.+]+)$
