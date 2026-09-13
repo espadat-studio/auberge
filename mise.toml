@@ -78,7 +78,6 @@ shellcheck = "latest"
 shfmt = "latest"
 uv = "latest"
 "cargo:cargo-nextest" = "latest"
-"npm:docsify-cli" = "latest"
 
 [vars]
 auberge_cli = "cargo run --release"
