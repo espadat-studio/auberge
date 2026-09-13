@@ -2,7 +2,7 @@
 title: "Colporteur"
 ---
 
-Newsletter-to-feed converter: reads IMAP mailboxes, strips tracking pixels, and serves Atom XML feeds via HTTP basic auth. Repo: [github.com/sripwoud/colporteur](https://github.com/sripwoud/colporteur)
+Newsletter-to-feed converter: reads IMAP mailboxes, strips tracking pixels, and serves Atom XML feeds via HTTP basic auth. Repo: [github.com/espadat-studio/colporteur](https://github.com/espadat-studio/colporteur)
 
 - **URL**: `https://feeds.{domain}` (basic auth)
 - **Port**: internal (Caddy static file server)

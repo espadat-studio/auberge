@@ -56,10 +56,10 @@ Execution plan:
   → ruche
 ```
 
-`ruche` is the agent tier's composition — machine-user identity, the OpenCode runtime and the aoe dashboard. A composition run pulls `infrastructure.yml` in for the same reason an app does: the dashboard is unreachable until Caddy holds a certificate for its zone ([ADR-0075](https://github.com/sripwoud/auberge/blob/master/meta/adr/0075-the-agent-tier-deploys-as-one-guarded-composition.md)).
+`ruche` is the agent tier's composition — machine-user identity, the OpenCode runtime and the aoe dashboard. A composition run pulls `infrastructure.yml` in for the same reason an app does: the dashboard is unreachable until Caddy holds a certificate for its zone ([ADR-0075](https://github.com/espadat-studio/auberge/blob/master/meta/adr/0075-the-agent-tier-deploys-as-one-guarded-composition.md)).
 
 > [!IMPORTANT]
-> Every entry on `ruche.yml` — and on `aoe.yml` and `opencode.yml` — is guarded on `when: "'agent' in group_names"`, so the Host must carry `tags = ["agent"]` in `hosts.toml` or **the run is a green no-op that installs nothing**. Check it with `auberge host list`; the TAGS column must show `agent`. This is the `hosts.toml` `tags` field (an ansible group, deciding which roles run) — _not_ `tailnet_tag`, which happens to take the same word for the ACL tier and decides what the Host may reach on the tailnet. They are unrelated fields ([ADR-0062](https://github.com/sripwoud/auberge/blob/master/meta/adr/0062-a-hosts-trust-tier-is-a-typed-roster-field.md)).
+> Every entry on `ruche.yml` — and on `aoe.yml` and `opencode.yml` — is guarded on `when: "'agent' in group_names"`, so the Host must carry `tags = ["agent"]` in `hosts.toml` or **the run is a green no-op that installs nothing**. Check it with `auberge host list`; the TAGS column must show `agent`. This is the `hosts.toml` `tags` field (an ansible group, deciding which roles run) — _not_ `tailnet_tag`, which happens to take the same word for the ACL tier and decides what the Host may reach on the tailnet. They are unrelated fields ([ADR-0062](https://github.com/espadat-studio/auberge/blob/master/meta/adr/0062-a-hosts-trust-tier-is-a-typed-roster-field.md)).
 
 `bootstrap` is deliberately not a deploy target, because it is a lifecycle operation rather than a convergence:
 
@@ -87,7 +87,7 @@ Select app(s) or playbook(s) to deploy (space to toggle, enter to confirm)>
 
 The marker reads `(playbook)` and not `(composition)` because only `ruche` is a Composition — a Playbook whose roster is several Apps. `aoe`, `opencode` and `memsearch` are plain standalone Playbooks, and one word has to cover all four.
 
-`[all apps]` selects the roster and nothing else — the same set `--all` deploys. A playbook is opt-in by name, because a deploy builds its [Preflight](/cli-reference/config/overview/) for the whole plan before the first task runs: sweeping `ruche` into `[all apps]` would make every host in the fleet demand `aoe_passphrase`, `opencode_openrouter_api_key` and `agents_domain` ([ADR-0077](https://github.com/sripwoud/auberge/blob/master/meta/adr/0077-the-deploy-menu-offers-every-target-but-all-stays-the-roster.md)). Picking `[all apps]` alongside individual entries deploys the union.
+`[all apps]` selects the roster and nothing else — the same set `--all` deploys. A playbook is opt-in by name, because a deploy builds its [Preflight](/cli-reference/config/overview/) for the whole plan before the first task runs: sweeping `ruche` into `[all apps]` would make every host in the fleet demand `aoe_passphrase`, `opencode_openrouter_api_key` and `agents_domain` ([ADR-0077](https://github.com/espadat-studio/auberge/blob/master/meta/adr/0077-the-deploy-menu-offers-every-target-but-all-stays-the-roster.md)). Picking `[all apps]` alongside individual entries deploys the union.
 
 ## Substrate Apps
 

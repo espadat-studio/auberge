@@ -82,7 +82,7 @@ Synced 3 nudges from 4 opted-in contacts (2 overdue)
 The generated events are `TRANSP:TRANSPARENT`, which is what keeps them out of the [Busy Feed](#busy-feed) below — that script reads every calendar under your principal. Removing the line publishes an all-day busy block on every day you owe someone a message.
 :::
 
-The reasoning — why the cadence lives in `NOTE` rather than `CATEGORIES`, and why overdue events clamp — is in [ADR-0078](https://github.com/sripwoud/auberge/blob/master/meta/adr/0078-contact-cadence-lives-in-the-vcard-note.md).
+The reasoning — why the cadence lives in `NOTE` rather than `CATEGORIES`, and why overdue events clamp — is in [ADR-0078](https://github.com/espadat-studio/auberge/blob/master/meta/adr/0078-contact-cadence-lives-in-the-vcard-note.md).
 
 ## Busy Feed
 
@@ -155,4 +155,4 @@ iCloud app password:
 2. Update `baikal_busy_icloud_app_password` in `config.toml`.
 3. `auberge deploy baikal`.
 
-The design rationale — host-sanitized pull feed vs OAuth push vs `VFREEBUSY`, and the optional external CalDAV source — is recorded in [ADR-0010](https://github.com/sripwoud/auberge/blob/master/meta/adr/0010-baikal-busy-feed-host-sanitized-external-consumer.md).
+The design rationale — host-sanitized pull feed vs OAuth push vs `VFREEBUSY`, and the optional external CalDAV source — is recorded in [ADR-0010](https://github.com/espadat-studio/auberge/blob/master/meta/adr/0010-baikal-busy-feed-host-sanitized-external-consumer.md).

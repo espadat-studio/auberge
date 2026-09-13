@@ -2,7 +2,7 @@
 title: "auberge completions"
 ---
 
-Print a static shell completion script to stdout, per [ADR-0018](https://github.com/sripwoud/auberge/blob/master/meta/adr/0018-static-shell-completion-via-completions-subcommand.md). No alias.
+Print a static shell completion script to stdout, per [ADR-0018](https://github.com/espadat-studio/auberge/blob/master/meta/adr/0018-static-shell-completion-via-completions-subcommand.md). No alias.
 
 ```bash
 auberge completions <SHELL>

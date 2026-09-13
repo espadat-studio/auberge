@@ -37,7 +37,7 @@ auberge ansible run --host agent-box --playbook ansible/playbooks/infrastructure
 
 ## Step 4: Enroll in the tailnet
 
-Nothing to do by hand. The infrastructure run above already enrolled the host: it asked the target whether its `tailscaled` was authenticated, minted a 1-hour pre-auth key stamped with the host's `tailnet_tag`, and handed it to the `tailscale` role ([ADR-0063](https://github.com/sripwoud/auberge/blob/master/meta/adr/0063-a-pre-auth-key-is-minted-per-run-not-stored.md)). The ACL policy, not the target host, decides what the node may reach.
+Nothing to do by hand. The infrastructure run above already enrolled the host: it asked the target whether its `tailscaled` was authenticated, minted a 1-hour pre-auth key stamped with the host's `tailnet_tag`, and handed it to the `tailscale` role ([ADR-0063](https://github.com/espadat-studio/auberge/blob/master/meta/adr/0063-a-pre-auth-key-is-minted-per-run-not-stored.md)). The ACL policy, not the target host, decides what the node may reach.
 
 That works because the host declared its trust tier when you added it:
 

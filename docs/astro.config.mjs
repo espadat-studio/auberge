@@ -9,7 +9,7 @@ export default defineConfig({
     starlight({
       title: "auberge",
       description: "Ansible-powered VPS management without Docker bloat",
-      social: [{ icon: "github", label: "GitHub", href: "https://github.com/sripwoud/auberge" }],
+      social: [{ icon: "github", label: "GitHub", href: "https://github.com/espadat-studio/auberge" }],
       // Hand-translated from the docsify _sidebar.md, not autogenerate():
       // the groups deliberately span directories — Architecture lives under
       // core-concepts/ but belongs to Getting Started — and walking the tree

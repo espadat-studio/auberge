@@ -93,7 +93,7 @@ By contributing to Auberge, you agree:
 
 The complete AGPL-3.0 license is available:
 
-- In the repository: [LICENSE](https://github.com/sripwoud/auberge/blob/main/LICENSE)
+- In the repository: [LICENSE](https://github.com/espadat-studio/auberge/blob/master/LICENSE)
 - Online: [gnu.org/licenses/agpl-3.0.html](https://www.gnu.org/licenses/agpl-3.0.html)
 
 ## Questions?
@@ -102,7 +102,7 @@ The complete AGPL-3.0 license is available:
 
 - Read the [full license text](https://www.gnu.org/licenses/agpl-3.0.html)
 - Consult a lawyer (this is not legal advice)
-- Ask in [GitHub Discussions](https://github.com/sripwoud/auberge/discussions)
+- Ask in [GitHub Discussions](https://github.com/espadat-studio/auberge/discussions)
 
 ## Other Project Licenses
 

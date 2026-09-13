@@ -2,7 +2,7 @@
 title: "OpenCode"
 ---
 
-The agent runtime on [ruche](https://github.com/sripwoud/auberge/issues/747), the disposable agent Host. Model-agnostic, driven through OpenRouter. Docs: [opencode.ai/docs](https://opencode.ai/docs/)
+The agent runtime on [ruche](https://github.com/espadat-studio/auberge/issues/747), the disposable agent Host. Model-agnostic, driven through OpenRouter. Docs: [opencode.ai/docs](https://opencode.ai/docs/)
 
 - **URL**: no public URL — a CLI, started per session
 - **Data**: nothing durable. Config in `/etc/opencode/`, workspace in `~/workspace/`
@@ -28,7 +28,7 @@ Mint the key at [openrouter.ai/keys](https://openrouter.ai/keys) and store it th
 
 ## Permission baseline
 
-The role deploys `/etc/opencode/opencode.json`: allow-all per tool plus an explicit deny list, per [ADR-0065](https://github.com/sripwoud/auberge/blob/master/meta/adr/0065-the-agent-permission-baseline-is-a-guard-rail-not-a-boundary.md).
+The role deploys `/etc/opencode/opencode.json`: allow-all per tool plus an explicit deny list, per [ADR-0065](https://github.com/espadat-studio/auberge/blob/master/meta/adr/0065-the-agent-permission-baseline-is-a-guard-rail-not-a-boundary.md).
 
 | Denied                                            | Why                                              |
 | ------------------------------------------------- | ------------------------------------------------ |

@@ -45,7 +45,7 @@ auberge hs tn --tags tag:infra
 
 The resulting tag set, read off the mutation's own response — what the node ended up with, not what was asked for — plus a warning for each dropped tag and for a lost user owner.
 
-No `--output`: [ADR-0004](https://github.com/sripwoud/auberge/blob/master/meta/adr/0004-cli-structured-output.md) puts the flag only on a command whose JSON carries a field the caller could not have predicted, and nothing consumes this one's. `auberge headscale list-nodes --output json` reads back what the fleet carries.
+No `--output`: [ADR-0004](https://github.com/espadat-studio/auberge/blob/master/meta/adr/0004-cli-structured-output.md) puts the flag only on a command whose JSON carries a field the caller could not have predicted, and nothing consumes this one's. `auberge headscale list-nodes --output json` reads back what the fleet carries.
 
 ## Troubleshooting
 

@@ -2,11 +2,11 @@
 title: "Installation"
 ---
 
-| Platform                                       | Method                                                                                                     |
-| ---------------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
-| Linux (x86_64, aarch64), macOS (Apple Silicon) | Download from [latest release](https://github.com/sripwoud/auberge/releases/latest), extract onto `$PATH`. |
-| Any platform with [Rust](https://rustup.rs/)   | `cargo install auberge` (installs to `~/.cargo/bin/`).                                                     |
-| Windows                                        | Not supported — Ansible requires a Unix control node. Use WSL2.                                            |
+| Platform                                       | Method                                                                                                           |
+| ---------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| Linux (x86_64, aarch64), macOS (Apple Silicon) | Download from [latest release](https://github.com/espadat-studio/auberge/releases/latest), extract onto `$PATH`. |
+| Any platform with [Rust](https://rustup.rs/)   | `cargo install auberge` (installs to `~/.cargo/bin/`).                                                           |
+| Windows                                        | Not supported — Ansible requires a Unix control node. Use WSL2.                                                  |
 
 ```bash
 auberge --version            # verify

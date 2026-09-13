@@ -41,4 +41,4 @@ That's it. Auberge configures hardening, infrastructure, and applications.
 
 _Selfware_ — direct control, no abstraction layers, transparent operations.
 
-[GitHub](https://github.com/sripwoud/auberge) · [Issues](https://github.com/sripwoud/auberge/issues) · [Contributing](/development/contributing/)
+[GitHub](https://github.com/espadat-studio/auberge) · [Issues](https://github.com/espadat-studio/auberge/issues) · [Contributing](/development/contributing/)
