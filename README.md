@@ -57,11 +57,11 @@ After deployment, your VPS will be running:
 
 Full documentation available at [auberge.espadat.com](https://auberge.espadat.com):
 
-- [Installation](https://auberge.espadat.com/#/getting-started/installation) - Detailed setup guide
-- [First Deployment](https://auberge.espadat.com/#/getting-started/first-deployment) - Step-by-step walkthrough
-- [CLI Reference](https://auberge.espadat.com/#/cli-reference/auberge) - All commands documented
-- [Backup & Restore](https://auberge.espadat.com/#/backup-restore/overview) - Data protection and migration
-- [Alternatives Comparison](https://auberge.espadat.com/#/about/alternatives) - How Auberge compares to other platforms
+- [Installation](https://auberge.espadat.com/getting-started/installation/) - Detailed setup guide
+- [First Deployment](https://auberge.espadat.com/getting-started/first-deployment/) - Step-by-step walkthrough
+- [CLI Reference](https://auberge.espadat.com/cli-reference/auberge/) - All commands documented
+- [Backup & Restore](https://auberge.espadat.com/backup-restore/overview/) - Data protection and migration
+- [Alternatives Comparison](https://auberge.espadat.com/about/alternatives/) - How Auberge compares to other platforms
 
 ## Requirements
 
@@ -83,4 +83,4 @@ Auberge is selfware - software built to manage your self-hosted infrastructure:
 
 - [Documentation](https://auberge.espadat.com)
 - [Report Issues](https://github.com/sripwoud/auberge/issues)
-- [Contributing](https://auberge.espadat.com/#/development/contributing)
+- [Contributing](https://auberge.espadat.com/development/contributing/)

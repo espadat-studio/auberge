@@ -8,7 +8,7 @@ How the engineering skills should consume this repo's domain documentation when 
 - **`meta/adr.md`** — the curated overview of foundational architectural decisions (native systemd by default, Rust CLI, Ansible, etc.).
 - **`meta/adr/`** — granular per-decision ADR files added over time. Read the ones touching the area you're about to work in.
 
-> ADRs live under `meta/`, not the canonical `docs/adr/`. The `docs/` directory is owned by the docsify site for the auberge CLI; internal architectural decisions stay outside it.
+> ADRs live under `meta/`, not the canonical `docs/adr/`. `docs/` is the Starlight project that builds auberge.espadat.com: a page added under `docs/src/content/docs/` is published, and so is anything in `docs/public/`. Internal material — ADRs, throwaway plans under `meta/agents/plans/`, research — stays in `meta/`.
 
 If any of these files don't exist, **proceed silently**. Don't flag their absence; don't suggest creating them upfront. The producer skill (`/grill-with-docs`) creates them lazily when terms or decisions actually get resolved.
 
@@ -24,8 +24,9 @@ Single-context repo:
 │   ├── adr/              ← granular per-decision ADRs (created lazily)
 │   │   └── 0001-…md
 │   ├── agents/           ← agent skill config (this folder)
+│   │   └── plans/        ← throwaway plans, deleted once the work lands
 │   └── roadmap.md
-├── docs/                 ← docsify site for auberge CLI (not for ADRs)
+├── docs/                 ← published Starlight site (a build directory, not for ADRs)
 └── src/
 ```
 

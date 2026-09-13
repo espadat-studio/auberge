@@ -1,7 +1,7 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
   "extends": ["config:recommended"],
-  "enabledManagers": ["custom.regex"],
+  "enabledManagers": ["custom.regex", "npm"],
   "semanticCommits": "enabled",
   "semanticCommitType": "build",
   "customManagers": [
@@ -23,6 +23,12 @@
     }
   ],
   "packageRules": [
+    {
+      "description": "The docs site under `docs/`. `chore`, not the `fix(deps)` config:recommended would give it: release_commits is ^(feat|fix|build), so a Starlight bump would cut a crate release it changes nothing in. Must live in a packageRule for the same reason the rule below does. Starlight is pre-1.0 and @espadat/docs-theme is a git tag pin; neither is watched without the npm manager.",
+      "matchManagers": ["npm"],
+      "semanticCommitType": "chore",
+      "semanticCommitScope": "docs"
+    },
     {
       "matchManagers": ["custom.regex"],
       "description": "`build` so release-plz cuts a release (ADR-0017). Must live in a packageRule: config:recommended pulls in :semanticPrefixFixDepsChoreOthers, whose own packageRules override any top-level semanticCommitType.",
