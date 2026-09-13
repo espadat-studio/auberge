@@ -286,3 +286,75 @@ fn test_renovate_manager_matches_every_declared_app_version() {
         );
     }
 }
+
+/// Every depName a `packageRules` entry keys on must be one the repo actually
+/// declares — a `<app>.meta.yml` `version:` block's `depName:`, or a
+/// `# renovate:` annotation in a role's `defaults/main.yml`.
+///
+/// The customManager fence above proves renovate can *see* each declared
+/// version. This proves the other half: that a rule written about one of them
+/// still names it. The two sides are plain string literals in separate files,
+/// so a rename touching only the declaration leaves the rule silently inert —
+/// and an inert rule is invisible, because renovate just resumes its default
+/// behaviour. Grimmory is the live case: it is auberge's own build output, and
+/// only a matching `enabled: false` rule stops renovate offering auberge as an
+/// upgrade to itself.
+#[test]
+fn test_every_renovate_match_dep_name_is_declared() {
+    let renovate: serde_json::Value =
+        serde_json::from_str(&fs::read_to_string(repo().join("renovate.json")).unwrap()).unwrap();
+
+    let mut declared: Vec<String> = meta_declared_versions()
+        .iter()
+        .filter_map(|(_, version)| {
+            version
+                .get(serde_yaml::Value::String("depName".to_string()))
+                .and_then(|v| v.as_str().map(str::to_string))
+        })
+        .collect();
+
+    for defaults in defaults_files() {
+        let content = fs::read_to_string(&defaults).unwrap();
+        for line in content.lines() {
+            let Some(annotation) = line.trim_start().strip_prefix("# renovate: ") else {
+                continue;
+            };
+            if let Some(dep) = annotation
+                .split_whitespace()
+                .find_map(|field| field.strip_prefix("depName="))
+            {
+                declared.push(dep.to_string());
+            }
+        }
+    }
+
+    let matched: Vec<String> = renovate["packageRules"]
+        .as_array()
+        .expect("renovate.json must carry packageRules")
+        .iter()
+        .filter_map(|rule| rule["matchDepNames"].as_array())
+        .flatten()
+        .map(|name| {
+            name.as_str()
+                .expect("matchDepNames holds strings")
+                .to_string()
+        })
+        .collect();
+
+    assert!(
+        matched.len() >= 9,
+        "expected at least 9 matchDepNames entries across packageRules, found {}",
+        matched.len()
+    );
+
+    let undeclared: Vec<&String> = matched
+        .iter()
+        .filter(|dep| !declared.contains(dep))
+        .collect();
+    assert!(
+        undeclared.is_empty(),
+        "renovate.json packageRules key on depNames nothing in the tree declares: {undeclared:?}\n\
+         The rule is inert — rename the declaration and the rule, or drop the rule.\n\
+         declared: {declared:?}"
+    );
+}
