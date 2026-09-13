@@ -857,7 +857,7 @@ version:
 version:
   value: "2.3.0"
   datasource: github-releases
-  depName: "sripwoud/auberge"
+  depName: "espadat-studio/auberge"
   versioning: loose
   extractVersion: "^grimmory/v(?<version>.+)$"
 "#;
