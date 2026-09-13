@@ -1,0 +1,8 @@
+graph TD
+    Local["Local Machine<br/>auberge CLI + SSH keys"]
+    Remote["Remote VPS<br/>App Services + PostgreSQL/MariaDB"]
+    Offsite["Backup Server<br/>Restic Repository"]
+
+    Local -- "backup create: rsync + scp over SSH" --> Remote
+    Remote -- "app data + database dumps" --> Local
+    Local -- "backup push: restic + rclone" --> Offsite

@@ -6,20 +6,44 @@ Auberge provides built-in backup and restore functionality for all self-hosted a
 
 ## Architecture
 
-```mermaid
-graph TD
-    Local["Local Machine<br/>auberge CLI + SSH keys"]
-    Remote["Remote VPS<br/>App Services + PostgreSQL/MariaDB"]
-    Offsite["Backup Server<br/>Restic Repository"]
+<!-- Diagram source: src/diagrams/backup-architecture.mmd (mermaid). It cannot
+     live in this comment: mermaid's edge arrow is the comment terminator. -->
 
-    Local -- "backup create: rsync + scp over SSH" --> Remote
-    Remote -- "app data + database dumps" --> Local
-    Local -- "backup push: restic + rclone" --> Offsite
-
-    style Local fill:#d4e6f1,stroke:#2471a3
-    style Remote fill:#d5f5e3,stroke:#1e8449
-    style Offsite fill:#fdebd0,stroke:#ca6f1e
-```
+<svg viewBox="0 0 680 370" role="img" aria-labelledby="backup-arch-title backup-arch-desc" style="width:100%;height:auto;max-width:680px;color:inherit;fill:none;stroke:currentColor">
+  <title id="backup-arch-title">Backup architecture</title>
+  <desc id="backup-arch-desc">The local machine pulls app data and database dumps from the remote VPS over SSH, then pushes encrypted restic snapshots to the backup server.</desc>
+  <defs>
+    <marker id="backup-arch-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 0 10 5 0 10Z" fill="currentColor" stroke="none" />
+    </marker>
+  </defs>
+  <g stroke-width="1.5">
+    <rect x="20" y="16" width="640" height="64" />
+    <rect x="20" y="280" width="300" height="72" />
+    <rect x="360" y="280" width="280" height="72" />
+    <path d="M100 80V280" marker-end="url(#backup-arch-arrow)" />
+    <path d="M280 280V80" marker-end="url(#backup-arch-arrow)" />
+    <path d="M480 80V280" marker-end="url(#backup-arch-arrow)" />
+  </g>
+  <g fill="currentColor" stroke="none" font-size="15" font-weight="600">
+    <text x="36" y="44">Local Machine</text>
+    <text x="36" y="308">Remote VPS</text>
+    <text x="376" y="308">Backup Server</text>
+  </g>
+  <g fill="currentColor" stroke="none" font-size="12.5" opacity="0.75">
+    <text x="36" y="66">auberge CLI + SSH keys</text>
+    <text x="36" y="330">App Services + PostgreSQL/MariaDB</text>
+    <text x="376" y="330">Restic Repository</text>
+  </g>
+  <g fill="currentColor" stroke="none" font-size="12">
+    <text x="112" y="172">backup create</text>
+    <text x="112" y="190" opacity="0.75">rsync + scp over SSH</text>
+    <text x="292" y="172">app data +</text>
+    <text x="292" y="190" opacity="0.75">database dumps</text>
+    <text x="492" y="172">backup push</text>
+    <text x="492" y="190" opacity="0.75">restic + rclone</text>
+  </g>
+</svg>
 
 - **Local Machine**: Where `auberge` CLI is installed, holds SSH keys, stores backups in `~/.local/share/auberge/backups/`
 - **Remote VPS**: Runs all apps deployed by `auberge`, source of backup data
