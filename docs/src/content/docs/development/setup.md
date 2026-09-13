@@ -17,6 +17,20 @@ cargo test           # Test
 - Ansible and ansible-lint
 - dprint, dasel, pkl
 
+## Documentation site
+
+`docs/` is an Astro Starlight project, not loose markdown.
+
+```bash
+cd docs
+npm install
+npm run dev              # live reload, no search index
+npm run build            # static output in docs/dist
+npm run preview          # serve the build
+```
+
+Pagefind indexes at build time, so search only works under `preview`, never `dev`.
+
 ## Commands
 
 ```bash
