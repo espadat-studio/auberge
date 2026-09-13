@@ -1,0 +1,17 @@
+{
+  "name": "auberge-docs",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "astro dev",
+    "build": "astro build",
+    "preview": "astro preview",
+    "check": "astro check"
+  },
+  "dependencies": {
+    "@astrojs/starlight": "^0.42.0",
+    "@espadat/docs-theme": "github:espadat-studio/docs-theme#v0.1.0",
+    "astro": "^7.3.2"
+  }
+}
