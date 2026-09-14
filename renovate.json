@@ -31,6 +31,21 @@
       "matchStrings": [
         "version:\\n  value: \"?(?<currentValue>[^\"\\n]+)\"?\\n  datasource: (?<datasource>\\S+)\\n  depName: \"?(?<depName>[^\"\\n]+)\"?\\n(?:  versioning: (?<versioning>\\S+)\\n)?(?:  extractVersion: \"?(?<extractVersion>[^\"\\n]+)\"?\\n)?"
       ]
+    },
+    {
+      "customType": "regex",
+      "description": "hk is one version in two files: the binary in mise.toml and the pkl schema URL in hk.pkl. Neither is covered otherwise — enabledManagers omits mise, and no manager parses a pkl package URL. hk 2.0.0 cannot evaluate a 1.x schema, so a half-applied bump kills every git hook. hk is the one pinned entry in [tools] while the rest floats on latest, because it is the only tool whose version is duplicated elsewhere.",
+      "managerFilePatterns": [
+        "/^hk\\.pkl$/",
+        "/^mise\\.toml$/"
+      ],
+      "matchStrings": [
+        "(?:amends|import) \"package://github\\.com/jdx/hk/releases/download/v(?<currentValue>[0-9.]+)/hk@[0-9.]+#",
+        "\\nhk = \"(?<currentValue>[0-9.]+)\""
+      ],
+      "depNameTemplate": "jdx/hk",
+      "datasourceTemplate": "github-releases",
+      "extractVersionTemplate": "^v(?<version>.+)$"
     }
   ],
   "packageRules": [
@@ -99,6 +114,18 @@
         "paperless-ngx/paperless-ngx"
       ],
       "minimumReleaseAge": "5 days"
+    },
+    {
+      "description": "hk is tooling and never reaches the artifact: chore, not the build every custom.regex dep gets from the rule above — build cuts a release-plz release. Grouped so the binary and the pkl schema cannot land half-applied.",
+      "matchDepNames": [
+        "jdx/hk"
+      ],
+      "groupName": "hk",
+      "semanticCommitType": "chore",
+      "semanticCommitScope": "deps",
+      "commitMessageAction": "update",
+      "commitMessageTopic": "{{depName}}",
+      "commitMessageExtra": "to {{newValue}}"
     }
   ]
 }
