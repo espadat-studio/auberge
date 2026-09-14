@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.17.11](https://github.com/espadat-studio/auberge/compare/v0.17.10...v0.17.11) - 2026-09-14
+
+### Fixed
+
+- *(hooks)* bump hk pkl schema to 2.0.0
+- *(ci)* stop persisting git credentials in jobs that never push ([#869](https://github.com/espadat-studio/auberge/pull/869))
+- *(ci)* bind workflow inputs to env and disable the node cache ([#866](https://github.com/espadat-studio/auberge/pull/866))
+
+### Other
+
+- *(immich)* bump to 3.2.1 ([#874](https://github.com/espadat-studio/auberge/pull/874))
+- *(renovate)* pin hk and track both of its version pins
+- *(opencode)* bump to 1.18.30 ([#870](https://github.com/espadat-studio/auberge/pull/870))
+- *(uv)* bump to 0.12.11 ([#871](https://github.com/espadat-studio/auberge/pull/871))
+- *(actions)* comment the auth action pin with its real tag
+- *(memsearch)* bump to 0.4.20 ([#868](https://github.com/espadat-studio/auberge/pull/868))
+- *(colporteur)* bump to 0.6.3 ([#867](https://github.com/espadat-studio/auberge/pull/867))
+- *(actions)* pin every action to a full commit sha ([#865](https://github.com/espadat-studio/auberge/pull/865))
+- point stale sripwoud/ references at the espadat-studio org ([#863](https://github.com/espadat-studio/auberge/pull/863))
+- migrate the documentation site to Astro Starlight ([#862](https://github.com/espadat-studio/auberge/pull/862))
+- *(release)* publish to crates.io via trusted publishing ([#859](https://github.com/espadat-studio/auberge/pull/859))
+
 ## [0.17.10](https://github.com/espadat-studio/auberge/compare/v0.17.9...v0.17.10) - 2026-09-11
 
 ### Fixed
