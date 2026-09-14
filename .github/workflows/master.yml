@@ -13,8 +13,8 @@ jobs:
     outputs:
       any_rs_changed: ${{ steps.changed-files.outputs.any_changed }}
     steps:
-      - uses: actions/checkout@v7
-      - uses: tj-actions/changed-files@v47
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: tj-actions/changed-files@24d32ffd492484c1d75e0c0b894501ddb9d30d62 # v47
         id: changed-files
         with:
           files: |
@@ -28,9 +28,9 @@ jobs:
   check:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - run: rm -fr .mise/config.toml
-      - uses: jdx/mise-action@v4
+      - uses: jdx/mise-action@c2a87611a18de5b3828c5652fe268e992400cb5c # v4
         with:
           mise_toml: |
             [tasks]
@@ -111,11 +111,11 @@ jobs:
     if: needs.changed-files.outputs.any_rs_changed == 'true'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable
         with:
           components: llvm-tools-preview
-      - uses: taiki-e/install-action@nextest
+      - uses: taiki-e/install-action@4dc1969decfa71b34f25aa7f3dd4656654d9ad1e # nextest
       - run: cargo nextest run
 
   test:
