@@ -33,7 +33,9 @@ jobs:
           token: ${{ steps.app-token.outputs.token }}
 
       - name: Recompute co-pinned checksums
-        run: ./.github/scripts/recompute-checksums.sh "origin/${{ github.base_ref }}"
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: ./.github/scripts/recompute-checksums.sh "origin/${BASE_REF}"
 
       - name: Push updated digests
         env:
