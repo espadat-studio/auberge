@@ -25,8 +25,11 @@ jobs:
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: "24"
+          package-manager-cache: false
 
-      - run: curl -fsSL "https://github.com/grimmory-tools/grimmory/archive/refs/tags/v${{ inputs.version }}.tar.gz" | tar -xz
+      - run: curl -fsSL "https://github.com/grimmory-tools/grimmory/archive/refs/tags/v${VERSION}.tar.gz" | tar -xz
+        env:
+          VERSION: ${{ inputs.version }}
 
       - run: npm ci --no-audit --no-fund
         working-directory: grimmory-${{ inputs.version }}/booklore-ui
@@ -42,8 +45,10 @@ jobs:
         working-directory: grimmory-${{ inputs.version }}
 
       - run: |
-          JAR=$(find grimmory-${{ inputs.version }}/booklore-api/build/libs/ -name '*.jar' ! -name '*-plain.jar')
+          JAR=$(find "grimmory-${VERSION}/booklore-api/build/libs/" -name '*.jar' ! -name '*-plain.jar')
           cp "$JAR" grimmory-api.jar
+        env:
+          VERSION: ${{ inputs.version }}
 
       - name: Assert api icons and frontend are inside the jar
         run: |
