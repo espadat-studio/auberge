@@ -1,14 +1,23 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
-  "extends": ["config:recommended"],
-  "enabledManagers": ["custom.regex", "npm"],
+  "extends": [
+    "config:recommended",
+    "helpers:pinGitHubActionDigests"
+  ],
+  "enabledManagers": [
+    "custom.regex",
+    "npm",
+    "github-actions"
+  ],
   "semanticCommits": "enabled",
   "semanticCommitType": "build",
   "customManagers": [
     {
       "customType": "regex",
       "description": "Tool Versions in role defaults, each driven by its own `# renovate:` annotation",
-      "managerFilePatterns": ["/^ansible/roles/[^/]+/defaults/main\\.yml$/"],
+      "managerFilePatterns": [
+        "/^ansible/roles/[^/]+/defaults/main\\.yml$/"
+      ],
       "matchStrings": [
         "# renovate: datasource=(?<datasource>\\S+) depName=(?<depName>\\S+)(?: versioning=(?<versioning>\\S+))?(?: extractVersion=(?<extractVersion>\\S+))?\\n[a-z0-9_]+_version: \"?(?<currentValue>[^\"\\n]+)\"?\\n"
       ]
@@ -16,7 +25,9 @@
     {
       "customType": "regex",
       "description": "App Versions declared as typed `version:` blocks in Playbook Meta (ADR-0017)",
-      "managerFilePatterns": ["/^ansible/playbooks/[^/]+\\.meta\\.yml$/"],
+      "managerFilePatterns": [
+        "/^ansible/playbooks/[^/]+\\.meta\\.yml$/"
+      ],
       "matchStrings": [
         "version:\\n  value: \"?(?<currentValue>[^\"\\n]+)\"?\\n  datasource: (?<datasource>\\S+)\\n  depName: \"?(?<depName>[^\"\\n]+)\"?\\n(?:  versioning: (?<versioning>\\S+)\\n)?(?:  extractVersion: \"?(?<extractVersion>[^\"\\n]+)\"?\\n)?"
       ]
@@ -25,12 +36,16 @@
   "packageRules": [
     {
       "description": "The docs site under `docs/`. `chore`, not the `fix(deps)` config:recommended would give it: release_commits is ^(feat|fix|build), so a Starlight bump would cut a crate release it changes nothing in. Must live in a packageRule for the same reason the rule below does. Starlight is pre-1.0 and @espadat/docs-theme is a git tag pin; neither is watched without the npm manager.",
-      "matchManagers": ["npm"],
+      "matchManagers": [
+        "npm"
+      ],
       "semanticCommitType": "chore",
       "semanticCommitScope": "docs"
     },
     {
-      "matchManagers": ["custom.regex"],
+      "matchManagers": [
+        "custom.regex"
+      ],
       "description": "`build` so release-plz cuts a release (ADR-0017). Must live in a packageRule: config:recommended pulls in :semanticPrefixFixDepsChoreOthers, whose own packageRules override any top-level semanticCommitType.",
       "semanticCommitType": "build",
       "semanticCommitScope": "{{replace 'ansible/roles/(.+)/defaults/main\\.yml' '$1' packageFile}}",
@@ -39,28 +54,38 @@
       "commitMessageExtra": "to {{newValue}}"
     },
     {
-      "matchFileNames": ["ansible/playbooks/*.meta.yml"],
+      "matchFileNames": [
+        "ansible/playbooks/*.meta.yml"
+      ],
       "semanticCommitScope": "{{replace 'ansible/playbooks/(.+)\\.meta\\.yml' '$1' packageFile}}"
     },
     {
       "description": "hermes_uv_version and tgtg_uv_version are the same dep and must move together",
-      "matchDepNames": ["astral-sh/uv"],
+      "matchDepNames": [
+        "astral-sh/uv"
+      ],
       "groupName": "uv",
       "semanticCommitScope": "uv"
     },
     {
       "description": "headscale refuses to start when a deploy skips a minor: upstream enforces a strict upgrade path (juanfont/headscale#3083) because it deletes old DB migrations each minor (0.28.0 dropped pre-0.25, 0.29.0 dropped pre-0.28). One PR per minor stream yields the required ladder instead of a single multi-minor jump. Merge them one rung at a time — the option separates the PRs but does not serialize them, and `separateMultipleMinor` is experimental in Renovate.",
-      "matchDepNames": ["juanfont/headscale"],
+      "matchDepNames": [
+        "juanfont/headscale"
+      ],
       "separateMultipleMinor": true
     },
     {
       "description": "grimmory is auberge's own build output (build-grimmory.yml), not a dependency",
-      "matchDepNames": ["espadat-studio/auberge"],
+      "matchDepNames": [
+        "espadat-studio/auberge"
+      ],
       "enabled": false
     },
     {
       "description": "Temurin GA respins bump a 4th digit (25.0.4+7 then 25.0.4.1+1) and default semver-coerced discards everything past the patch, so the respins — the security releases — would never be offered. This regex ranks the 4th digit as build and the +suffix as revision (compared only when build exists, which GA ordering never needs). Blind by design: same-x.y.z +build-only re-releases (GA never ships those) and the initial `25+36` GA shape (a new major is a manual depName edit — the per-major repo is what makes LTS-only structural, ADR-0030). Lives here, not in the `# renovate:` annotation, because the pattern breaches yaml line-length.",
-      "matchDepNames": ["adoptium/temurin25-binaries"],
+      "matchDepNames": [
+        "adoptium/temurin25-binaries"
+      ],
       "versioning": "regex:^(?<major>\\d+)\\.(?<minor>\\d+)\\.(?<patch>\\d+)(?:\\.(?<build>\\d+))?(?:\\+(?<revision>\\d+))?$"
     },
     {
