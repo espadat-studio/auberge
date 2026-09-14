@@ -3,3 +3,7 @@ rules:
     config:
       policies:
         "*": hash-pin
+  artipacked:
+    # renovate-checksums pushes the digest commit over the origin credential
+    ignore:
+      - renovate-checksums.yml
