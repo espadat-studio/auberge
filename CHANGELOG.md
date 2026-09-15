@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.17.12](https://github.com/espadat-studio/auberge/compare/v0.17.11...v0.17.12) - 2026-09-15
+
+### Added
+
+- *(docs)* serve a robots.txt that names the sitemap ([#885](https://github.com/espadat-studio/auberge/pull/885))
+
+### Other
+
+- *(colporteur)* bump to 0.6.4 ([#886](https://github.com/espadat-studio/auberge/pull/886))
+
 ## [0.17.11](https://github.com/espadat-studio/auberge/compare/v0.17.10...v0.17.11) - 2026-09-15
 
 ### Fixed
