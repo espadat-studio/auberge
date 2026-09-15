@@ -288,8 +288,11 @@ fn test_renovate_manager_matches_every_declared_app_version() {
 }
 
 /// Every depName a `packageRules` entry keys on must be one the repo actually
-/// declares — a `<app>.meta.yml` `version:` block's `depName:`, or a
-/// `# renovate:` annotation in a role's `defaults/main.yml`.
+/// declares — a `<app>.meta.yml` `version:` block's `depName:`, a
+/// `# renovate:` annotation in a role's `defaults/main.yml`, or a
+/// `customManagers` entry's `depNameTemplate`. The last is the static case:
+/// where the version lives in neither of the first two files, the manager
+/// names the dep itself rather than capturing it.
 ///
 /// The customManager fence above proves renovate can *see* each declared
 /// version. This proves the other half: that a rule written about one of them
@@ -326,6 +329,15 @@ fn test_every_renovate_match_dep_name_is_declared() {
                 declared.push(dep.to_string());
             }
         }
+    }
+
+    for template in renovate["customManagers"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(|manager| manager["depNameTemplate"].as_str())
+    {
+        declared.push(template.to_string());
     }
 
     let matched: Vec<String> = renovate["packageRules"]
