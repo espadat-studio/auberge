@@ -7,6 +7,59 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.17.13](https://github.com/espadat-studio/auberge/compare/v0.17.12...v0.17.13) - 2026-09-16
+
+### Other
+
+- *(deps)* update jdx/hk to 2.0.1 ([#892](https://github.com/espadat-studio/auberge/pull/892))
+- *(uv)* bump to 0.12.13 ([#891](https://github.com/espadat-studio/auberge/pull/891))
+- *(immich)* bump to 3.2.2 ([#890](https://github.com/espadat-studio/auberge/pull/890))
+- *(colporteur)* bump to 0.6.5 ([#889](https://github.com/espadat-studio/auberge/pull/889))
+- release v0.17.12 ([#888](https://github.com/espadat-studio/auberge/pull/888))
+
+## [0.17.12](https://github.com/espadat-studio/auberge/compare/v0.17.11...v0.17.12) - 2026-09-15
+
+### Added
+
+- *(docs)* serve a robots.txt that names the sitemap ([#885](https://github.com/espadat-studio/auberge/pull/885))
+
+### Other
+
+- *(colporteur)* bump to 0.6.4 ([#886](https://github.com/espadat-studio/auberge/pull/886))
+
+## [0.17.11](https://github.com/espadat-studio/auberge/compare/v0.17.10...v0.17.11) - 2026-09-15
+
+### Fixed
+
+- *(hooks)* bump hk pkl schema to 2.0.0
+- *(ci)* stop persisting git credentials in jobs that never push ([#869](https://github.com/espadat-studio/auberge/pull/869))
+- *(ci)* bind workflow inputs to env and disable the node cache ([#866](https://github.com/espadat-studio/auberge/pull/866))
+
+### Other
+
+- *(docs)* update dependency @astrojs/starlight to v0.42.1 ([#883](https://github.com/espadat-studio/auberge/pull/883))
+- *(hermes)* bump to v2026.9.7 ([#872](https://github.com/espadat-studio/auberge/pull/872))
+- *(uv)* bump to 0.12.12 ([#875](https://github.com/espadat-studio/auberge/pull/875))
+- *(navidrome)* bump to 0.64.0 ([#873](https://github.com/espadat-studio/auberge/pull/873))
+- *(deps)* update taiki-e/install-action digest to 2ab4414 ([#881](https://github.com/espadat-studio/auberge/pull/881))
+- *(renovate)* count depNameTemplate as a declaration
+- *(deps)* update dependency java-jdk to v25.0.4+101.0.lts ([#882](https://github.com/espadat-studio/auberge/pull/882))
+- *(deps)* update actions/setup-node action to v7 ([#877](https://github.com/espadat-studio/auberge/pull/877))
+- *(deps)* update softprops/action-gh-release action to v3 ([#879](https://github.com/espadat-studio/auberge/pull/879))
+- *(deps)* update amannn/action-semantic-pull-request action to v6 ([#878](https://github.com/espadat-studio/auberge/pull/878))
+- *(deps)* update actions/setup-java action to v6 ([#876](https://github.com/espadat-studio/auberge/pull/876))
+- *(immich)* bump to 3.2.1 ([#874](https://github.com/espadat-studio/auberge/pull/874))
+- *(renovate)* pin hk and track both of its version pins
+- *(opencode)* bump to 1.18.30 ([#870](https://github.com/espadat-studio/auberge/pull/870))
+- *(uv)* bump to 0.12.11 ([#871](https://github.com/espadat-studio/auberge/pull/871))
+- *(actions)* comment the auth action pin with its real tag
+- *(memsearch)* bump to 0.4.20 ([#868](https://github.com/espadat-studio/auberge/pull/868))
+- *(colporteur)* bump to 0.6.3 ([#867](https://github.com/espadat-studio/auberge/pull/867))
+- *(actions)* pin every action to a full commit sha ([#865](https://github.com/espadat-studio/auberge/pull/865))
+- point stale sripwoud/ references at the espadat-studio org ([#863](https://github.com/espadat-studio/auberge/pull/863))
+- migrate the documentation site to Astro Starlight ([#862](https://github.com/espadat-studio/auberge/pull/862))
+- *(release)* publish to crates.io via trusted publishing ([#859](https://github.com/espadat-studio/auberge/pull/859))
+
 ## [0.17.10](https://github.com/espadat-studio/auberge/compare/v0.17.9...v0.17.10) - 2026-09-11
 
 ### Fixed
