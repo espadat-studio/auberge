@@ -3,7 +3,7 @@ required_keys:
   - colporteur_subdomain
 subdomain: colporteur
 version:
-  value: "0.6.4"
+  value: "0.6.5"
   datasource: github-releases
   depName: "espadat-studio/colporteur"
   extractVersion: "^v(?<version>.+)$"
