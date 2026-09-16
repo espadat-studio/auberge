@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.17.14](https://github.com/espadat-studio/auberge/compare/v0.17.13...v0.17.14) - 2026-09-16
+
+### Other
+
+- *(hermes)* bump to v2026.9.11 ([#901](https://github.com/espadat-studio/auberge/pull/901))
+- open with the problem the tool solves, not its mechanism ([#900](https://github.com/espadat-studio/auberge/pull/900))
+- *(galaxy)* make collection-install retries independent ([#899](https://github.com/espadat-studio/auberge/pull/899))
+- *(docs)* bump the docs theme to v0.2.0 ([#897](https://github.com/espadat-studio/auberge/pull/897))
+- add the espadat mark as favicon and site logo ([#895](https://github.com/espadat-studio/auberge/pull/895))
+
 ## [0.17.13](https://github.com/espadat-studio/auberge/compare/v0.17.12...v0.17.13) - 2026-09-16
 
 ### Other
