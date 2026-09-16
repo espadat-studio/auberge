@@ -52,21 +52,28 @@ jobs:
             uv = "latest"
       - run: mise settings experimental=true
 
+      # --no-cache: a failed metadata call still writes a results-less entry to
+      # ~/.ansible/galaxy_cache with a 24h expiry, and each later attempt reads
+      # it back and dies on the same missing 'results' key, so the retries were
+      # never independent. The backoff widens because galaxy's artifact CDN
+      # returns 502 in bursts that outlast a flat 10s gap.
       - name: Install Ansible collections with retry
         working-directory: ansible
         shell: bash
         run: |
-          max_attempts=3
-          attempt=1
-          until ansible-galaxy collection install -r requirements.yml || [ $attempt -eq $max_attempts ]; do
-            echo "Attempt $attempt failed. Retrying in 10 seconds..."
-            sleep 10
-            attempt=$((attempt + 1))
+          attempts=3
+          for attempt in $(seq $attempts); do
+            if ansible-galaxy collection install --no-cache -r requirements.yml; then
+              exit 0
+            fi
+            if [ "$attempt" -lt "$attempts" ]; then
+              delay=$((attempt * 20))
+              echo "Attempt $attempt failed; retrying in ${delay}s"
+              sleep "$delay"
+            fi
           done
-          if [ $attempt -eq $max_attempts ]; then
-            echo "Failed after $max_attempts attempts"
-            exit 1
-          fi
+          echo "Failed after $attempts attempts"
+          exit 1
 
       - run: mise r check
 
