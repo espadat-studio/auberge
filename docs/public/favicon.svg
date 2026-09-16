@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <title>Espadat</title>
+  <style>
+    .m { fill: #14181D }
+    @media (prefers-color-scheme: dark) { .m { fill: #F5F2EC } }
+  </style>
+  <path class="m" d="M6 7 H52 L28 43 H6 Z"/>
+  <rect class="m" x="6" y="49" width="52" height="7"/>
+</svg>
