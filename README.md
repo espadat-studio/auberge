@@ -7,9 +7,9 @@
   </a>
 </p>
 
-> Ansible-powered VPS management without Docker bloat
+> Self-host a full FOSS stack on a 2 GB VPS. Deploy it with one command, rebuild it on a fresh box with another.
 
-Auberge is a CLI tool for managing self-hosted infrastructure using Ansible automation. Deploy a full FOSS stack on a minimal VPS, natively via systemd.
+Auberge is a Rust CLI that runs Ansible playbooks to install a full self-hosted stack as plain systemd services: RSS reader, budgeting, calendar and contacts, documents, music, file sync, DNS with ad-blocking, a Tailscale mesh. There is no Docker layer underneath, so it fits a small box. Every version is pinned in the repo and Renovate keeps it current. If the host dies, `auberge restore` brings it back on a new one.
 
 ## Features
 
