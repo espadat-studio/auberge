@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.17.13](https://github.com/espadat-studio/auberge/compare/v0.17.12...v0.17.13) - 2026-09-16
+
+### Other
+
+- *(deps)* update jdx/hk to 2.0.1 ([#892](https://github.com/espadat-studio/auberge/pull/892))
+- *(uv)* bump to 0.12.13 ([#891](https://github.com/espadat-studio/auberge/pull/891))
+- *(immich)* bump to 3.2.2 ([#890](https://github.com/espadat-studio/auberge/pull/890))
+- *(colporteur)* bump to 0.6.5 ([#889](https://github.com/espadat-studio/auberge/pull/889))
+- release v0.17.12 ([#888](https://github.com/espadat-studio/auberge/pull/888))
+
 ## [0.17.12](https://github.com/espadat-studio/auberge/compare/v0.17.11...v0.17.12) - 2026-09-15
 
 ### Added
