@@ -8,7 +8,7 @@ export default defineConfig({
   integrations: [
     starlight({
       title: "auberge",
-      description: "Ansible-powered VPS management without Docker bloat",
+      description: "Self-host a full FOSS stack on a 2 GB VPS as plain systemd services. Rust CLI over Ansible to deploy, back up and restore it.",
       logo: { src: "./src/assets/mark.svg", alt: "Espadat" },
       head: [{ tag: "link", attrs: { rel: "icon", href: "/favicon.ico", sizes: "16x16 32x32" } }],
       social: [{ icon: "github", label: "GitHub", href: "https://github.com/espadat-studio/auberge" }],

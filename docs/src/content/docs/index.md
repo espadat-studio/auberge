@@ -1,10 +1,11 @@
 ---
 title: "Auberge"
+description: "Self-host a full FOSS stack on a 2 GB VPS as plain systemd services. Rust CLI over Ansible to deploy, back up and restore it."
 ---
 
-> Ansible-powered VPS management without Docker bloat.
+> Self-host a full FOSS stack on a 2 GB VPS. Deploy it with one command, rebuild it on a fresh box with another.
 
-Auberge is a Rust CLI for managing self-hosted infrastructure. Deploys a full FOSS stack on a 2 GB VPS using native systemd.
+Auberge is a Rust CLI that runs Ansible playbooks to install a full self-hosted stack as plain systemd services: RSS reader, budgeting, calendar and contacts, documents, music, file sync, DNS with ad-blocking, a Tailscale mesh. There is no Docker layer underneath, so it fits a small box. Every version is pinned in the repo and Renovate keeps it current. If the host dies, `auberge restore` brings it back on a new one.
 
 ```bash
 cargo install auberge

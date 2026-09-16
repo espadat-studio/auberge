@@ -2,7 +2,7 @@
 title: "Introduction"
 ---
 
-Auberge (French for _inn_) shelters your self-hosted services. It's a Rust CLI that wraps Ansible to deploy a complete FOSS stack on a minimal VPS — without containers.
+Auberge (French for _inn_) shelters your self-hosted services. It's a Rust CLI that wraps Ansible to deploy a complete FOSS stack on a minimal VPS as plain systemd services, with no Docker layer underneath.
 
 ## How it works
 
