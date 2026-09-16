@@ -1,5 +1,6 @@
 import starlight from "@astrojs/starlight";
 import { defineConfig } from "astro/config";
+import starlightLlmsTxt from "starlight-llms-txt";
 
 // The footer override reads `site` to derive the studio credit and the links
 // to the sibling documentation sites. It fails the build if this is missing.
@@ -7,6 +8,7 @@ export default defineConfig({
   site: "https://auberge.espadat.com",
   integrations: [
     starlight({
+      plugins: [starlightLlmsTxt()],
       title: "auberge",
       description: "Self-host a full FOSS stack on a 2 GB VPS as plain systemd services. Rust CLI over Ansible to deploy, back up and restore it.",
       logo: { src: "./src/assets/mark.svg", alt: "Espadat" },
