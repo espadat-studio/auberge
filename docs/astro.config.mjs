@@ -9,6 +9,8 @@ export default defineConfig({
     starlight({
       title: "auberge",
       description: "Ansible-powered VPS management without Docker bloat",
+      logo: { src: "./src/assets/mark.svg", alt: "Espadat" },
+      head: [{ tag: "link", attrs: { rel: "icon", href: "/favicon.ico", sizes: "16x16 32x32" } }],
       social: [{ icon: "github", label: "GitHub", href: "https://github.com/espadat-studio/auberge" }],
       // Hand-translated from the docsify _sidebar.md, not autogenerate():
       // the groups deliberately span directories — Architecture lives under
