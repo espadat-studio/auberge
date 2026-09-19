@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.17.15](https://github.com/espadat-studio/auberge/compare/v0.17.14...v0.17.15) - 2026-09-19
+
+### Other
+
+- *(docs)* update dependency @astrojs/starlight to v0.42.2 ([#915](https://github.com/espadat-studio/auberge/pull/915))
+- *(deps)* update taiki-e/install-action digest to 8dd8cde ([#914](https://github.com/espadat-studio/auberge/pull/914))
+- *(deps)* update github/codeql-action digest to 1c5b675 ([#913](https://github.com/espadat-studio/auberge/pull/913))
+- *(aoe)* bump to 1.16.1 ([#908](https://github.com/espadat-studio/auberge/pull/908))
+- *(blocky)* bump to 5.5.1 ([#909](https://github.com/espadat-studio/auberge/pull/909))
+- *(deps)* update taiki-e/install-action digest to 9874fc3 ([#907](https://github.com/espadat-studio/auberge/pull/907))
+- *(deps)* update release-plz/action digest to d6c5627 ([#906](https://github.com/espadat-studio/auberge/pull/906))
+- *(docs)* update dependency @espadat/docs-theme to v0.3.0 ([#905](https://github.com/espadat-studio/auberge/pull/905))
+- *(docs)* update dependency astro to v7.3.3 ([#904](https://github.com/espadat-studio/auberge/pull/904))
+- *(docs)* serve llms.txt so agents can read the docs in one fetch ([#903](https://github.com/espadat-studio/auberge/pull/903))
+
 ## [0.17.14](https://github.com/espadat-studio/auberge/compare/v0.17.13...v0.17.14) - 2026-09-16
 
 ### Other
