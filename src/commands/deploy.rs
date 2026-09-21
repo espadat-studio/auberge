@@ -70,9 +70,9 @@ fn select_host(host_arg: Option<String>) -> Result<Host> {
 /// order, then the standalone playbooks the roster does not already hold,
 /// sorted and marked.
 ///
-/// A name that is both — calibre, gokapi, hermes, immich — appears once and
-/// bare, because [`split_routes`] sends it through the roster whichever way it
-/// was selected. Offering it twice would print two entries that deploy the
+/// A name that is both — calibre, forgejo, gokapi, hermes, immich — appears once
+/// and bare, because [`split_routes`] sends it through the roster whichever way
+/// it was selected. Offering it twice would print two entries that deploy the
 /// same thing.
 ///
 /// The sort and the dedup are this function's own rather than inherited from

@@ -1,0 +1,14 @@
+{{ forgejo_domain }} {
+	reverse_proxy 127.0.0.1:{{ forgejo_port }} {
+		header_up Host {host}
+		header_up X-Real-IP {remote_ip}
+		header_up X-Forwarded-For {remote_ip}
+		header_up X-Forwarded-Proto {scheme}
+	}
+
+	encode gzip
+
+	log {
+		output file /var/log/caddy/{{ forgejo_domain }}.log
+	}
+}

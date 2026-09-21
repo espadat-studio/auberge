@@ -38,6 +38,7 @@ use common::playbook_files;
 const DEPLOYABLE: &[&str] = &[
     "aoe",
     "calibre",
+    "forgejo",
     "gokapi",
     "hermes",
     "immich",

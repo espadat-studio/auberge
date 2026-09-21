@@ -540,6 +540,7 @@ mod tests {
             "aoe",
             "bootstrap",
             "calibre",
+            "forgejo",
             "gokapi",
             "hermes",
             "immich",

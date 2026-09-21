@@ -154,6 +154,7 @@ const FLEET_SERVICES: &[&str] = &[
     "colporteur/colporteur.service",
     "freshrss/freshrss-update.service",
     "freshrss/freshrss.service",
+    "forgejo/forgejo.service",
     "gokapi/gokapi.service",
     "grimmory/grimmory.service",
     "headscale/headscale.service",

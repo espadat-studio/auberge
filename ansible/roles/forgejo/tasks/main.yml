@@ -1,0 +1,242 @@
+- name: Install and configure Forgejo
+  block:
+    - name: Install git (Forgejo shells out to it for every repository operation)
+      ansible.builtin.apt:
+        name: git
+        state: present
+        update_cache: true
+
+    - name: Create Forgejo system group
+      ansible.builtin.group:
+        name: "{{ forgejo_sys_group }}"
+        system: true
+        state: present
+
+    - name: Create Forgejo system user
+      ansible.builtin.user:
+        name: "{{ forgejo_sys_user }}"
+        group: "{{ forgejo_sys_group }}"
+        shell: /usr/sbin/nologin
+        home: "{{ forgejo_data_dir }}"
+        create_home: false
+        system: true
+        state: present
+
+    - name: Create Forgejo installation directory
+      ansible.builtin.file:
+        path: "{{ forgejo_install_path }}"
+        state: directory
+        owner: root
+        group: root
+        mode: "0755"
+
+    - name: Create Forgejo data directory
+      ansible.builtin.file:
+        path: "{{ forgejo_data_dir }}"
+        state: directory
+        owner: "{{ forgejo_sys_user }}"
+        group: "{{ forgejo_sys_group }}"
+        mode: "0750"
+
+    - name: Create Forgejo configuration directory
+      ansible.builtin.file:
+        path: "{{ forgejo_config_dir }}"
+        state: directory
+        owner: "{{ forgejo_sys_user }}"
+        group: "{{ forgejo_sys_group }}"
+        mode: "0750"
+
+    - name: Check if Forgejo version marker exists
+      ansible.builtin.stat:
+        path: "{{ forgejo_version_marker }}"
+      register: forgejo_marker_stat
+
+    - name: Check if Forgejo binary exists
+      ansible.builtin.stat:
+        path: "{{ forgejo_binary_path }}"
+      register: forgejo_binary_stat
+
+    - name: Read installed Forgejo version
+      when: forgejo_marker_stat.stat.exists
+      ansible.builtin.slurp:
+        src: "{{ forgejo_version_marker }}"
+      register: forgejo_installed_version_raw
+
+    # The marker alone records what the role once installed, which diverges
+    # from reality exactly during a recovery: delete the binary to force a
+    # reinstall and the marker still claims it is there. Anded with a stat of
+    # the artifact, a missing binary reads as nothing installed.
+    - name: Set installed Forgejo version fact
+      ansible.builtin.set_fact:
+        forgejo_installed_version: >-
+          {{ forgejo_installed_version_raw.content | b64decode | trim
+             if forgejo_marker_stat.stat.exists and forgejo_binary_stat.stat.exists
+             else '' }}
+
+    # Fetched rather than pinned in defaults: Renovate bumps the App Version in
+    # the Meta and cannot recompute a literal beside it, and Forgejo publishes a
+    # .sha256 sidecar for every asset (ADR-0017).
+    - name: Fetch the sha256 sidecar for the declared Forgejo release
+      when: forgejo_installed_version != forgejo_version
+      become: false
+      delegate_to: localhost
+      ansible.builtin.uri:
+        url: "{{ forgejo_checksum_url }}"
+        method: GET
+        return_content: true
+      register: forgejo_checksum_sidecar
+
+    - name: Read the Forgejo sha256 out of the sidecar
+      when: forgejo_installed_version != forgejo_version
+      delegate_to: localhost
+      ansible.builtin.set_fact:
+        forgejo_sha256: "{{ forgejo_checksum_sidecar.content | trim | split() | first }}"
+
+    - name: Download the Forgejo binary
+      when: forgejo_installed_version != forgejo_version
+      ansible.builtin.get_url:
+        url: "{{ forgejo_binary_url }}"
+        dest: "{{ forgejo_binary_path }}"
+        checksum: "sha256:{{ forgejo_sha256 }}"
+        owner: root
+        group: root
+        mode: "0755"
+      notify: Restart forgejo
+
+    - name: Write the installed Forgejo version marker
+      when: forgejo_installed_version != forgejo_version
+      ansible.builtin.copy:
+        content: "{{ forgejo_version }}"
+        dest: "{{ forgejo_version_marker }}"
+        owner: root
+        group: root
+        mode: "0644"
+
+    # Each in the format forgejo parses it back from, produced by the binary
+    # that parses it. `creates:` makes this once-per-Host: rotating one is a
+    # deliberate act, not a deploy side effect, and regenerating SECRET_KEY
+    # would orphan every 2FA enrolment.
+    - name: Generate the Forgejo signing secrets (once per Host)
+      ansible.builtin.shell:
+        cmd: >-
+          umask 027 &&
+          {{ forgejo_binary_path }} generate secret {{ item.kind }}
+          > {{ forgejo_config_dir }}/{{ item.file }}
+        creates: "{{ forgejo_config_dir }}/{{ item.file }}"
+      loop: "{{ forgejo_secrets }}"
+      loop_control:
+        label: "{{ item.kind }}"
+      notify: Restart forgejo
+
+    - name: Own the Forgejo signing secrets
+      ansible.builtin.file:
+        path: "{{ forgejo_config_dir }}/{{ item.file }}"
+        owner: "{{ forgejo_sys_user }}"
+        group: "{{ forgejo_sys_group }}"
+        mode: "0640"
+      loop: "{{ forgejo_secrets }}"
+      loop_control:
+        label: "{{ item.kind }}"
+
+    - name: Deploy the Forgejo configuration
+      ansible.builtin.template:
+        src: templates/app.ini.j2
+        dest: "{{ forgejo_config_file }}"
+        owner: "{{ forgejo_sys_user }}"
+        group: "{{ forgejo_sys_group }}"
+        mode: "0640"
+      notify: Restart forgejo
+
+    - name: Deploy the Forgejo systemd service file
+      ansible.builtin.template:
+        src: templates/forgejo.service.j2
+        dest: /etc/systemd/system/forgejo.service
+        owner: root
+        group: root
+        mode: "0644"
+      notify: Restart forgejo
+
+    - name: Enable and start the Forgejo service
+      ansible.builtin.systemd_service:
+        name: forgejo
+        enabled: true
+        state: started
+        daemon_reload: true
+
+    - name: Flush handlers so a pending forgejo restart lands before the probe
+      ansible.builtin.meta: flush_handlers
+
+    - name: Wait for Forgejo to answer its health endpoint on loopback
+      ansible.builtin.uri:
+        url: "http://127.0.0.1:{{ forgejo_port }}/api/healthz"
+        status_code: 200
+      register: forgejo_health
+      until: forgejo_health.status == 200
+      retries: 30
+      delay: 2
+      when: not ansible_check_mode
+
+    - name: Stat the Forgejo admin marker
+      ansible.builtin.stat:
+        path: "{{ forgejo_admin_marker }}"
+      register: forgejo_admin_check
+
+    # Registration is disabled, so without this a fresh instance has no way in.
+    # Gated on a marker, not on `forgejo admin user list`: re-running the create
+    # against an existing account fails the deploy, and rotating the password is
+    # an operator action (`forgejo admin user change-password`), not something a
+    # redeploy should do behind their back.
+    - name: Create the Forgejo administrator (first deploy only)
+      when:
+        - not forgejo_admin_check.stat.exists
+        - not ansible_check_mode
+      ansible.builtin.command:
+        argv:
+          - "{{ forgejo_binary_path }}"
+          - admin
+          - user
+          - create
+          - --admin
+          - --username
+          - "{{ forgejo_admin_user }}"
+          - --password
+          - "{{ forgejo_admin_password }}"
+          - --email
+          - "{{ forgejo_admin_email }}"
+          - --must-change-password=false
+          - --config
+          - "{{ forgejo_config_file }}"
+      environment:
+        GITEA_WORK_DIR: "{{ forgejo_data_dir }}"
+      become: true
+      become_user: "{{ forgejo_sys_user }}"
+      no_log: true
+      changed_when: true
+
+    - name: Mark the Forgejo administrator as created
+      when:
+        - not forgejo_admin_check.stat.exists
+        - not ansible_check_mode
+      ansible.builtin.file:
+        path: "{{ forgejo_admin_marker }}"
+        state: touch
+        owner: "{{ forgejo_sys_user }}"
+        group: "{{ forgejo_sys_group }}"
+        mode: "0640"
+
+    - name: Deploy the Forgejo Caddyfile
+      ansible.builtin.template:
+        src: templates/Caddyfile.j2
+        dest: "/etc/caddy/sites/{{ forgejo_domain }}.caddyfile"
+        owner: root
+        group: root
+        mode: "0644"
+      notify: Restart caddy
+
+    - name: Ensure Cloudflare DNS A record exists for {{ forgejo_subdomain + '.' + domain }}
+      ansible.builtin.include_role:
+        name: dns_record
+      vars:
+        dns_record_subdomain: "{{ forgejo_subdomain }}"
+        dns_record_domain: "{{ domain }}"
+        dns_record_cloudflare_api_token: "{{ cloudflare_dns_api_token }}"

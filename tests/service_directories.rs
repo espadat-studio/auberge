@@ -404,6 +404,24 @@ const DECLARED_DIRECTORIES: &[DeclaredDirectory] = &[
         why: "state outside the checkout, in the Recipe alongside data/",
     },
     DeclaredDirectory {
+        role: "forgejo",
+        dir: "/etc/forgejo",
+        kind: Kind::Data,
+        writers: &[],
+        why: "app.ini and the three signing secrets. The secrets are generated once per Host \
+              and no deploy can put them back, so the Recipe carries them; the denial is the \
+              point of the path being here rather than under the data dir, because forgejo \
+              rewrites app.ini itself when it cannot load a secret",
+    },
+    DeclaredDirectory {
+        role: "forgejo",
+        dir: "/var/lib/forgejo",
+        kind: Kind::Data,
+        writers: &["forgejo.service"],
+        why: "the repository tree, the SQLite database and the indexes -- the store the \
+              Recipe rsyncs",
+    },
+    DeclaredDirectory {
         role: "gokapi",
         dir: "/var/lib/gokapi",
         kind: Kind::Data,

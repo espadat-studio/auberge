@@ -53,6 +53,14 @@ const MARKER_ROLES: &[MarkerRole] = &[
         unit_directive: "ExecStart=",
     },
     MarkerRole {
+        role: "forgejo",
+        artifact_var: "forgejo_binary_path",
+        artifact_value: "{{ forgejo_install_path }}/forgejo",
+        sentinel: "{{ forgejo_binary_path }}",
+        units: &["forgejo.service.j2"],
+        unit_directive: "ExecStart=",
+    },
+    MarkerRole {
         role: "gokapi",
         artifact_var: "gokapi_binary_path",
         artifact_value: "{{ gokapi_install_path }}/gokapi",
