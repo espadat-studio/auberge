@@ -39,7 +39,7 @@ Both paths are in the Backup Recipe and both are needed. `/etc/forgejo` holds th
 :::
 
 :::caution
-A push mirror **force-pushes** to its target on every sync. The mirrored remote is a replica: anything pushed to it by hand is destroyed on the next sync. Push to the forge; let the mirror follow.
+Onboarding a site for Decap creates a **separate content-only repository** on the forge. GitHub stays origin and nothing mirrors: a Forgejo push mirror runs `git push -f --mirror`, which deletes every branch that exists only on the target and closes its pull request. Renovate and template-sync branches are exactly that, and the per-branch filter does not prevent it — see [Why not migrate the site and mirror back](https://github.com/espadat-studio/auberge/blob/master/ansible/roles/forgejo/README.md#why-not-migrate-the-site-and-mirror-back).
 :::
 
 For the OAuth application an editor logs in through, see the [role README](https://github.com/espadat-studio/auberge/blob/master/ansible/roles/forgejo/README.md#creating-the-oauth-application-for-an-editor). Decap reaches Forgejo through `decap-cms-backend-gitea`, not `decap-cms-backend-forgejo`.
