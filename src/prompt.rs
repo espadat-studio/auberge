@@ -366,8 +366,10 @@ mod tests {
 
     #[test]
     fn select_item_auto_selects_a_lone_candidate_without_a_tty() {
-        // Deliberate, and matches `backup verify`'s sole_configured_host: one
-        // candidate is not a choice, so scripts need no flag.
+        // Deliberate: one candidate is not a choice, so scripts need no flag.
+        // With the two tests above, this is the whole no-TTY policy that
+        // `backup verify` leans on since #911 — asserted here, not per
+        // command.
         let only = vec!["auberge".to_string()];
         let selected = select_item(
             &only,

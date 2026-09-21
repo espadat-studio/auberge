@@ -451,12 +451,17 @@ pub fn host_choice(argument: &str) -> crate::prompt::Choice {
         .populated_by("auberge host add")
 }
 
+/// How a Host reads as a picker row.
+pub fn host_label(host: &Host) -> String {
+    format!("{} ({}:{})", host.name, host.address, host.port)
+}
+
 pub fn select_or_arg(arg: Option<String>, argument: &str) -> eyre::Result<Host> {
     match arg {
         Some(name) => HostManager::get_host(&name),
         None => crate::prompt::select_item(
             &HostManager::load_hosts()?,
-            |h: &Host| format!("{} ({}:{})", h.name, h.address, h.port),
+            host_label,
             host_choice(argument),
         ),
     }
