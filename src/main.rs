@@ -348,10 +348,11 @@ async fn main() -> Result<()> {
                 yes,
             } => run_dns_delete(subdomain, dry_run, output.format, production, yes).await,
             DnsCommands::Migrate {
+                host,
                 ip,
                 dry_run,
                 output,
-            } => run_dns_migrate(ip, dry_run, output.format).await,
+            } => run_dns_migrate(host, ip, dry_run, output.format).await,
             DnsCommands::SetAll {
                 host,
                 ip,
@@ -607,7 +608,7 @@ mod tests {
             ("auberge bichon verify-coverage", 5),
             ("auberge dns delete", 2),
             ("auberge dns list", 1),
-            ("auberge dns migrate", 2),
+            ("auberge dns migrate", 3),
             ("auberge dns set-all", 7),
             ("auberge dns status", 0),
             ("auberge github verify", 0),
@@ -722,5 +723,78 @@ mod tests {
             ["auberge backup export-opml", "auberge backup import-opml"],
             "the OPML pair is reachable somewhere other than `auberge backup`"
         );
+    }
+
+    /// `set-all` and `migrate` ask one question — which address do records
+    /// point at — and #925 made them ask it through one resolver. The surface
+    /// has to match too: a divergent short, value name, or requiredness
+    /// compiles clean and bites only whoever types the second command
+    /// expecting the first one's shape.
+    ///
+    /// Read off the built tree rather than the two enum variants, because
+    /// that is the surface an operator meets.
+    #[test]
+    fn dns_migrate_takes_its_target_address_exactly_as_set_all_does() {
+        fn target_surface(name: &str) -> Vec<(String, Option<char>, Vec<String>, bool)> {
+            let cli = Cli::command();
+            let dns = cli
+                .get_subcommands()
+                .find(|sub| sub.get_name() == "dns")
+                .expect("auberge dns must exist");
+            let cmd = dns
+                .get_subcommands()
+                .find(|sub| sub.get_name() == name)
+                .unwrap_or_else(|| panic!("auberge dns {name} must exist"));
+
+            cmd.get_arguments()
+                .filter(|arg| matches!(arg.get_id().as_str(), "host" | "ip"))
+                .map(|arg| {
+                    (
+                        arg.get_id().to_string(),
+                        arg.get_short(),
+                        arg.get_value_names()
+                            .unwrap_or_default()
+                            .iter()
+                            .map(ToString::to_string)
+                            .collect(),
+                        arg.is_required_set(),
+                    )
+                })
+                .collect()
+        }
+
+        let migrate = target_surface("migrate");
+        assert_eq!(
+            migrate,
+            target_surface("set-all"),
+            "`dns migrate` and `dns set-all` no longer take the target address the same way"
+        );
+        assert_eq!(
+            migrate.len(),
+            2,
+            "the scan found no `host`/`ip` pair to compare, so it passes vacuously"
+        );
+    }
+
+    /// The half the tree cannot answer: clap exposes no getter for
+    /// `conflicts_with`, so the rule is asserted by parsing. Dropping it would
+    /// let `-H` and `-i` both land, and the loser would be silently ignored on
+    /// the one command that rewrites every A record at once.
+    #[test]
+    fn dns_migrate_refuses_a_host_and_an_ip_together() {
+        let parsed =
+            Cli::try_parse_from(["auberge", "dns", "migrate", "-H", "ruche", "-i", "10.0.0.5"]);
+        let Err(err) = parsed else {
+            panic!("-H and -i must conflict, as they do on set-all");
+        };
+        assert_eq!(err.kind(), clap::error::ErrorKind::ArgumentConflict);
+    }
+
+    /// `-i` was required until #925. Neither flag now parses — the address is
+    /// resolved from the Inventory, and the picker (or its off-terminal
+    /// error) decides, not clap.
+    #[test]
+    fn dns_migrate_parses_with_neither_flag() {
+        assert!(Cli::try_parse_from(["auberge", "dns", "migrate"]).is_ok());
     }
 }

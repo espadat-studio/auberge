@@ -65,10 +65,39 @@ pub enum DnsCommands {
         #[arg(short = 'y', long, help = "Skip confirmation prompt")]
         yes: bool,
     },
-    #[command(visible_alias = "m", about = "Migrate all A records to a new IP")]
+    #[command(
+        visible_alias = "m",
+        about = "Migrate all A records to a new IP",
+        long_about = "Repoint every existing Cloudflare A record under the domain at one \
+                      address.\n\n\
+                      The address is resolved exactly as `dns set-all` resolves it: -H names \
+                      a Host to read it off the Inventory, -i is the escape hatch for an \
+                      address the Inventory does not hold, and omitting both draws the Host \
+                      picker. The two conflict.\n\n\
+                      EXAMPLES:\n  \
+                      # Pick the target Host interactively, previewing first\n  \
+                      auberge dns migrate --dry-run\n\n  \
+                      # Migrate to a known Host's address\n  \
+                      auberge dns migrate --host new-vps\n\n  \
+                      # Migrate to an address outside the Inventory\n  \
+                      auberge dns migrate --ip 203.0.113.10"
+    )]
     Migrate {
-        #[arg(short, long, help = "New IP address")]
-        ip: String,
+        #[arg(
+            short = 'H',
+            long,
+            value_name = "HOST",
+            help = "Target host (omit to be prompted)"
+        )]
+        host: Option<String>,
+        #[arg(
+            short,
+            long,
+            value_name = "IP",
+            conflicts_with = "host",
+            help = "Override IP address"
+        )]
+        ip: Option<String>,
         #[arg(short = 'n', long, help = "Dry run (don't actually migrate)")]
         dry_run: bool,
         #[command(flatten)]
@@ -466,7 +495,7 @@ fn migration_json(outcome: &MigrationOutcome) -> MigrationOutput {
     }
 }
 
-fn print_migration(outcome: &MigrationOutcome, dry_run: bool) {
+fn print_migration(outcome: &MigrationOutcome, target_ip: &str, dry_run: bool) {
     print_mode_banner();
     if dry_run {
         eprintln!("[DRY RUN] DNS Migration Preview");
@@ -496,26 +525,39 @@ fn print_migration(outcome: &MigrationOutcome, dry_run: bool) {
     let skipped = tailnet_only_suffix(outcome.skipped.len());
     if dry_run {
         eprintln!(
-            "\nWould update {} A record(s).{}",
+            "\nWould update {} A record(s) to {}.{}",
             outcome.migrated.len(),
+            target_ip,
             skipped
         );
     } else {
         let success_count = outcome.migrated.iter().filter(|r| r.success).count();
-        eprintln!("\nUpdated {} A record(s).{}", success_count, skipped);
+        eprintln!(
+            "\nUpdated {} A record(s) to {}.{}",
+            success_count, target_ip, skipped
+        );
     }
 }
 
-pub async fn run_dns_migrate(ip: String, dry_run: bool, output: OutputFormat) -> Result<()> {
+/// The address is resolved before Cloudflare is reached: a Host that is not in
+/// the Inventory, or a picker that cannot be drawn, is the operator's mistake
+/// and costs no API round trip to report.
+pub async fn run_dns_migrate(
+    host: Option<String>,
+    ip: Option<String>,
+    dry_run: bool,
+    output: OutputFormat,
+) -> Result<()> {
+    let target_ip = resolve_target_ip(host, ip, false)?;
     let dns = CloudflareDns::connect().await?;
-    let outcome = crate::services::dns::migrate_all(&dns, &ip, dry_run).await?;
+    let outcome = crate::services::dns::migrate_all(&dns, &target_ip, dry_run).await?;
 
     match output {
         OutputFormat::Json => println!(
             "{}",
             serde_json::to_string_pretty(&migration_json(&outcome))?
         ),
-        OutputFormat::Human => print_migration(&outcome, dry_run),
+        OutputFormat::Human => print_migration(&outcome, &target_ip, dry_run),
     }
 
     Ok(())
