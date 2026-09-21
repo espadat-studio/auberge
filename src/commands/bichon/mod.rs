@@ -40,15 +40,22 @@ pub enum BichonCommands {
         about = "Verify one folder's Email Archive coverage by message identity"
     )]
     VerifyCoverage {
-        #[arg(short = 'H', long, help = "Target host running Bichon")]
-        host: String,
+        #[arg(
+            short = 'H',
+            long,
+            help = "Target host running Bichon (prompts if omitted; in a script a lone configured host is implied and several fail naming the flag rather than hang)"
+        )]
+        host: Option<String>,
         #[arg(
             long,
-            help = "Account email; it also names the Email Archive directory"
+            help = "Account email; it also names the Email Archive directory (prompts if omitted)"
         )]
-        account: String,
-        #[arg(long, help = "Folder whose coverage to verify")]
-        folder: String,
+        account: Option<String>,
+        #[arg(
+            long,
+            help = "Folder whose coverage to verify; must be one the account syncs (prompts if omitted)"
+        )]
+        folder: Option<String>,
         #[arg(
             long,
             value_name = "YYYY-MM-DD",

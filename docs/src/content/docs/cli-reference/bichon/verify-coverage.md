@@ -5,7 +5,7 @@ title: "auberge bichon verify-coverage"
 ## Synopsis
 
 ```bash
-auberge bichon verify-coverage --host <HOST> --account <EMAIL> --folder <NAME> --before <YYYY-MM-DD> [OPTIONS]
+auberge bichon verify-coverage [--host <HOST>] [--account <EMAIL>] [--folder <NAME>] --before <YYYY-MM-DD> [OPTIONS]
 ```
 
 ## Description
@@ -26,12 +26,22 @@ What this does **not** prove: that the live Upstream Mailbox holds nothing the s
 
 | Option              | Description                                           | Default                   |
 | ------------------- | ----------------------------------------------------- | ------------------------- |
-| -H, --host HOST     | Target host running Bichon                            | required                  |
-| --account EMAIL     | Account email; also names the Email Archive directory | required                  |
-| --folder NAME       | Folder whose coverage to verify (exact, case matters) | required                  |
+| -H, --host HOST     | Target host running Bichon                            | prompted                  |
+| --account EMAIL     | Account email; also names the Email Archive directory | prompted                  |
+| --folder NAME       | Folder whose coverage to verify (exact, case matters) | prompted                  |
 | --before YYYY-MM-DD | Verify messages dated strictly before this UTC date   | required                  |
 | --archive-path PATH | Email Archive root on the host                        | `/var/lib/bichon-archive` |
 | -o, --output FORMAT | Output format (`human`, `json`)                       | `human`                   |
+
+Omit any of the first three on a terminal and a picker is drawn for it, each offering what the answer above it makes available: the hosts in the Inventory, then the accounts that host's Bichon reports, then that account's Synced Folders — the set [reconcile-folders](/cli-reference/bichon/reconcile-folders/) writes. `--before` has no list to pick from, so it stays required and its absence is a usage error.
+
+Pickers cannot hang a script. With no terminal a lone candidate is implied, and several fail naming the flag rather than waiting for an answer nobody can give.
+
+The folder picker offers Synced Folders and nothing else, and `--folder` accepts nothing else either. The Archive can vouch only for folders it ingests continuously; sidecars for a folder that has left the set linger in the append-only Archive, so a coverage question about one would be answered on stale evidence. A folder outside the set used to match no store message and report `covered` over nothing.
+
+The set is the `sync_folders` Bichon holds: what [reconcile-folders](/cli-reference/bichon/reconcile-folders/) last wrote, and what the Archive is ingesting now. `examples/bichon-expunge.sh` starts from the same set and then narrows it — it re-reconciles against the live folder list and refuses a folder pending removal. That extra step guards a deletion. This command only reports, so it stops at the set.
+
+An `--account` Bichon does not report is an error naming the accounts it does.
 
 ## Exit codes
 
@@ -66,6 +76,9 @@ Needs both the Bichon API (account lookup and envelope search — same base URL 
 ## Examples
 
 ```bash
+# Pick the host, account and folder; only the cutoff has to be typed
+auberge bichon verify-coverage --before 2026-05-13
+
 # One folder, human verdict
 auberge bichon verify-coverage --host auberge --account me@example.com --folder INBOX --before 2026-05-13
 
