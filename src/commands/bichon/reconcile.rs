@@ -1,4 +1,4 @@
-use crate::commands::bichon::selection::{Bichon, connect, resolve_account_filter};
+use crate::commands::bichon::selection::{BichonConnection, connect, resolve_account_filter};
 use crate::hosts::{HOST_FLAG, select_or_arg};
 use crate::output::{self, OutputFormat};
 use crate::services::bichon::api::Account;
@@ -68,7 +68,7 @@ pub async fn compute_reconcile(
     let host_record = select_or_arg(host_arg, HOST_FLAG)?;
     let host = host_record.name.clone();
 
-    let Bichon {
+    let BichonConnection {
         config,
         client,
         accounts,
@@ -517,6 +517,9 @@ mod tests {
     async fn falls_back_to_global_bichon_base_url_when_per_host_missing() -> Result<()> {
         let _guard = crate::output::TEST_LOCK.lock().unwrap();
         let server = MockServer::start().await;
+        // Writes its own config rather than reusing `prepare_config`: the
+        // per-host `[bichon.hosts.auberge] base_url` that helper sets is the
+        // very thing whose absence this test is about.
         let tmp = tempfile::tempdir()?;
         let config_home = tmp.path().join("cfg");
         let data_home = tmp.path().join("data");

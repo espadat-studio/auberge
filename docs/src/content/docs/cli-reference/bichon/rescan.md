@@ -50,7 +50,7 @@ The `account` field of `--output json` carries the filter that was **resolved**,
 
 ## Access
 
-Needs both the Bichon API (account list — same base URL resolution and `bichon_api_token` as [reconcile-folders](/cli-reference/bichon/reconcile-folders/)) and SSH to the host (cursor reset, service start, journal read).
+Needs both the Bichon API (account list — same base URL resolution and `bichon_api_token` as [reconcile-folders](/cli-reference/bichon/reconcile-folders/)) and SSH to the host (cursor reset, service start, journal read). A host whose Bichon reports no accounts is refused in the same words there, because all three commands reach the API through one place.
 
 ## Examples
 

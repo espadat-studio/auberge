@@ -9,14 +9,18 @@ use eyre::Result;
 /// email, and `[all apps]` already sets this spelling in `deploy`.
 const ALL_ACCOUNTS: &str = "[all accounts]";
 
-/// One Host's Bichon, reached: the client the subcommand talks through, the
+/// A Host's Bichon, reached: the client the subcommand talks through, the
 /// Account roster that Bichon reports, and the Config both were read out of.
 ///
-/// `config` rides along rather than being re-loaded downstream because the
-/// token and the base URL already came from it — `reconcile-folders` reads
-/// its per-account exclusion overrides from the same load, so a run answers
-/// out of one view of `config.toml` rather than two.
-pub struct Bichon {
+/// Named for the connection rather than the App, because **Bichon** is the
+/// App in this repo's language and `config` here is *auberge's*, not
+/// Bichon's.
+///
+/// That Config rides along rather than being re-loaded downstream because
+/// the token and the base URL already came from it — `reconcile-folders`
+/// reads its per-account exclusion overrides from the same load, so a run
+/// answers out of one view of `config.toml` rather than two.
+pub struct BichonConnection {
     pub config: Config,
     pub client: BichonApiClient,
     pub accounts: Vec<Account>,
@@ -42,7 +46,7 @@ pub struct Bichon {
 /// the accounts a plan walks — so sorting once at the source is cheaper than
 /// each of them re-stating it and drifting. [`select_account`] and
 /// [`unknown_account`] trust this rather than re-sorting.
-pub async fn connect(host: &Host) -> Result<Bichon> {
+pub async fn connect(host: &Host) -> Result<BichonConnection> {
     let config = Config::load()?;
     let token = config
         .get_resolved("bichon_api_token")?
@@ -58,7 +62,7 @@ pub async fn connect(host: &Host) -> Result<Bichon> {
         host.name
     );
 
-    Ok(Bichon {
+    Ok(BichonConnection {
         config,
         client,
         accounts,
@@ -94,10 +98,8 @@ pub fn resolve_account_filter(
     match filter {
         Some(email) if known.iter().any(|k| k == &email) => Ok(Some(email)),
         Some(email) => Err(unknown_account(&email, known)),
-        // A picker over `[all accounts]` alone is not a question. No caller
-        // reaches this arm through [`connect`], which refuses an empty
-        // roster first; it holds the line for a roster narrowed to nothing
-        // by anything else.
+        // A picker over `[all accounts]` alone is not a question, so an
+        // empty `known` resolves the same way an unaskable one does.
         None if !can_prompt || known.is_empty() => Ok(None),
         None => {
             let mut items = Vec::with_capacity(known.len() + 1);

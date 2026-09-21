@@ -71,7 +71,7 @@ An `--account` Bichon does not report is an error naming the accounts it does.
 
 ## Access
 
-Needs both the Bichon API (account lookup and envelope search — same base URL resolution and `bichon_api_token` as [reconcile-folders](/cli-reference/bichon/reconcile-folders/)) and SSH to the host (the sidecar walk runs under `sudo`).
+Needs both the Bichon API (account lookup and envelope search — same base URL resolution and `bichon_api_token` as [reconcile-folders](/cli-reference/bichon/reconcile-folders/)) and SSH to the host (the sidecar walk runs under `sudo`). A host whose Bichon reports no accounts is refused in the same words there, because all three commands reach the API through one place.
 
 ## Examples
 
