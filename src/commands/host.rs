@@ -120,11 +120,11 @@ pub enum HostCommands {
         about = "Rename a host: remote hostname, hosts.toml entry, and key directory"
     )]
     Rename {
-        #[arg(help = "Current host name")]
-        old: String,
-        #[arg(help = "New host name")]
-        new: String,
-        #[arg(short, long, help = "Skip confirmation")]
+        #[arg(help = "Current host name (omit to be prompted)")]
+        old: Option<String>,
+        #[arg(help = "New host name (omit to be prompted)")]
+        new: Option<String>,
+        #[arg(short, long, help = "Skip confirmation (requires both names)")]
         yes: bool,
     },
     #[command(
@@ -577,7 +577,9 @@ pub fn run_host_edit(name: Option<String>) -> Result<()> {
     Ok(())
 }
 
-pub fn run_host_rename(old: String, new: String, yes: bool) -> Result<()> {
+pub fn run_host_rename(old: Option<String>, new: Option<String>, yes: bool) -> Result<()> {
+    let (old, new) = resolve_rename_names(old, new, yes)?;
+
     validate_rename_name(&old)?;
     validate_rename_name(&new)?;
 
@@ -639,6 +641,49 @@ pub fn run_host_rename(old: String, new: String, yes: bool) -> Result<()> {
     output::success(&format!("Host '{}' renamed to '{}'", old, new));
     print_rename_follow_ups(&old, &new);
     Ok(())
+}
+
+/// Both names, prompting for whichever was omitted (#924).
+///
+/// Neither positional reaches `hosts::select_or_arg`'s `Some` arm, and that
+/// is the constraint to preserve here. That arm resolves through
+/// `HostManager::get_host`, so a malformed `<old>` would be reported as
+/// missing from the roster before `validate_rename_name` ever got to call it
+/// malformed. An argv name is passed through exactly as given.
+///
+/// For the same reason `<old>` is validated here rather than only by the
+/// caller: it is the one check that can already fail, and asking for a new
+/// name before admitting the old one is unusable wastes the answer.
+///
+/// `--yes` keeps requiring both names. It skips the confirmation, and a
+/// confirmation skipped over a name the operator never saw is a rename nobody
+/// read; `headscale remove-user` refuses the same combination.
+fn resolve_rename_names(
+    old: Option<String>,
+    new: Option<String>,
+    yes: bool,
+) -> Result<(String, String)> {
+    eyre::ensure!(
+        !yes || (old.is_some() && new.is_some()),
+        "--yes requires both names: auberge host rename <old> <new> --yes"
+    );
+
+    // Both hints spell out which of the two positionals is missing:
+    // `HOST_POSITIONAL` says "the host name", and this command takes two.
+    let old = match old {
+        Some(name) => {
+            validate_rename_name(&name)?;
+            name
+        }
+        None => crate::hosts::select_or_arg(None, "the current host name as an argument")?.name,
+    };
+    let new = crate::prompt::text_or_arg(
+        new,
+        "New host name",
+        "the new host name as the second argument",
+    )?;
+
+    Ok((old, new))
 }
 
 /// The config file is optional for a rename — a fleet without one has no
@@ -952,6 +997,73 @@ mod tests {
             prefer_tailnet: false,
             unknown: toml::Table::new(),
         }
+    }
+
+    /// Two names given resolve to themselves: no picker, no prompt, and no
+    /// roster read, which is what keeps the two-positional form exactly as it
+    /// was before either became optional.
+    #[test]
+    fn two_names_given_resolve_to_themselves() {
+        assert_eq!(
+            resolve_rename_names(
+                Some("auberge".to_string()),
+                Some("vieille-auberge".to_string()),
+                true
+            )
+            .unwrap(),
+            ("auberge".to_string(), "vieille-auberge".to_string())
+        );
+    }
+
+    /// Each conjunct of the guard is pinned by its own case. Weakening it to
+    /// `!yes || new.is_some()` still refuses the first two, so without the
+    /// third — the only one where `<new>` is present and `<old>` is not —
+    /// `old.is_some()` would be unproven. Deleting the `ensure!` outright
+    /// drops the first case through to the no-TTY refusal, which names the
+    /// second argument rather than `--yes`.
+    #[test]
+    fn yes_requires_both_names_spelled_out() {
+        for (old, new) in [
+            (Some("auberge".to_string()), None),
+            (None, None),
+            (None, Some("vieille-auberge".to_string())),
+        ] {
+            let err = resolve_rename_names(old, new, true)
+                .unwrap_err()
+                .to_string();
+
+            assert!(err.contains("--yes requires both names"), "{err}");
+        }
+    }
+
+    /// A malformed `<old>` is rejected before the new-name prompt, not after
+    /// it: the operator types an answer only once the name they already gave
+    /// is known to be usable. Mutation-test by deleting the
+    /// `validate_rename_name` call in the `Some` arm — resolution then
+    /// reaches `text_or_arg`, and the error names the terminal instead.
+    #[test]
+    fn a_malformed_old_name_fails_before_the_new_name_is_asked_for() {
+        let err = resolve_rename_names(Some("bad name!".to_string()), None, false)
+            .unwrap_err()
+            .to_string();
+
+        assert!(err.contains("Invalid host name 'bad name!'"), "{err}");
+    }
+
+    /// Nobody can answer the new-name prompt without a terminal, and the
+    /// refusal has to land here — before the roster, the remote hostname and
+    /// the key directory are touched — so a scripted rename changes nothing.
+    #[test]
+    fn a_missing_new_name_is_refused_without_a_tty() {
+        let err = resolve_rename_names(Some("auberge".to_string()), None, false)
+            .unwrap_err()
+            .to_string();
+
+        assert!(err.contains("stdin is not a terminal"), "{err}");
+        assert!(
+            err.contains("the new host name as the second argument"),
+            "{err}"
+        );
     }
 
     #[test]

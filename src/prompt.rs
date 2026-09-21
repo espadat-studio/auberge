@@ -210,6 +210,31 @@ pub fn text(prompt: &str) -> Result<String> {
         .interact_text()?)
 }
 
+/// A required free-text answer, or `arg` when the caller already has one.
+///
+/// The free-text counterpart to [`crate::hosts::select_or_arg`], for a value
+/// with no candidate list to pick from (#924). It carries the same no-TTY
+/// discipline [`select_item`] does, and for a sharper reason: dialoguer reads
+/// the answer keystroke by keystroke off a `Term`, so without a terminal the
+/// prompt does not fail, it spins. `argument` is how the caller supplies the
+/// value instead, mirroring [`Choice::resolved_by`] — `Choice` itself does
+/// not fit, since its `noun` and `populate` describe candidates there are
+/// none of here.
+pub fn text_or_arg(arg: Option<String>, prompt: &str, argument: &str) -> Result<String> {
+    match arg {
+        Some(value) => Ok(value),
+        None => {
+            eyre::ensure!(
+                is_interactive(),
+                "No answer for '{}' and stdin is not a terminal — pass {}",
+                prompt,
+                argument
+            );
+            text(prompt)
+        }
+    }
+}
+
 /// A free-text answer with `default` offered, which an empty line accepts.
 ///
 /// Distinct from [`text_or_empty`] because dialoguer treats an empty line as
@@ -457,6 +482,31 @@ mod tests {
         .unwrap();
 
         assert_eq!(selected, "auberge");
+    }
+
+    #[test]
+    fn text_or_arg_passes_a_given_answer_straight_through() {
+        assert_eq!(
+            text_or_arg(Some("vieille-auberge".to_string()), "New host name", "x").unwrap(),
+            "vieille-auberge"
+        );
+    }
+
+    /// The third leg of the no-TTY policy, alongside `select_item`'s two: a
+    /// free-text answer nobody can type is refused, naming how to supply it.
+    /// Deleting the `ensure!` does not fail this test, it hangs it —
+    /// dialoguer spins on a `Term` it cannot read a key from, which is the
+    /// failure the guard exists to prevent.
+    #[test]
+    fn text_or_arg_refuses_rather_than_prompts_without_a_tty() {
+        let err = text_or_arg(None, "New host name", "the name as an argument")
+            .unwrap_err()
+            .to_string();
+
+        assert_eq!(
+            err,
+            "No answer for 'New host name' and stdin is not a terminal — pass the name as an argument"
+        );
     }
 
     #[test]
