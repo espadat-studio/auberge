@@ -5,23 +5,46 @@ title: "auberge dns migrate"
 Update all existing Cloudflare A records to a new IP. Alias: `auberge d m`.
 
 ```bash
-auberge dns migrate --ip <IP> [OPTIONS]
+auberge dns migrate [OPTIONS]
 ```
 
 ## Options
 
-| Option                | Description               | Default |
-| --------------------- | ------------------------- | ------- |
-| `-i, --ip IP`         | New IP address (required) | —       |
-| `-n, --dry-run`       | Preview without updating  | `false` |
-| `-o, --output FORMAT` | `human` or `json`         | `human` |
+| Option                | Description                           | Default     |
+| --------------------- | ------------------------------------- | ----------- |
+| `-H, --host HOST`     | Target host                           | Interactive |
+| `-i, --ip IP`         | Override IP (conflicts with `--host`) | From host   |
+| `-n, --dry-run`       | Preview without updating              | `false`     |
+| `-o, --output FORMAT` | `human` or `json`                     | `human`     |
+
+## Target address
+
+The address goes through the same resolver [`set-all`](/cli-reference/dns/set-all/) uses, so the two commands cannot read the same input as different addresses:
+
+| Given       | Resolves to                                                                       |
+| ----------- | --------------------------------------------------------------------------------- |
+| `-H <host>` | That host's address from the inventory. An unknown name errors and names the rest |
+| `-i <ip>`   | The address as typed — the escape hatch for one the inventory does not hold       |
+| Neither     | A picker listing each host with its address                                       |
+
+A migration target is nearly always a host `auberge` already knows, so `-H` is the usual flag and `-i` the exception.
+
+Resolution happens before Cloudflare is reached, so an unknown host or an undrawable picker costs no API call and rewrites nothing.
+
+:::caution
+Off-terminal with neither flag, the command exits 1 naming both flags, and writes no record. That holds however few hosts the inventory has — unlike `set-all`, which lets a lone host resolve itself off-terminal because its `Proceed?` gate still stands before any write. `migrate` has no gate: every A record moves the moment the address resolves, so the address must be stated.
+:::
+
+:::note
+`migrate` exits 1 on a target it cannot resolve, where `set-all` exits 2 for the same class of failure. The resolver is shared; the exit-code convention is not — `set-all` follows the Backup Verdict convention and `migrate` predates it. Branch per command, not across the pair.
+:::
 
 ## Examples
 
 ```bash
-auberge dns migrate --ip 10.0.0.5 --dry-run    # always preview first
-auberge dns migrate --ip 10.0.0.5
-auberge dns migrate --ip 10.0.0.5
+auberge dns migrate --dry-run                  # pick the host, always preview first
+auberge dns migrate --host new-vps
+auberge dns migrate --ip 10.0.0.5              # address outside the inventory
 ```
 
 ## Gotchas
@@ -36,8 +59,8 @@ auberge dns migrate --ip 10.0.0.5
 auberge ansible bootstrap new-vps --ip 10.0.0.5
 auberge ansible run --host new-vps
 auberge backup restore latest --from-host old-vps --host new-vps
-auberge dns migrate --ip 10.0.0.5 --dry-run
-auberge dns migrate --ip 10.0.0.5
+auberge dns migrate --host new-vps --dry-run
+auberge dns migrate --host new-vps
 dig +short cal.example.com    # verify
 ```
 
@@ -65,7 +88,7 @@ dig +short cal.example.com    # verify
 | ---------- | ----------- | ------- | ---------------------------------------- |
 | `migrated` | `subdomain` | string  | Subdomain label                          |
 | `migrated` | `old_ip`    | string  | IP before migration                      |
-| `migrated` | `new_ip`    | string  | IP after migration (the `--ip` argument) |
+| `migrated` | `new_ip`    | string  | IP after migration (the resolved target) |
 | `migrated` | `success`   | boolean | Cloudflare update succeeded              |
 | `skipped`  | `subdomain` | string  | Subdomain label of the untouched record  |
 | `skipped`  | `ip`        | string  | CGNAT address the record keeps           |

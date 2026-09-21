@@ -10,6 +10,34 @@ use clap::Subcommand;
 use eyre::Result;
 use serde::Serialize;
 
+// The address records point at, declared once for the two commands that write
+// records at one: `set-all` creates them, `migrate` repoints them. Re-pasting
+// the pair is exactly what let `migrate` drift into a required `--ip` with no
+// picker (#925), so the flatten makes the drift impossible rather than caught
+// (#818, `OutputArg`).
+//
+// Deliberately not a `///` doc comment: clap hands a flattened `Args` struct's
+// doc comment to every command that flattens it, as `about`, replacing the
+// command's own description.
+#[derive(clap::Args)]
+pub struct TargetAddressArg {
+    #[arg(
+        short = 'H',
+        long,
+        value_name = "HOST",
+        help = "Target host (omit to be prompted)"
+    )]
+    pub host: Option<String>,
+    #[arg(
+        short,
+        long,
+        value_name = "IP",
+        conflicts_with = "host",
+        help = "Override IP address"
+    )]
+    pub ip: Option<String>,
+}
+
 #[derive(Subcommand)]
 pub enum DnsCommands {
     #[command(visible_alias = "l", about = "List DNS records")]
@@ -65,10 +93,26 @@ pub enum DnsCommands {
         #[arg(short = 'y', long, help = "Skip confirmation prompt")]
         yes: bool,
     },
-    #[command(visible_alias = "m", about = "Migrate all A records to a new IP")]
+    #[command(
+        visible_alias = "m",
+        about = "Migrate all A records to a new IP",
+        long_about = "Repoint every existing Cloudflare A record under the domain at one \
+                      address.\n\n\
+                      The address is resolved exactly as `dns set-all` resolves it: -H names \
+                      a Host to read it off the Inventory, -i is the escape hatch for an \
+                      address the Inventory does not hold, and omitting both draws the Host \
+                      picker. The two conflict.\n\n\
+                      EXAMPLES:\n  \
+                      # Pick the target Host interactively, previewing first\n  \
+                      auberge dns migrate --dry-run\n\n  \
+                      # Migrate to a known Host's address\n  \
+                      auberge dns migrate --host new-vps\n\n  \
+                      # Migrate to an address outside the Inventory\n  \
+                      auberge dns migrate --ip 203.0.113.10"
+    )]
     Migrate {
-        #[arg(short, long, help = "New IP address")]
-        ip: String,
+        #[command(flatten)]
+        target: TargetAddressArg,
         #[arg(short = 'n', long, help = "Dry run (don't actually migrate)")]
         dry_run: bool,
         #[command(flatten)]
@@ -94,21 +138,8 @@ pub enum DnsCommands {
                       auberge dns set-all --host auberge --subdomains freshrss,baikal"
     )]
     SetAll {
-        #[arg(
-            short = 'H',
-            long,
-            value_name = "HOST",
-            help = "Target host (omit to be prompted)"
-        )]
-        host: Option<String>,
-        #[arg(
-            short,
-            long,
-            value_name = "IP",
-            conflicts_with = "host",
-            help = "Override IP address"
-        )]
-        ip: Option<String>,
+        #[command(flatten)]
+        target: TargetAddressArg,
         #[arg(short = 'n', long, help = "Preview changes without executing")]
         dry_run: bool,
         #[arg(short = 'y', long, help = "Skip confirmation prompt")]
@@ -466,7 +497,7 @@ fn migration_json(outcome: &MigrationOutcome) -> MigrationOutput {
     }
 }
 
-fn print_migration(outcome: &MigrationOutcome, dry_run: bool) {
+fn print_migration(outcome: &MigrationOutcome, target_ip: &str, dry_run: bool) {
     print_mode_banner();
     if dry_run {
         eprintln!("[DRY RUN] DNS Migration Preview");
@@ -496,26 +527,56 @@ fn print_migration(outcome: &MigrationOutcome, dry_run: bool) {
     let skipped = tailnet_only_suffix(outcome.skipped.len());
     if dry_run {
         eprintln!(
-            "\nWould update {} A record(s).{}",
+            "\nWould update {} A record(s) to {}.{}",
             outcome.migrated.len(),
+            target_ip,
             skipped
         );
     } else {
         let success_count = outcome.migrated.iter().filter(|r| r.success).count();
-        eprintln!("\nUpdated {} A record(s).{}", success_count, skipped);
+        eprintln!(
+            "\nUpdated {} A record(s) to {}.{}",
+            success_count, target_ip, skipped
+        );
     }
 }
 
-pub async fn run_dns_migrate(ip: String, dry_run: bool, output: OutputFormat) -> Result<()> {
+/// `set-all` lets a lone Host auto-select off-terminal, because its plan
+/// preview and `Proceed?` gate still stand between that pick and any write —
+/// and `confirm` refuses off-terminal without `--yes`, so the auto-select
+/// cannot write anything by itself. `migrate` has no gate: every A record
+/// moves the moment the address resolves. The precondition that makes the
+/// auto-select safe does not survive the move, so off-terminal `migrate`
+/// requires the address to be stated however few Hosts the Inventory holds.
+///
+/// `interactive` is a parameter rather than a read, because `cargo test` never
+/// has a terminal: taken as a read, the refusal below could only be exercised
+/// on the branch the tests already take, and its absence would look identical.
+fn resolve_migrate_target(target: TargetAddressArg, interactive: bool) -> Result<String> {
+    if target.host.is_none() && target.ip.is_none() && !interactive {
+        eyre::bail!("No target address and stdin is not a terminal — pass -H <host> or -i <ip>");
+    }
+    resolve_target_ip(target.host, target.ip, false)
+}
+
+/// The address is resolved before Cloudflare is reached: a Host that is not in
+/// the Inventory, or a picker that cannot be drawn, is the operator's mistake
+/// and costs no API round trip to report.
+pub async fn run_dns_migrate(
+    target: TargetAddressArg,
+    dry_run: bool,
+    output: OutputFormat,
+) -> Result<()> {
+    let target_ip = resolve_migrate_target(target, crate::prompt::is_interactive())?;
     let dns = CloudflareDns::connect().await?;
-    let outcome = crate::services::dns::migrate_all(&dns, &ip, dry_run).await?;
+    let outcome = crate::services::dns::migrate_all(&dns, &target_ip, dry_run).await?;
 
     match output {
         OutputFormat::Json => println!(
             "{}",
             serde_json::to_string_pretty(&migration_json(&outcome))?
         ),
-        OutputFormat::Human => print_migration(&outcome, dry_run),
+        OutputFormat::Human => print_migration(&outcome, &target_ip, dry_run),
     }
 
     Ok(())
@@ -1396,6 +1457,47 @@ mod tests {
         assert_eq!(
             err.to_string(),
             "No hosts configured — run `auberge host add`"
+        );
+    }
+
+    // The hole this closes: `select_item` hands back a lone candidate without a
+    // TTY, which `set-all` can afford (its `Proceed?` gate refuses off-terminal
+    // without --yes) and `migrate` cannot (no gate — the write follows the
+    // resolve). Asserted on the exact string, because the message
+    // `target_ip_from_inventory` raises for 2+ Hosts also names both flags:
+    // a `contains` assertion here would pass on a multi-Host machine with the
+    // guard deleted.
+    #[test]
+    fn migrate_refuses_to_guess_a_target_off_terminal() {
+        let err = resolve_migrate_target(
+            TargetAddressArg {
+                host: None,
+                ip: None,
+            },
+            false,
+        )
+        .unwrap_err();
+        assert_eq!(
+            err.to_string(),
+            "No target address and stdin is not a terminal — pass -H <host> or -i <ip>"
+        );
+    }
+
+    // The other side of the guard: off-terminal is not a refusal on its own,
+    // it is a refusal to *guess*. A stated address still runs, which is what
+    // makes `migrate` scriptable.
+    #[test]
+    fn migrate_takes_a_stated_address_off_terminal() {
+        assert_eq!(
+            resolve_migrate_target(
+                TargetAddressArg {
+                    host: None,
+                    ip: Some("203.0.113.10".to_string()),
+                },
+                false,
+            )
+            .unwrap(),
+            "203.0.113.10"
         );
     }
 
