@@ -12,10 +12,11 @@
 #                   The forge becomes origin.
 #   2. push mirror  points back at GitHub, syncing on every commit. GitHub goes
 #                   on running CI and the deploy; it is now a replica.
-#   3. oauth app    its redirect URI is the Decap admin page itself, and
-#                   confidential_client is false. A browser app holds no secret,
-#                   and leaving it true is the documented cause of "Impossible
-#                   to login with forgejo" (decap-cms#7867).
+#   3. oauth app    one redirect URI per <site-origin>, each the Decap admin
+#                   page itself, and confidential_client is false. A browser
+#                   app holds no secret, and leaving it true is the documented
+#                   cause of "Impossible to login with forgejo"
+#                   (decap-cms#7867).
 #
 # It then prints the backend block to paste into the site's Decap config.
 #
@@ -32,17 +33,28 @@
 #   GITHUB_TOKEN    GitHub PAT that can read the source repository, and push to
 #                   it — the mirror reuses this one credential
 #
-# Re-running is safe. Every step looks for its own result first and skips it,
-# so an interrupted run resumes and an onboarded repository reports its client
-# ID again instead of registering a second application.
+# Re-running is safe, and it is also how the redirect URIs are changed. The
+# migrate and mirror steps look for their own result and skip it; the OAuth
+# step reconciles instead, PATCHing the application to exactly the origins
+# given on this run. The client ID survives that, so the site's Decap config
+# never has to be edited — a site moving from a staging host to its real
+# domain is one re-run with both origins passed.
+#
+# Pass every origin the admin page will be served from. OAuth redirect
+# matching is exact: an origin that is not listed cannot log in, and a
+# per-deployment preview URL will not match the production one.
 #
 # Verified against Forgejo 16.0.5+gitea-1.22.0.
 
 set -euo pipefail
 
-readonly USAGE="usage: ${0##*/} <github-owner/repo> <site-origin>
+readonly USAGE="usage: ${0##*/} <github-owner/repo> <site-origin>...
 
-  ${0##*/} espadat-studio/nathalieconan.fr https://nathalieconan.fr"
+  ${0##*/} espadat-studio/nathalieconan.fr https://nathalieconan.fr \\
+    https://site.example.workers.dev http://localhost:4321
+
+Each <site-origin> becomes the redirect URI <site-origin>/admin/. The set is
+replaced on every run, so pass all of them every time."
 
 # Set by main() before the first api call. Globals rather than main()'s locals
 # because the EXIT trap outlives main(): it runs once the frame is gone, so a
@@ -79,9 +91,10 @@ api_code() {
 }
 
 main() {
-  [[ $# -eq 2 ]] || die "$USAGE"
+  [[ $# -ge 2 ]] || die "$USAGE"
 
-  local source="$1" site="${2%/}"
+  local source="$1"
+  shift
   [[ $source == */* ]] || die "expected <github-owner/repo>, got: ${source}"
 
   local var
@@ -93,8 +106,13 @@ main() {
 
   forge="${FORGEJO_URL%/}"
   local repo="${source#*/}"
-  local redirect="${site}/admin/"
   local clone="https://github.com/${source}.git"
+
+  local site redirects=()
+  for site in "$@"; do
+    [[ $site == http*://* ]] || die "expected an origin URL, got: ${site}"
+    redirects+=("${site%/}/admin/")
+  done
 
   # The token is written to a 0600 config rather than passed as an argument, so
   # it never appears in the process list.
@@ -141,21 +159,30 @@ main() {
     note 'github.com is now a REPLICA — do not push to it by hand'
   fi
 
-  step "OAuth application for ${redirect}"
-  local app_name="decap-${repo}" apps client_id
+  local app_name="decap-${repo}"
+  step "OAuth application ${app_name}"
+  local apps existing payload client_id
   apps="$(api GET /user/applications/oauth2)"
-  client_id="$(jq -r --arg n "${app_name}" \
-    'map(select(.name == $n)) | first | .client_id // empty' <<<"${apps}")"
-  if [[ -n ${client_id} ]]; then
-    note 'already registered, reusing its client ID'
+  existing="$(jq -c --arg n "${app_name}" \
+    'map(select(.name == $n)) | first // empty' <<<"${apps}")"
+  payload="$(jq -n --arg name "${app_name}" \
+    --argjson uris "$(jq -nc '$ARGS.positional' --args "${redirects[@]}")" \
+    '{name: $name, redirect_uris: $uris, confidential_client: false}')"
+  if [[ -n ${existing} ]]; then
+    # PATCH rather than skip: the redirect URIs are the one thing a re-run is
+    # expected to change, and the client ID survives it.
+    client_id="$(jq -r '.client_id' <<<"${existing}")"
+    api PATCH "/user/applications/oauth2/$(jq -r '.id' <<<"${existing}")" \
+      --data "${payload}" >/dev/null
+    note 'already registered, client ID unchanged'
   else
-    client_id="$(jq -n \
-      --arg name "${app_name}" \
-      --arg uri "${redirect}" \
-      '{name: $name, redirect_uris: [$uri], confidential_client: false}' \
-      | api POST /user/applications/oauth2 --data @- | jq -r '.client_id')"
+    client_id="$(api POST /user/applications/oauth2 --data "${payload}" \
+      | jq -r '.client_id')"
     note 'registered as a public client, no secret to store'
   fi
+  for site in "${redirects[@]}"; do
+    note "redirect ${site}"
+  done
 
   step 'Decap backend block'
   cat <<CONFIG
