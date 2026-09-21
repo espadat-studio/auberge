@@ -84,20 +84,22 @@ impl Choice {
         }
     }
 
-    fn not_interactive(&self, candidates: usize) -> eyre::Report {
-        match &self.argument {
-            Some(argument) => eyre::eyre!(
-                "{} {}s to choose from and stdin is not a terminal — pass {}",
-                candidates,
-                self.noun,
-                argument
-            ),
-            None => eyre::eyre!(
-                "{} {}s to choose from and stdin is not a terminal",
-                candidates,
-                self.noun
-            ),
-        }
+    /// `candidates` is the picker's own rendered rows, so the operator reads
+    /// the values a picker would have offered instead of running a second
+    /// command to learn them.
+    fn not_interactive(&self, candidates: &[String]) -> eyre::Report {
+        let hint = match &self.argument {
+            Some(argument) => format!(" — pass {}", argument),
+            None => String::new(),
+        };
+
+        eyre::eyre!(
+            "{} {}s to choose from and stdin is not a terminal{}: {}",
+            candidates.len(),
+            self.noun,
+            hint,
+            name_candidates(candidates)
+        )
     }
 
     fn aborted(&self) -> eyre::Report {
@@ -105,9 +107,34 @@ impl Choice {
     }
 }
 
+/// `config get` offers one candidate per Key Registry entry — 70 of them
+/// today — and the reader on the non-interactive path is a log rather than
+/// someone who can scroll.
+///
+/// Not every picker can reach this error: `headscale`, `bichon` and `backup`'s
+/// ID picker sit behind their own `is_tty` guards and bail before
+/// `select_item`, so the cap is sized for the callers that do reach it.
+const MAX_NAMED_CANDIDATES: usize = 10;
+
+fn name_candidates(candidates: &[String]) -> String {
+    if candidates.len() <= MAX_NAMED_CANDIDATES {
+        return candidates.join(", ");
+    }
+
+    format!(
+        "{}, and {} more",
+        candidates[..MAX_NAMED_CANDIDATES].join(", "),
+        candidates.len() - MAX_NAMED_CANDIDATES
+    )
+}
+
 /// Picks one of `items`, or fails with the reason no pick happened.
 ///
 /// A lone candidate is auto-selected without a TTY: the choice is not a choice.
+///
+/// `display_fn` runs for every item even when no picker is drawn: the
+/// non-interactive error names the same rows the picker would have listed,
+/// and rendering them a second time would let the two drift.
 pub fn select_item<T, F>(items: &[T], display_fn: F, choice: Choice) -> Result<T>
 where
     T: Clone,
@@ -117,14 +144,15 @@ where
         return Err(choice.no_candidates());
     }
 
+    let display_items: Vec<String> = items.iter().map(&display_fn).collect();
+
     if !is_interactive() {
         if let [only] = items {
             return Ok(only.clone());
         }
-        return Err(choice.not_interactive(items.len()));
+        return Err(choice.not_interactive(&display_items));
     }
 
-    let display_items: Vec<String> = items.iter().map(&display_fn).collect();
     let theme = dialoguer_theme();
 
     // `.default(0)` is load-bearing: `FuzzySelect` only accepts Enter while a
@@ -350,7 +378,7 @@ mod tests {
 
         assert_eq!(
             err.to_string(),
-            "2 hosts to choose from and stdin is not a terminal — pass -H <host>"
+            "2 hosts to choose from and stdin is not a terminal — pass -H <host>: auberge, hermes"
         );
     }
 
@@ -360,7 +388,57 @@ mod tests {
 
         assert_eq!(
             err.to_string(),
-            "2 hosts to choose from and stdin is not a terminal"
+            "2 hosts to choose from and stdin is not a terminal: auberge, hermes"
+        );
+    }
+
+    #[test]
+    fn select_item_names_candidates_the_way_the_picker_draws_them() {
+        // The names come from display_fn, the same rows FuzzySelect would
+        // have listed. Formatting them a second time here would let the
+        // error and the picker drift apart.
+        let hosts = vec![
+            ("auberge".to_string(), "203.0.113.10".to_string()),
+            ("hermes".to_string(), "198.51.100.7".to_string()),
+        ];
+        let err = select_item(
+            &hosts,
+            |(name, ip): &(String, String)| format!("{} ({})", name, ip),
+            Choice::new("host").resolved_by("-H <host>"),
+        )
+        .unwrap_err();
+
+        assert_eq!(
+            err.to_string(),
+            "2 hosts to choose from and stdin is not a terminal — pass -H <host>: auberge (203.0.113.10), hermes (198.51.100.7)"
+        );
+    }
+
+    #[test]
+    fn select_item_names_every_candidate_up_to_the_cap() {
+        let keys: Vec<String> = (1..=10).map(|n| format!("key-{}", n)).collect();
+        let err =
+            select_item(&keys, |s: &String| s.clone(), Choice::new("config key")).unwrap_err();
+
+        assert_eq!(
+            err.to_string(),
+            "10 config keys to choose from and stdin is not a terminal: key-1, key-2, key-3, key-4, key-5, key-6, key-7, key-8, key-9, key-10"
+        );
+    }
+
+    #[test]
+    fn select_item_caps_a_long_candidate_list_and_counts_the_withheld() {
+        let keys: Vec<String> = (1..=13).map(|n| format!("key-{}", n)).collect();
+        let err = select_item(
+            &keys,
+            |s: &String| s.clone(),
+            Choice::new("config key").resolved_by("the key as an argument"),
+        )
+        .unwrap_err();
+
+        assert_eq!(
+            err.to_string(),
+            "13 config keys to choose from and stdin is not a terminal — pass the key as an argument: key-1, key-2, key-3, key-4, key-5, key-6, key-7, key-8, key-9, key-10, and 3 more"
         );
     }
 

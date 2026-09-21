@@ -1366,13 +1366,15 @@ mod tests {
     // `cargo test` runs without a TTY, so this is the scripted path: no
     // picker can be drawn, and the error must name both flags because either
     // one resolves the input (--ip being the not-in-inventory escape hatch).
+    // The inventory rows come with it, rendered by this caller's display_fn,
+    // so the operator does not run a second command to learn what to pass.
     #[test]
-    fn target_ip_from_inventory_names_both_flags_when_it_cannot_prompt() {
+    fn target_ip_from_inventory_names_both_flags_and_the_inventory_when_it_cannot_prompt() {
         let hosts = inventory(&[("auberge", "203.0.113.10"), ("hermes", "198.51.100.7")]);
         let err = target_ip_from_inventory(None, hosts).unwrap_err();
         assert_eq!(
             err.to_string(),
-            "2 hosts to choose from and stdin is not a terminal — pass -H <host> (or -i <ip>)"
+            "2 hosts to choose from and stdin is not a terminal — pass -H <host> (or -i <ip>): auberge (203.0.113.10), hermes (198.51.100.7)"
         );
     }
 
