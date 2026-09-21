@@ -1,9 +1,6 @@
-use crate::commands::bichon::selection::resolve_account_filter;
-use crate::config::Config;
+use crate::commands::bichon::selection::{connect, resolve_account_filter};
 use crate::hosts::{HOST_FLAG, select_or_arg};
 use crate::output::{self, OutputFormat};
-use crate::services::bichon::api::BichonApiClient;
-use crate::services::bichon::derive_base_url;
 use crate::services::bichon::rescan::{
     ARCHIVE_SERVICE, AccountReport, RescanOutcome, RescanRun, execute_rescan,
 };
@@ -32,20 +29,15 @@ async fn rescan_inner(
 ) -> Result<i32> {
     let host = select_or_arg(host_arg, HOST_FLAG)?;
 
-    let config = Config::load()?;
-    let token = config
-        .get_resolved("bichon_api_token")?
-        .filter(|v| !v.trim().is_empty())
-        .ok_or_else(|| eyre::eyre!("bichon_api_token not set in config.toml"))?;
-    let base_url = derive_base_url(&config, &host)?;
-    let client = BichonApiClient::new(base_url, token)?;
-
-    let mut accounts = client.list_accounts().await?;
-    accounts.sort_by(|a, b| a.email.cmp(&b.email));
-    let known: Vec<String> = accounts.into_iter().map(|a| a.email).collect();
-    if known.is_empty() {
-        eyre::bail!("Bichon reports no accounts on '{}'", host.name);
-    }
+    // The roster is all this command wants from Bichon: the rescan itself
+    // runs over SSH. Ordered and non-empty by `connect`'s contract, so the
+    // cursor reset walks the accounts in the order the picker offered them.
+    let known: Vec<String> = connect(&host)
+        .await?
+        .accounts
+        .into_iter()
+        .map(|a| a.email)
+        .collect();
 
     let account = resolve_account_filter(account_filter, &known, crate::prompt::is_interactive())?;
     let selected = match &account {

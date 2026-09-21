@@ -80,6 +80,8 @@ The base URL for the Bichon API is resolved in this order (first match wins):
 
 If neither a per-host override, a global `bichon_base_url`, nor `domain` is set, the command fails with an explicit error naming the host.
 
+A host whose Bichon reports no accounts at all fails the same way: `Bichon reports no accounts on '<host>'`. [rescan](/cli-reference/bichon/rescan/) and [verify-coverage](/cli-reference/bichon/verify-coverage/) refuse in the same words, because all three reach the Bichon API through one place. Reconciling against an empty roster used to print an empty plan and exit 0, which reads as "nothing to do" when the truth is "nothing to do it to".
+
 ## Required config keys
 
 | Key                                                       | Purpose                                             |

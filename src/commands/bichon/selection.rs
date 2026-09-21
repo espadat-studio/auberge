@@ -1,10 +1,73 @@
+use crate::config::Config;
+use crate::hosts::Host;
 use crate::prompt;
-use crate::services::bichon::api::Account;
+use crate::services::bichon::api::{Account, BichonApiClient};
+use crate::services::bichon::derive_base_url;
 use eyre::Result;
 
 /// Reads as a meta-entry rather than an address: every other picker row is an
 /// email, and `[all apps]` already sets this spelling in `deploy`.
 const ALL_ACCOUNTS: &str = "[all accounts]";
+
+/// A Host's Bichon, reached: the client the subcommand talks through, the
+/// Account roster that Bichon reports, and the Config both were read out of.
+///
+/// Named for the connection rather than the App, because **Bichon** is the
+/// App in this repo's language and `config` here is *auberge's*, not
+/// Bichon's.
+///
+/// That Config rides along rather than being re-loaded downstream because
+/// the token and the base URL already came from it — `reconcile-folders`
+/// reads its per-account exclusion overrides from the same load, so a run
+/// answers out of one view of `config.toml` rather than two.
+pub struct BichonConnection {
+    pub config: Config,
+    pub client: BichonApiClient,
+    pub accounts: Vec<Account>,
+}
+
+/// The connection every `bichon` subcommand opens before it can ask anything:
+/// the token, the base URL, the client and the roster in one place.
+///
+/// `rescan`, `reconcile-folders` and `verify-coverage` each held a copy of
+/// these lines, and the copies had drifted in two ways that are settled here
+/// rather than inherited (#934). #922 moved the Account question into this
+/// module; the connection that has to happen before the question can be
+/// asked now moves with it.
+///
+/// **An empty roster is a refusal, and it names the Host.** Every subcommand
+/// acts on a Host's Bichon, so "which Bichon" belongs in the answer:
+/// `reconcile-folders` used to report an empty plan and exit 0, which reads
+/// as "nothing to do" when the truth is "nothing to do it to". The one
+/// wording is `rescan`'s, because it was the only one that named the Host.
+///
+/// **The roster is ordered here**, and nowhere below. Every consumer wants
+/// the same order — the rows a picker draws, the addresses a refusal lists,
+/// the accounts a plan walks — so sorting once at the source is cheaper than
+/// each of them re-stating it and drifting. [`select_account`] and
+/// [`unknown_account`] trust this rather than re-sorting.
+pub async fn connect(host: &Host) -> Result<BichonConnection> {
+    let config = Config::load()?;
+    let token = config
+        .get_resolved("bichon_api_token")?
+        .filter(|v| !v.trim().is_empty())
+        .ok_or_else(|| eyre::eyre!("bichon_api_token not set in config.toml"))?;
+    let client = BichonApiClient::new(derive_base_url(&config, host)?, token)?;
+
+    let mut accounts = client.list_accounts().await?;
+    accounts.sort_by(|a, b| a.email.cmp(&b.email));
+    eyre::ensure!(
+        !accounts.is_empty(),
+        "Bichon reports no accounts on '{}'",
+        host.name
+    );
+
+    Ok(BichonConnection {
+        config,
+        client,
+        accounts,
+    })
+}
 
 /// The `--account` filter, resolved. `None` selects every Account Bichon
 /// reports.
@@ -35,8 +98,8 @@ pub fn resolve_account_filter(
     match filter {
         Some(email) if known.iter().any(|k| k == &email) => Ok(Some(email)),
         Some(email) => Err(unknown_account(&email, known)),
-        // Nothing to ask about when Bichon reports nothing: `reconcile-folders`
-        // runs against an empty roster and reports an empty plan.
+        // A picker over `[all accounts]` alone is not a question, so an
+        // empty `known` resolves the same way an unaskable one does.
         None if !can_prompt || known.is_empty() => Ok(None),
         None => {
             let mut items = Vec::with_capacity(known.len() + 1);
@@ -55,15 +118,14 @@ pub fn resolve_account_filter(
 /// The one refusal both Account resolvers hand back, so a typo reads the same
 /// whether it narrowed a listing or named a subject.
 ///
-/// Sorted here so the list it names is the list a picker would have drawn,
-/// whatever order the roster arrived in.
+/// The list is named in the order it arrives, which [`connect`] has already
+/// set: the addresses a refusal prints are the rows a picker would have
+/// drawn because both read the same roster, not because both sort it.
 fn unknown_account(email: &str, known: &[String]) -> eyre::Report {
-    let mut reported: Vec<&str> = known.iter().map(String::as_str).collect();
-    reported.sort_unstable();
-    let reported = if reported.is_empty() {
+    let reported = if known.is_empty() {
         "no accounts".to_string()
     } else {
-        reported.join(", ")
+        known.join(", ")
     };
     eyre::eyre!("unknown account '{email}'; Bichon reports {reported}")
 }
@@ -83,31 +145,25 @@ fn unknown_account(email: &str, known: &[String]) -> eyre::Report {
 /// The no-TTY policy is [`prompt::select_item`]'s, unchanged: a lone Account
 /// is implied and several error naming `--account`.
 ///
-/// The roster is ordered here rather than trusted from the API or from the
-/// caller, so the picker's rows and the refusal's list read the same way
-/// whoever asks.
+/// `accounts` is [`connect`]'s roster: non-empty and ordered by email. Both
+/// are its entry condition rather than this function's job — an empty roster
+/// is refused there, naming the Host, which is a thing only the caller of
+/// `connect` knows.
 pub fn select_account(arg: Option<String>, accounts: &[Account]) -> Result<Account> {
-    let mut roster = accounts.to_vec();
-    roster.sort_by(|a, b| a.email.cmp(&b.email));
-
     match arg {
-        Some(email) => roster
-            .into_iter()
+        Some(email) => accounts
+            .iter()
             .find(|a| a.email == email)
+            .cloned()
             .ok_or_else(|| {
                 let known: Vec<String> = accounts.iter().map(|a| a.email.clone()).collect();
                 unknown_account(&email, &known)
             }),
-        None => {
-            // `select_item` would call this "No accounts configured", which
-            // reads as auberge's own config; the roster is Bichon's.
-            eyre::ensure!(!roster.is_empty(), "Bichon reports no accounts");
-            prompt::select_item(
-                &roster,
-                |a: &Account| a.email.clone(),
-                prompt::Choice::new("account").resolved_by("--account <email>"),
-            )
-        }
+        None => prompt::select_item(
+            accounts,
+            |a: &Account| a.email.clone(),
+            prompt::Choice::new("account").resolved_by("--account <email>"),
+        ),
     }
 }
 
@@ -128,8 +184,8 @@ pub fn select_account(arg: Option<String>, accounts: &[Account]) -> Result<Accou
 /// folder list and refusing a folder pending removal — because it is about
 /// to delete mail. This command only reports, so it stops at the set.
 ///
-/// The set is sorted here rather than trusted from the API, so the picker's
-/// rows and the refusal's list read in one order.
+/// The set is sorted here rather than trusted from the API: [`connect`]
+/// orders the roster, not the folders inside each Account.
 pub fn select_synced_folder(arg: Option<String>, account: &Account) -> Result<String> {
     let mut synced = account.sync_folders.clone();
     synced.sort();
@@ -157,9 +213,82 @@ pub fn select_synced_folder(arg: Option<String>, account: &Account) -> Result<St
     }
 }
 
+/// The config a `bichon` test runs [`connect`] against, written once.
+///
+/// It lives here rather than in a test module of its own because every
+/// `bichon` command reaches Bichon through `connect`, so every `bichon`
+/// command's tests need the same Host, token and base URL to reach it — the
+/// same argument that collapsed the three copies of `connect` itself.
+#[cfg(test)]
+pub(super) mod test_support {
+    use crate::output::EnvVarGuard;
+    use eyre::Result;
+    use std::fs;
+    use tempfile::TempDir;
+    use wiremock::MockServer;
+
+    /// Keeps the temp tree and the env guards alive for the test's length;
+    /// dropping it restores the previous `XDG_*` values.
+    pub(crate) struct TestEnv {
+        _tmp: TempDir,
+        _xdg_config: EnvVarGuard,
+        _xdg_data: EnvVarGuard,
+    }
+
+    /// One Host named `auberge`, a token, and a per-host base URL pointed at
+    /// `server`.
+    ///
+    /// Caller MUST hold [`crate::output::TEST_LOCK`]: the guards mutate
+    /// process env.
+    pub(crate) fn prepare_config(server: &MockServer) -> Result<TestEnv> {
+        let tmp = tempfile::tempdir()?;
+        let config_home = tmp.path().join("cfg");
+        let data_home = tmp.path().join("data");
+        fs::create_dir_all(config_home.join("auberge"))?;
+        fs::create_dir_all(&data_home)?;
+        fs::write(
+            config_home.join("auberge/config.toml"),
+            format!(
+                r#"
+domain = "example.com"
+bichon_api_token = "token-123"
+[bichon.hosts.auberge]
+base_url = "{}"
+[bichon.account_overrides."me@sripwoud.xyz"]
+extra_excluded_folders = ["Receipts/2019"]
+"#,
+                server.uri()
+            ),
+        )?;
+        fs::write(
+            config_home.join("auberge/hosts.toml"),
+            r#"
+[[hosts]]
+name = "auberge"
+address = "100.100.100.10"
+user = "root"
+tailscale_ip = "100.100.100.10"
+"#,
+        )?;
+
+        let xdg_config = EnvVarGuard::set("XDG_CONFIG_HOME", &config_home);
+        let xdg_data = EnvVarGuard::set("XDG_DATA_HOME", &data_home);
+        Ok(TestEnv {
+            _tmp: tmp,
+            _xdg_config: xdg_config,
+            _xdg_data: xdg_data,
+        })
+    }
+}
+
 #[cfg(test)]
 mod tests {
+    use super::test_support::prepare_config;
     use super::*;
+    use crate::hosts::HostManager;
+    use serde_json::json;
+    use wiremock::matchers::{method, path};
+    use wiremock::{Mock, MockServer, ResponseTemplate};
 
     fn known() -> Vec<String> {
         vec!["a@x.io".to_string(), "b@x.io".to_string()]
@@ -200,27 +329,27 @@ mod tests {
         assert_eq!(resolve_account_filter(None, &[], true).unwrap(), None);
     }
 
-    /// Deliberately out of order, so a dropped sort shows up in the rows the
-    /// refusals name.
+    /// `connect`'s roster, as the resolvers below receive it: ordered by
+    /// email, which is why nothing below sorts again.
     fn accounts() -> Vec<Account> {
         vec![
-            Account {
-                id: 2,
-                email: "b@x.io".to_string(),
-                sync_folders: Vec::new(),
-            },
             Account {
                 id: 1,
                 email: "a@x.io".to_string(),
                 sync_folders: vec!["Sent".to_string(), "INBOX".to_string()],
             },
+            Account {
+                id: 2,
+                email: "b@x.io".to_string(),
+                sync_folders: Vec::new(),
+            },
         ]
     }
 
-    /// The Account with two Synced Folders; `accounts()` holds it second so
-    /// the ordering assertions below have something to prove.
+    /// The Account with two Synced Folders, deliberately unsorted so the
+    /// folder assertions below have something to prove.
     fn synced() -> Account {
-        accounts().remove(1)
+        accounts().remove(0)
     }
 
     #[test]
@@ -235,9 +364,10 @@ mod tests {
     #[test]
     fn an_unknown_subject_account_reports_what_bichon_does() {
         let err = select_account(Some("ghost@x.io".to_string()), &accounts()).unwrap_err();
-        let msg = format!("{err}");
-        assert!(msg.contains("ghost@x.io"), "{msg}");
-        assert!(msg.contains("a@x.io, b@x.io"), "{msg}");
+        assert_eq!(
+            err.to_string(),
+            "unknown account 'ghost@x.io'; Bichon reports a@x.io, b@x.io"
+        );
     }
 
     /// `cargo test` runs without a TTY, so this and the next assert the
@@ -254,15 +384,6 @@ mod tests {
         let err = select_account(None, &accounts()).unwrap_err().to_string();
         assert!(err.contains("--account <email>"), "{err}");
         assert!(err.contains("a@x.io, b@x.io"), "{err}");
-    }
-
-    /// An Account Bichon reports nothing for is not the same question as an
-    /// address it does not know, and "No accounts configured" would send the
-    /// operator to auberge's own config.
-    #[test]
-    fn an_empty_bichon_roster_says_whose_roster_is_empty() {
-        let err = select_account(None, &[]).unwrap_err().to_string();
-        assert_eq!(err, "Bichon reports no accounts");
     }
 
     #[test]
@@ -293,10 +414,10 @@ mod tests {
         let expected = "b@x.io syncs no folder, so the Email Archive can vouch for nothing — \
                         run `auberge bichon reconcile-folders --apply`";
 
-        let named = select_synced_folder(Some("INBOX".to_string()), &accounts()[0])
+        let named = select_synced_folder(Some("INBOX".to_string()), &accounts()[1])
             .unwrap_err()
             .to_string();
-        let omitted = select_synced_folder(None, &accounts()[0])
+        let omitted = select_synced_folder(None, &accounts()[1])
             .unwrap_err()
             .to_string();
 
@@ -325,16 +446,62 @@ mod tests {
         assert!(err.contains("INBOX, Sent"), "{err}");
     }
 
-    /// The roster arrives unsorted, so the refusal's list proves the ordering
-    /// is this function's job rather than each caller's.
-    #[test]
-    fn the_account_refusal_names_the_roster_in_one_order() {
-        let err = select_account(Some("ghost@x.io".to_string()), &accounts())
-            .unwrap_err()
-            .to_string();
-        assert_eq!(
-            err,
-            "unknown account 'ghost@x.io'; Bichon reports a@x.io, b@x.io"
-        );
+    fn host() -> Host {
+        HostManager::get_host("auberge").unwrap()
+    }
+
+    async fn mount_roster(server: &MockServer, items: serde_json::Value) {
+        let total = items.as_array().map_or(0, Vec::len);
+        Mock::given(method("GET"))
+            .and(path("/api/v1/accounts"))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .set_body_json(json!({"items": items, "total_items": total})),
+            )
+            .mount(server)
+            .await;
+    }
+
+    /// The one place the roster's order is stated. Bichon answers unsorted —
+    /// mutation-test by dropping the `sort_by` in `connect` and this fails
+    /// while every resolver below it keeps passing, which is the point: they
+    /// no longer re-state it.
+    #[tokio::test]
+    async fn the_roster_arrives_ordered_by_email() {
+        let _guard = crate::output::TEST_LOCK.lock().unwrap();
+        let server = MockServer::start().await;
+        let _env = prepare_config(&server).unwrap();
+        mount_roster(
+            &server,
+            json!([
+                {"id": 2, "email": "b@x.io", "sync_folders": []},
+                {"id": 1, "email": "a@x.io", "sync_folders": []}
+            ]),
+        )
+        .await;
+
+        let bichon = connect(&host()).await.unwrap();
+        let emails: Vec<&str> = bichon.accounts.iter().map(|a| a.email.as_str()).collect();
+        assert_eq!(emails, ["a@x.io", "b@x.io"]);
+    }
+
+    /// The one wording for an empty roster, shared by all three subcommands
+    /// because all three reach Bichon here. It names the Host: `rescan` was
+    /// the only copy that did, `verify-coverage` said it without one and
+    /// `reconcile-folders` said nothing and exited 0 (#934).
+    #[tokio::test]
+    async fn an_empty_roster_is_refused_and_names_the_host() {
+        let _guard = crate::output::TEST_LOCK.lock().unwrap();
+        let server = MockServer::start().await;
+        let _env = prepare_config(&server).unwrap();
+        mount_roster(&server, json!([])).await;
+
+        // `.err()` rather than `unwrap_err()`: the Ok side carries the API
+        // token, and `Debug` on it would print the token on a failure.
+        let err = connect(&host())
+            .await
+            .err()
+            .expect("an empty roster must be refused");
+        assert_eq!(err.to_string(), "Bichon reports no accounts on 'auberge'");
     }
 }
