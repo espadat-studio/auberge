@@ -38,6 +38,8 @@ Refuses to run when:
 
 Off a TTY a lone configured host is implied and a roster holding several exits 2 naming `-H`; `--account` omitted means all accounts.
 
+The `account` field of `--output json` carries the filter that was **resolved**, not the flag that was typed: pick one account from the picker and that address is what the report names.
+
 ## Exit codes
 
 | Code | Meaning                                                |

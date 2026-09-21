@@ -26,7 +26,12 @@ fn dialoguer_theme() -> Box<dyn dialoguer::theme::Theme> {
     }
 }
 
-fn is_interactive() -> bool {
+/// Whether a picker can be drawn at all. Public because a caller that
+/// decides *whether to ask* must gate on the same predicate `select_item`
+/// does: `HostManager::is_tty` reads stdin alone, so gating on it and then
+/// calling `select_item` turns `cmd 2>log` into a refusal where the caller
+/// meant to skip the question.
+pub fn is_interactive() -> bool {
     std::io::stdin().is_terminal() && std::io::stderr().is_terminal()
 }
 
@@ -112,9 +117,10 @@ impl Choice {
 /// someone who can scroll.
 ///
 /// Not every picker can reach this error: `headscale`, `backup`'s ID picker
-/// and `bichon`'s account filter sit behind their own `is_tty` guards and
-/// bail before `select_item`, so the cap is sized for the callers that do
-/// reach it. `bichon`'s host picker stopped being one of them in #922.
+/// and `bichon`'s account filter answer for themselves when no picker can be
+/// drawn and never call `select_item`, so the cap is sized for the callers
+/// that do reach it. `bichon`'s host picker stopped being one of them in
+/// #922.
 const MAX_NAMED_CANDIDATES: usize = 10;
 
 fn name_candidates(candidates: &[String]) -> String {

@@ -1,6 +1,6 @@
-use crate::commands::bichon::selection::resolve_accounts;
+use crate::commands::bichon::selection::resolve_account_filter;
 use crate::config::Config;
-use crate::hosts::{HOST_FLAG, HostManager, select_or_arg};
+use crate::hosts::{HOST_FLAG, select_or_arg};
 use crate::output::{self, OutputFormat};
 use crate::services::bichon::api::{Account, BichonApiClient};
 use crate::services::bichon::derive_base_url;
@@ -55,15 +55,10 @@ pub async fn run_reconcile_folders(
     Ok(())
 }
 
-/// `-H` and `--account` are both resolved here rather than filtered later:
-/// the two questions have one answer each, shared with `rescan`.
-///
-/// `-H` names the Host acted on, so it routes through the roster picker; an
-/// unknown name is an error before any network call. `--account` narrows a
-/// listing, so an omitted one still means every Account. Before #922 it was
-/// a plain equality match over the listing, and an address Bichon does not
-/// report filtered every Account away — the run then reconciled nothing and
-/// said so as a success.
+/// `-H` and `--account` are both resolved here rather than filtered later,
+/// through the same pair `rescan` uses: `select_or_arg` for the Host it acts
+/// on, [`resolve_account_filter`] for the listing it narrows. The policy
+/// behind each lives on those two, not here.
 pub async fn compute_reconcile(
     host_arg: Option<String>,
     apply: bool,
@@ -84,7 +79,8 @@ pub async fn compute_reconcile(
     accounts.sort_by(|a, b| a.email.cmp(&b.email));
 
     let known: Vec<String> = accounts.iter().map(|a| a.email.clone()).collect();
-    let account_filter = resolve_accounts(account_filter, &known, HostManager::is_tty())?;
+    let account_filter =
+        resolve_account_filter(account_filter, &known, crate::prompt::is_interactive())?;
     let accounts: Vec<Account> = match &account_filter {
         Some(email) => accounts.into_iter().filter(|a| &a.email == email).collect(),
         None => accounts,

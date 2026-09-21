@@ -43,7 +43,7 @@ On Bichon >= 2.0 the remote folder list is served from a cache. On a cold cache 
 | --account EMAIL     | Reconcile only one account email (prompted on a TTY, `[all accounts]` offered first) | All      |
 | -o, --output FORMAT | Output format (`human`, `json`)                                                      | `human`  |
 
-Omit `-H` on a terminal and the host picker is drawn, like every other `bichon` command. It cannot hang in a script: with no terminal a lone configured host is implied, and a roster holding several fails naming the flag rather than waiting for an answer nobody can give. `--account` omitted means every account, on a terminal or off one.
+Omit `-H` on a terminal and the host picker is drawn, as [rescan](/cli-reference/bichon/rescan/) already did. It cannot hang in a script: with no terminal a lone configured host is implied, and a roster holding several fails naming the flag rather than waiting for an answer nobody can give. Omit `--account` off a terminal and every account is reconciled; a filter nobody can be asked for means all.
 
 An `--account` Bichon does not report is an error naming the accounts it does. It used to be matched by plain equality, so a typo filtered every account away and the run reported `0 folders added across 0 accounts` as a success.
 

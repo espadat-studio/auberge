@@ -1,6 +1,6 @@
-use crate::commands::bichon::selection::resolve_accounts;
+use crate::commands::bichon::selection::resolve_account_filter;
 use crate::config::Config;
-use crate::hosts::{HOST_FLAG, HostManager, select_or_arg};
+use crate::hosts::{HOST_FLAG, select_or_arg};
 use crate::output::{self, OutputFormat};
 use crate::services::bichon::api::BichonApiClient;
 use crate::services::bichon::derive_base_url;
@@ -47,7 +47,7 @@ async fn rescan_inner(
         eyre::bail!("Bichon reports no accounts on '{}'", host.name);
     }
 
-    let account = resolve_accounts(account_filter, &known, HostManager::is_tty())?;
+    let account = resolve_account_filter(account_filter, &known, crate::prompt::is_interactive())?;
     let selected = match &account {
         Some(email) => vec![email.clone()],
         None => known.clone(),
