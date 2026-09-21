@@ -628,6 +628,7 @@ mod tests {
             "baikal",
             "blocky",
             "colporteur",
+            "forgejo",
             "freshrss",
             "gokapi",
             "grimmory",

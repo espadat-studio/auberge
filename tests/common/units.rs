@@ -366,6 +366,7 @@ pub const FLEET_UNIT_FILES: &[&str] = &[
     "cockpit/cockpit.socket.d/override.conf",
     "colporteur/colporteur.service",
     "colporteur/colporteur.timer",
+    "forgejo/forgejo.service",
     "freshrss/freshrss-update.service",
     "freshrss/freshrss-update.timer",
     "freshrss/freshrss.service",

@@ -22,6 +22,8 @@
         cockpit_configure_nm_renderer: true
     - role: colporteur
       tags: [apps, web, rss, colporteur]
+    - role: forgejo
+      tags: [apps, web, git, forge, forgejo]
     - role: freshrss
       tags: [apps, web, rss, freshrss]
     - role: gokapi

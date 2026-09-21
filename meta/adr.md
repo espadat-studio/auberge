@@ -87,6 +87,7 @@ One number, one file. Every file in `meta/adr/` is listed here; a number that ap
 | 0077 | [The deploy menu offers every target, but `[all apps]` stays the roster](./adr/0077-the-deploy-menu-offers-every-target-but-all-stays-the-roster.md)            |
 | 0078 | [Contact cadence lives in the vCard `NOTE`, and the script never reads `CATEGORIES`](./adr/0078-contact-cadence-lives-in-the-vcard-note.md)                     |
 | 0079 | [A selector is resolved by a picker, a filter means all](./adr/0079-a-selector-is-resolved-by-a-picker.md)                                                      |
+| 0080 | [A declared datasource is one the CLI can resolve](./adr/0080-a-declared-datasource-is-one-the-cli-can-resolve.md)                                              |
 
 ## Native systemd by default
 

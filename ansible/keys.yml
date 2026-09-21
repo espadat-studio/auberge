@@ -121,6 +121,18 @@ keys:
     secret: false
     doc: "Space-separated operator IPs/CIDRs fail2ban must never ban (optional); loopback, tailnet CGNAT, and Inventory host IPs are always ignored."
 
+  forgejo_admin_password:
+    secret: true
+    doc: "Password for the Forgejo administrator, created on the first deploy"
+
+  forgejo_admin_user:
+    secret: false
+    doc: "Username for the Forgejo administrator, created on the first deploy"
+
+  forgejo_subdomain:
+    secret: false
+    doc: "Subdomain for the Forgejo git forge"
+
   freshrss_subdomain:
     secret: false
     doc: "Subdomain for the FreshRSS feed reader"

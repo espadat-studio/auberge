@@ -402,6 +402,7 @@ fn test_a_version_bump_restarts_everything_that_runs_the_artifact() {
 const REPLACING_ROLES: &[&str] = &[
     "bichon",
     "blocky",
+    "forgejo",
     "freshrss",
     "gokapi",
     "grimmory",

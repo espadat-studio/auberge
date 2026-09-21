@@ -1,0 +1,30 @@
+{{ forgejo_domain }} {
+	reverse_proxy 127.0.0.1:{{ forgejo_port }} {
+		header_up Host {host}
+		header_up X-Real-IP {remote_ip}
+		header_up X-Forwarded-For {remote_ip}
+		header_up X-Forwarded-Proto {scheme}
+	}
+
+	encode gzip
+
+	log {
+		output file /var/log/caddy/{{ forgejo_domain }}.log
+		# Forgejo mails account-recovery links as `/user/recover_account?code=…`,
+		# so the query string carries a credential. Caddy redacts Authorization
+		# and Cookie on its own and nothing else, so the whole query is cut out
+		# of every logged request.
+		#
+		# The pattern is `[?]`. Written `"\\?.*$"` the Caddyfile lexer does not
+		# collapse the pair inside double quotes, so Go's regexp receives `\\?`,
+		# an optional literal backslash. That matches at offset 0 and blanks the
+		# entire URI. Both spellings hide the secret, so a grep for the token
+		# passes either way; the surviving path is what tells them apart.
+		format filter {
+			wrap console
+			fields {
+				request>uri regexp "[?].*$" ""
+			}
+		}
+	}
+}

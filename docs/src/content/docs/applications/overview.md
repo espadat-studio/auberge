@@ -32,6 +32,7 @@ Auberge deploys a curated stack of self-hosted FOSS applications. Services run n
 | [Calibre](/applications/apps/calibre/)         | Ebook library (alternative to Grimmory)     |
 | [Colporteur](/applications/apps/colporteur/)   | Newsletter-to-feed converter                |
 | [FreshRSS](/applications/apps/freshrss/)       | RSS feed aggregator                         |
+| [Forgejo](/applications/apps/forgejo/)         | Self-hosted git forge                       |
 | [Immich](/applications/apps/immich/)           | Photo and video management                  |
 | [Navidrome](/applications/apps/navidrome/)     | Music streaming server                      |
 | [Paperless-ngx](/applications/apps/paperless/) | Document management system                  |

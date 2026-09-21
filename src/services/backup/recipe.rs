@@ -99,6 +99,7 @@ mod tests {
             "baikal",
             "bichon",
             "calibre",
+            "forgejo",
             "freshrss",
             "gokapi",
             "grimmory",

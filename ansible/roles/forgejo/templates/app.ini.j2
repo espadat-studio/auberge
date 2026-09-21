@@ -1,0 +1,48 @@
+APP_NAME = {{ forgejo_app_name }}
+RUN_USER = {{ forgejo_sys_user }}
+RUN_MODE = prod
+WORK_PATH = {{ forgejo_data_dir }}
+
+[server]
+PROTOCOL = http
+HTTP_ADDR = 127.0.0.1
+HTTP_PORT = {{ forgejo_port }}
+DOMAIN = {{ forgejo_domain }}
+ROOT_URL = https://{{ forgejo_domain }}/
+APP_DATA_PATH = {{ forgejo_data_dir }}/data
+; HTTPS only. No git system user, no authorized_keys, and nothing listening
+; beside the Host's hardened sshd. See the role README.
+DISABLE_SSH = true
+START_SSH_SERVER = false
+
+[repository]
+ROOT = {{ forgejo_data_dir }}/repos
+
+[database]
+DB_TYPE = sqlite3
+PATH = {{ forgejo_data_dir }}/data/forgejo.db
+
+[security]
+; The wizard is gated on this being false, so the deploy is the only thing that
+; ever configures the instance.
+INSTALL_LOCK = true
+SECRET_KEY_URI = file:{{ forgejo_config_dir }}/secret_key
+INTERNAL_TOKEN_URI = file:{{ forgejo_config_dir }}/internal_token
+
+[oauth2]
+; Also the general token signing secret (CSRF, account validation). Forgejo
+; generates one into app.ini when it cannot load it, which this file exists to
+; prevent.
+JWT_SECRET_URI = file:{{ forgejo_config_dir }}/jwt_secret
+
+[service]
+; A public login surface: the admin creates every account.
+DISABLE_REGISTRATION = true
+
+[actions]
+; Out of scope. Forgejo enables the Actions subsystem by default.
+ENABLED = false
+
+[log]
+MODE = console
+LEVEL = info

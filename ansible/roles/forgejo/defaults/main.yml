@@ -1,0 +1,30 @@
+forgejo_install_path: /opt/forgejo
+forgejo_binary_path: "{{ forgejo_install_path }}/forgejo"
+forgejo_version_marker: "{{ forgejo_install_path }}/version"
+forgejo_data_dir: /var/lib/forgejo
+# Outside forgejo_data_dir on purpose: the unit's ReadWritePaths names only the
+# data dir, so ProtectSystem=strict denies the service every path here. Forgejo
+# writes app.ini itself when a signing secret is missing (generateSaveInternalToken,
+# createSymmeticSigningKeyCfg); denied at the kernel it dies loudly instead of
+# diverging from the template the deploy owns.
+forgejo_config_dir: /etc/forgejo
+forgejo_config_file: "{{ forgejo_config_dir }}/app.ini"
+forgejo_sys_user: forgejo
+forgejo_sys_group: forgejo
+forgejo_port: 3043
+forgejo_domain: "{{ forgejo_subdomain }}.{{ domain }}"
+forgejo_admin_email: "{{ forgejo_admin_user }}@{{ domain }}"
+# Forgejo's own name, shown in the page title and the site header. A default for
+# every operator, so it must not carry anyone's branding.
+forgejo_app_name: "Forgejo"
+forgejo_binary_name: "forgejo-{{ forgejo_version }}-linux-amd64"
+forgejo_binary_url: "https://code.forgejo.org/forgejo/forgejo/releases/download/v{{ forgejo_version }}/{{ forgejo_binary_name }}"
+forgejo_checksum_url: "{{ forgejo_binary_url }}.sha256"
+forgejo_admin_marker: "{{ forgejo_data_dir }}/.admin_created"
+# The three signing secrets, generated once per Host by the binary itself so
+# each lands in the format forgejo parses it back from, and read through
+# app.ini's *_URI indirection so none of them is ever written into the template.
+forgejo_secrets:
+  - { kind: SECRET_KEY, file: secret_key }
+  - { kind: INTERNAL_TOKEN, file: internal_token }
+  - { kind: JWT_SECRET, file: jwt_secret }

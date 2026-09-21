@@ -1,0 +1,33 @@
+[Unit]
+Description=Forgejo self-hosted git forge
+After=network-online.target
+Wants=network-online.target
+StartLimitIntervalSec=3600
+StartLimitBurst=30
+
+[Service]
+Type=simple
+User={{ forgejo_sys_user }}
+Group={{ forgejo_sys_group }}
+WorkingDirectory={{ forgejo_data_dir }}
+Environment=USER={{ forgejo_sys_user }}
+Environment=HOME={{ forgejo_data_dir }}
+Environment=GITEA_WORK_DIR={{ forgejo_data_dir }}
+ExecStart={{ forgejo_binary_path }} web --config {{ forgejo_config_file }}
+Restart=on-failure
+RestartSec=10s
+MemoryHigh={{ forgejo_memory_high }}
+MemoryMax={{ forgejo_memory_max }}
+NoNewPrivileges=true
+PrivateDevices=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectControlGroups=true
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ReadWritePaths={{ forgejo_data_dir }}
+UMask=0027
+
+[Install]
+WantedBy=multi-user.target
