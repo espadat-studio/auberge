@@ -19,7 +19,7 @@ auberge dns migrate [OPTIONS]
 
 ## Target address
 
-Resolved exactly as [`set-all`](/cli-reference/dns/set-all/) resolves it — one resolver, so the two commands cannot drift apart:
+The address goes through the same resolver [`set-all`](/cli-reference/dns/set-all/) uses, so the two commands cannot read the same input as different addresses:
 
 | Given       | Resolves to                                                                       |
 | ----------- | --------------------------------------------------------------------------------- |
@@ -29,7 +29,15 @@ Resolved exactly as [`set-all`](/cli-reference/dns/set-all/) resolves it — one
 
 A migration target is nearly always a host `auberge` already knows, so `-H` is the usual flag and `-i` the exception.
 
-Off-terminal with neither flag, the command exits 1 naming both flags and the hosts it would have offered. No record is rewritten, and Cloudflare is never reached — the address resolves first.
+Resolution happens before Cloudflare is reached, so an unknown host or an undrawable picker costs no API call and rewrites nothing.
+
+:::caution
+Off-terminal with neither flag, the command exits 1 naming both flags, and writes no record. That holds however few hosts the inventory has — unlike `set-all`, which lets a lone host resolve itself off-terminal because its `Proceed?` gate still stands before any write. `migrate` has no gate: every A record moves the moment the address resolves, so the address must be stated.
+:::
+
+:::note
+`migrate` exits 1 on a target it cannot resolve, where `set-all` exits 2 for the same class of failure. The resolver is shared; the exit-code convention is not — `set-all` follows the Backup Verdict convention and `migrate` predates it. Branch per command, not across the pair.
+:::
 
 ## Examples
 

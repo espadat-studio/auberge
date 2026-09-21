@@ -348,14 +348,12 @@ async fn main() -> Result<()> {
                 yes,
             } => run_dns_delete(subdomain, dry_run, output.format, production, yes).await,
             DnsCommands::Migrate {
-                host,
-                ip,
+                target,
                 dry_run,
                 output,
-            } => run_dns_migrate(host, ip, dry_run, output.format).await,
+            } => run_dns_migrate(target, dry_run, output.format).await,
             DnsCommands::SetAll {
-                host,
-                ip,
+                target,
                 dry_run,
                 yes,
                 strict,
@@ -365,8 +363,8 @@ async fn main() -> Result<()> {
                 continue_on_error,
             } => std::process::exit(
                 run_dns_set_all(SetAllOptions {
-                    host,
-                    ip,
+                    host: target.host,
+                    ip: target.ip,
                     dry_run,
                     yes,
                     strict,
@@ -726,13 +724,14 @@ mod tests {
     }
 
     /// `set-all` and `migrate` ask one question — which address do records
-    /// point at — and #925 made them ask it through one resolver. The surface
-    /// has to match too: a divergent short, value name, or requiredness
-    /// compiles clean and bites only whoever types the second command
-    /// expecting the first one's shape.
+    /// point at — and #925 made them ask it through one resolver and one
+    /// flattened `TargetAddressArg`.
     ///
-    /// Read off the built tree rather than the two enum variants, because
-    /// that is the surface an operator meets.
+    /// The flatten is what holds the two surfaces together; this reads the
+    /// built tree to confirm both commands still reach it. Its limit is #818's:
+    /// a re-pasted `#[arg]` block identical to the struct's builds the same
+    /// tree and passes here. It catches the realistic regression — one command
+    /// un-flattened and then edited — not the perfect copy.
     #[test]
     fn dns_migrate_takes_its_target_address_exactly_as_set_all_does() {
         fn target_surface(name: &str) -> Vec<(String, Option<char>, Vec<String>, bool)> {
