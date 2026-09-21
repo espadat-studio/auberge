@@ -7,7 +7,7 @@ Rename a host: remote hostname, hosts.toml entry, and key directory
 ## Synopsis
 
 ```bash
-auberge host rename <OLD> <NEW> [--yes]
+auberge host rename [OPTIONS] [OLD] [NEW]
 # Alias: auberge h mv
 ```
 
@@ -18,22 +18,24 @@ Renames a host everywhere its name is load-bearing, in one command:
 1. **Remote**: `hostnamectl set-hostname <NEW>` and the matching `/etc/hosts` entries (via sudo over SSH).
 2. **Local**: the `hosts.toml` entry, the key directory `~/.ssh/identities/<OLD>` → `<NEW>`, and the configured `ssh_key` path when it points inside that directory. A custom `ssh_key` outside the derived tree is left untouched — file and path. The generated `~/.ssh/config.d/auberge.conf` is rewritten, so `ssh <NEW>` works immediately (see [SSH keys](/configuration/ssh-keys/)).
 
+If `OLD` is omitted, you'll be prompted to select a host, then asked for the new name. If only `OLD` is given, you'll be asked for the new name. `--yes` skips the confirmation, so it requires both names spelled out — a confirmation skipped over a name you never saw is a rename nobody read. Without a terminal and without both names, the command errors and renames nothing.
+
 Preflight bails before touching anything: `<OLD>` must exist in `hosts.toml`, `<NEW>` must not, the key directories must not collide, and SSH to the host must succeed.
 
 Remote steps run first, so a failure there aborts with zero local change. Every step is idempotent: after a partial failure, rerunning the same command is the recovery path (see ADR-0024).
 
 ## Arguments
 
-| Argument | Description       |
-| -------- | ----------------- |
-| OLD      | Current host name |
-| NEW      | New host name     |
+| Argument | Description                             |
+| -------- | --------------------------------------- |
+| OLD      | Current host name (omit to be prompted) |
+| NEW      | New host name (omit to be prompted)     |
 
 ## Options
 
-| Option        | Description       |
-| ------------- | ----------------- |
-| `-y`, `--yes` | Skip confirmation |
+| Option        | Description                             |
+| ------------- | --------------------------------------- |
+| `-y`, `--yes` | Skip confirmation (requires both names) |
 
 ## Not done by this command
 
@@ -46,6 +48,12 @@ Remote steps run first, so a failure there aborts with zero local change. Every 
 # Rename with confirmation prompt
 auberge host rename auberge vieille-auberge
 
-# Non-interactive (ceremony scripts)
+# Pick the host, then type the new name
+auberge host rename
+
+# Name the host, type the new name
+auberge host rename auberge
+
+# Non-interactive (ceremony scripts) — both names required
 auberge host rename auberge vieille-auberge --yes
 ```
