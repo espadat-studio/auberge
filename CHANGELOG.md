@@ -7,6 +7,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.18.0](https://github.com/espadat-studio/auberge/compare/v0.17.15...v0.18.0) - 2026-09-21
+
+### Added
+
+- *(forgejo)* self-hosted git forge as a systemd service ([#939](https://github.com/espadat-studio/auberge/pull/939))
+- *(dns)* resolve migrate's target address from the inventory ([#932](https://github.com/espadat-studio/auberge/pull/932))
+
+### Fixed
+
+- *(forgejo)* serve cors headers so decap can exchange its login code ([#946](https://github.com/espadat-studio/auberge/pull/946))
+- *(bichon)* verify-coverage picks its host, account and folder ([#935](https://github.com/espadat-studio/auberge/pull/935))
+- *(bichon)* reconcile-folders picks its host and account like rescan ([#931](https://github.com/espadat-studio/auberge/pull/931))
+- *(host)* prompt for the host when rename's old name is omitted ([#930](https://github.com/espadat-studio/auberge/pull/930))
+- *(backup)* prompt for the host when verify's -H is omitted ([#928](https://github.com/espadat-studio/auberge/pull/928))
+- *(cli)* name the candidates when a picker cannot be drawn ([#927](https://github.com/espadat-studio/auberge/pull/927))
+
+### Other
+
+- *(forgejo)* onboard a content repo instead of mirroring to github ([#944](https://github.com/espadat-studio/auberge/pull/944))
+- *(examples)* reconcile decap redirect URIs on re-run
+- *(examples)* onboard a github repo onto forgejo for decap
+- *(colporteur)* bump to 0.6.6 ([#940](https://github.com/espadat-studio/auberge/pull/940))
+- *(forgejo)* correct the decap oauth fields against upstream source ([#941](https://github.com/espadat-studio/auberge/pull/941))
+- *(cli)* fence that a selector argument is resolved by a picker ([#938](https://github.com/espadat-studio/auberge/pull/938))
+- *(bichon)* one way to reach a host's Bichon and its accounts ([#937](https://github.com/espadat-studio/auberge/pull/937))
+
 ## [0.17.15](https://github.com/espadat-studio/auberge/compare/v0.17.14...v0.17.15) - 2026-09-20
 
 ### Other
