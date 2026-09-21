@@ -12,6 +12,11 @@ use tabled::Tabled;
 const NPM_REGISTRY: &str = "https://registry.npmjs.org";
 const GITHUB_API: &str = "https://api.github.com";
 const GO_PROXY: &str = "https://proxy.golang.org";
+// Renovate's own default registryUrl for the `forgejo-releases` datasource.
+// Forgejo develops on codeberg.org and mirrors every release here, so pinning
+// the CLI to Renovate's default is what keeps the two readers of a `version:`
+// block resolving the same list without a `registryUrls` override.
+const FORGEJO_REGISTRY: &str = "https://code.forgejo.org";
 // Abbreviated packument: dist-tags without per-version metadata (~1% the size).
 const NPM_ABBREVIATED: &str = "application/vnd.npm.install-v1+json";
 
@@ -248,6 +253,7 @@ struct UpstreamClient {
     npm_base: String,
     github_base: String,
     go_base: String,
+    forgejo_base: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -265,10 +271,16 @@ impl UpstreamClient {
             NPM_REGISTRY.to_string(),
             GITHUB_API.to_string(),
             GO_PROXY.to_string(),
+            FORGEJO_REGISTRY.to_string(),
         )
     }
 
-    fn with_bases(npm_base: String, github_base: String, go_base: String) -> Result<Self> {
+    fn with_bases(
+        npm_base: String,
+        github_base: String,
+        go_base: String,
+        forgejo_base: String,
+    ) -> Result<Self> {
         let http = reqwest::Client::builder()
             .user_agent(concat!("auberge/", env!("CARGO_PKG_VERSION")))
             .build()
@@ -278,6 +290,7 @@ impl UpstreamClient {
             npm_base,
             github_base,
             go_base,
+            forgejo_base,
         })
     }
 
@@ -286,6 +299,7 @@ impl UpstreamClient {
             "npm" => self.npm_latest(&version.dep_name).await,
             "github-releases" => self.github_latest(version).await,
             "go" => self.go_latest(&version.dep_name).await,
+            "forgejo-releases" => self.forgejo_latest(version).await,
             other => eyre::bail!("Unsupported datasource `{other}`"),
         }
     }
@@ -343,19 +357,49 @@ impl UpstreamClient {
             request = request.bearer_auth(token);
         }
         let releases: Vec<Release> = request.send().await?.error_for_status()?.json().await?;
-        let extract = version
-            .extract_version
-            .as_deref()
-            .map(Regex::new)
-            .transpose()
-            .wrap_err_with(|| format!("Invalid extractVersion for {}", version.dep_name))?;
-        latest_release_version(&releases, extract.as_ref()).ok_or_else(|| {
-            eyre::eyre!(
-                "no release of {} yields a version through its coordinates",
-                version.dep_name
-            )
-        })
+        pick(&releases, version)
     }
+
+    /// Renovate's `forgejo-releases` datasource. The API is Gitea's, which is
+    /// the same release shape GitHub serves down to `tag_name`, `draft` and
+    /// `prerelease` -- so this arm is a URL and an auth difference, and the
+    /// stability, extraction and ordering rules are the shared ones.
+    ///
+    /// Unauthenticated: the registry serves public releases without a token,
+    /// and there is no fleet-wide Forgejo credential to reach for the way
+    /// `GITHUB_TOKEN` is already in the environment.
+    async fn forgejo_latest(&self, version: &VersionPin) -> Result<String> {
+        let url = format!(
+            "{}/api/v1/repos/{}/releases?limit=100",
+            self.forgejo_base, version.dep_name
+        );
+        let releases: Vec<Release> = self
+            .http
+            .get(&url)
+            .header(reqwest::header::ACCEPT, "application/json")
+            .send()
+            .await?
+            .error_for_status()?
+            .json()
+            .await?;
+        pick(&releases, version)
+    }
+}
+
+/// The newest version a release list yields through a pin's coordinates.
+fn pick(releases: &[Release], version: &VersionPin) -> Result<String> {
+    let extract = version
+        .extract_version
+        .as_deref()
+        .map(Regex::new)
+        .transpose()
+        .wrap_err_with(|| format!("Invalid extractVersion for {}", version.dep_name))?;
+    latest_release_version(releases, extract.as_ref()).ok_or_else(|| {
+        eyre::eyre!(
+            "no release of {} yields a version through its coordinates",
+            version.dep_name
+        )
+    })
 }
 
 /// Renovate's github-releases semantics: the newest stable release whose tag
@@ -708,7 +752,8 @@ mod tests {
             })))
             .mount(&server)
             .await;
-        let client = UpstreamClient::with_bases(server.uri(), server.uri(), server.uri())?;
+        let client =
+            UpstreamClient::with_bases(server.uri(), server.uri(), server.uri(), server.uri())?;
 
         let latest = client
             .latest(&pin("npm", "@actual-app/sync-server", None))
@@ -730,7 +775,8 @@ mod tests {
             ])))
             .mount(&server)
             .await;
-        let client = UpstreamClient::with_bases(server.uri(), server.uri(), server.uri())?;
+        let client =
+            UpstreamClient::with_bases(server.uri(), server.uri(), server.uri(), server.uri())?;
 
         let latest = client
             .latest(&pin(
@@ -754,7 +800,8 @@ mod tests {
             )
             .mount(&server)
             .await;
-        let client = UpstreamClient::with_bases(server.uri(), server.uri(), server.uri())?;
+        let client =
+            UpstreamClient::with_bases(server.uri(), server.uri(), server.uri(), server.uri())?;
 
         let latest = client
             .latest(&pin("go", "github.com/mholt/caddy-l4", None))
@@ -771,7 +818,8 @@ mod tests {
             .respond_with(ResponseTemplate::new(200).set_body_string("v0.2.0-beta.1\n"))
             .mount(&server)
             .await;
-        let client = UpstreamClient::with_bases(server.uri(), server.uri(), server.uri())?;
+        let client =
+            UpstreamClient::with_bases(server.uri(), server.uri(), server.uri(), server.uri())?;
 
         let result = client.latest(&pin("go", "example.com/mod", None)).await;
 
@@ -803,7 +851,8 @@ mod tests {
             .respond_with(ResponseTemplate::new(500))
             .mount(&server)
             .await;
-        let client = UpstreamClient::with_bases(server.uri(), server.uri(), server.uri())?;
+        let client =
+            UpstreamClient::with_bases(server.uri(), server.uri(), server.uri(), server.uri())?;
 
         let result = client
             .latest(&pin("github-releases", "juanfont/headscale", None))
@@ -819,11 +868,153 @@ mod tests {
             "http://unused".to_string(),
             "http://unused".to_string(),
             "http://unused".to_string(),
+            "http://unused".to_string(),
         )?;
 
         let result = client.latest(&pin("docker", "some/image", None)).await;
 
         assert!(result.unwrap_err().to_string().contains("docker"));
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn forgejo_latest_reads_the_gitea_shaped_release_list() -> Result<()> {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/api/v1/repos/forgejo/forgejo/releases"))
+            // Codeberg serves them newest-published first, which is not
+            // newest-version first: a patch on the previous major lands
+            // between two of the current one.
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!([
+                { "tag_name": "v16.0.5" },
+                { "tag_name": "v15.0.9" },
+                { "tag_name": "v16.0.4" },
+            ])))
+            .mount(&server)
+            .await;
+        let client =
+            UpstreamClient::with_bases(server.uri(), server.uri(), server.uri(), server.uri())?;
+
+        let latest = client
+            .latest(&pin(
+                "forgejo-releases",
+                "forgejo/forgejo",
+                Some("^v(?<version>.+)$"),
+            ))
+            .await?;
+
+        assert_eq!(latest, "16.0.5");
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn forgejo_latest_skips_drafts_and_prereleases() -> Result<()> {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!([
+                { "tag_name": "v17.0.0", "draft": true },
+                { "tag_name": "v16.1.0", "prerelease": true },
+                { "tag_name": "v16.0.5" },
+            ])))
+            .mount(&server)
+            .await;
+        let client =
+            UpstreamClient::with_bases(server.uri(), server.uri(), server.uri(), server.uri())?;
+
+        let latest = client
+            .latest(&pin(
+                "forgejo-releases",
+                "forgejo/forgejo",
+                Some("^v(?<version>.+)$"),
+            ))
+            .await?;
+
+        assert_eq!(latest, "16.0.5");
+        Ok(())
+    }
+
+    /// A port nothing listens on. Every supported arm fails here with a
+    /// transport error; only an unsupported one fails before the request.
+    const UNREACHABLE: &str = "http://127.0.0.1:1";
+
+    fn offline_client() -> Result<UpstreamClient> {
+        UpstreamClient::with_bases(
+            UNREACHABLE.to_string(),
+            UNREACHABLE.to_string(),
+            UNREACHABLE.to_string(),
+            UNREACHABLE.to_string(),
+        )
+    }
+
+    /// Every `datasource:` the tree declares, App Versions and Tool Versions
+    /// together -- the two vocabularies a `version:` block is read by.
+    fn declared_pins() -> Result<Vec<(String, VersionPin)>> {
+        let assets = AnsibleAssets::prepare()?;
+        let mut pins = declared_app_versions(&assets.playbooks_dir())?;
+        pins.extend(
+            declared_tool_versions(&assets.roles_dir())?
+                .into_iter()
+                .map(|tool| (format!("{}/{}", tool.role, tool.tool), tool.pin)),
+        );
+        Ok(pins)
+    }
+
+    /// The fence. Renovate's datasource vocabulary is far wider than this
+    /// client's, so a Meta can be perfectly valid to Renovate and still name
+    /// an arm that does not exist -- and because `app_drift_reports`
+    /// propagates with `?`, that one declaration takes the drift report down
+    /// for **every** App, not just its own (#933).
+    ///
+    /// Behavioural, not a list: each pin is put through the real `latest`
+    /// against an unreachable base, so the arm has to exist for the call to
+    /// get as far as the network. A list of supported names read back from
+    /// the code would assert nothing.
+    #[tokio::test]
+    async fn every_declared_datasource_has_an_arm_in_this_client() -> Result<()> {
+        let client = offline_client()?;
+        let pins = declared_pins()?;
+
+        // Reach: the loop below passes over an empty tree, and an assets walk
+        // that stopped finding Metas is exactly how it would empty.
+        assert!(
+            pins.len() > 20,
+            "the declaration walk found only {} pins; it has stopped reading the tree",
+            pins.len()
+        );
+
+        let mut unsupported = Vec::new();
+        for (name, pin) in &pins {
+            let error = client
+                .latest(pin)
+                .await
+                .expect_err("an unreachable base cannot resolve a version")
+                .to_string();
+            if error.contains("Unsupported datasource") {
+                unsupported.push(format!("  {name}: {}", pin.datasource));
+            }
+        }
+
+        assert!(
+            unsupported.is_empty(),
+            "these pins name a datasource `UpstreamClient::latest` has no arm for, \
+             and one of them makes `auberge versions --check-upstream` report \
+             nothing for any App:\n{}",
+            unsupported.join("\n")
+        );
+        Ok(())
+    }
+
+    /// Without this the fence above passes whether or not it can tell the two
+    /// errors apart.
+    #[tokio::test]
+    async fn the_fence_recognises_a_datasource_with_no_arm() -> Result<()> {
+        let error = offline_client()?
+            .latest(&pin("docker", "some/image", None))
+            .await
+            .unwrap_err()
+            .to_string();
+
+        assert!(error.contains("Unsupported datasource"));
         Ok(())
     }
 }
