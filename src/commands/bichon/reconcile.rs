@@ -1,9 +1,7 @@
-use crate::commands::bichon::selection::resolve_account_filter;
-use crate::config::Config;
+use crate::commands::bichon::selection::{Bichon, connect, resolve_account_filter};
 use crate::hosts::{HOST_FLAG, select_or_arg};
 use crate::output::{self, OutputFormat};
-use crate::services::bichon::api::{Account, BichonApiClient};
-use crate::services::bichon::derive_base_url;
+use crate::services::bichon::api::Account;
 use crate::services::bichon::folder_filter::is_excluded;
 use eyre::{Result, WrapErr};
 use serde::Serialize;
@@ -59,6 +57,9 @@ pub async fn run_reconcile_folders(
 /// through the same pair `rescan` uses: `select_or_arg` for the Host it acts
 /// on, [`resolve_account_filter`] for the listing it narrows. The policy
 /// behind each lives on those two, not here.
+///
+/// The plan walks the roster in the order [`connect`] set, so a Host's plan
+/// reads the same way twice running whatever order Bichon answered in.
 pub async fn compute_reconcile(
     host_arg: Option<String>,
     apply: bool,
@@ -67,16 +68,11 @@ pub async fn compute_reconcile(
     let host_record = select_or_arg(host_arg, HOST_FLAG)?;
     let host = host_record.name.clone();
 
-    let config = Config::load()?;
-    let token = config
-        .get_resolved("bichon_api_token")?
-        .filter(|v| !v.trim().is_empty())
-        .ok_or_else(|| eyre::eyre!("bichon_api_token not set in config.toml"))?;
-    let base_url = derive_base_url(&config, &host_record)?;
-
-    let client = BichonApiClient::new(base_url, token)?;
-    let mut accounts = client.list_accounts().await?;
-    accounts.sort_by(|a, b| a.email.cmp(&b.email));
+    let Bichon {
+        config,
+        client,
+        accounts,
+    } = connect(&host_record).await?;
 
     let known: Vec<String> = accounts.iter().map(|a| a.email.clone()).collect();
     let account_filter =
@@ -185,69 +181,47 @@ fn emit_output(result: &ReconcileOutput, output: OutputFormat) -> Result<()> {
 
 #[cfg(test)]
 mod tests {
-    use super::{AccountPlan, ReconcileSummary, compute_reconcile};
+    use super::{ReconcileSummary, compute_reconcile};
+    use crate::commands::bichon::selection::test_support::prepare_config;
     use crate::output::EnvVarGuard;
     use eyre::Result;
     use serde_json::json;
     use std::fs;
-    use tempfile::TempDir;
     use wiremock::matchers::{body_json, method, path, path_regex, query_param};
     use wiremock::{Mock, MockServer, ResponseTemplate};
 
-    struct TestEnv {
-        _tmp: TempDir,
-        _xdg_config: EnvVarGuard,
-        _xdg_data: EnvVarGuard,
+    /// One Account whose `sync_folders` already match the mailboxes Bichon
+    /// lists, so a test that is about something else — host resolution, a
+    /// retry, a base URL — gets a roster `connect` accepts and a plan with
+    /// no diff in it.
+    async fn mount_one_account_in_sync(server: &MockServer) {
+        Mock::given(method("GET"))
+            .and(path("/api/v1/accounts"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+                "items": [{"id":1, "email":"me@sripwoud.xyz", "sync_folders":["INBOX"]}],
+                "total_items": 1
+            })))
+            .mount(server)
+            .await;
+        mount_mailboxes(server).await;
     }
 
-    fn prepare_config(server: &MockServer, config_extra: &str) -> Result<TestEnv> {
-        let tmp = tempfile::tempdir()?;
-        let config_home = tmp.path().join("cfg");
-        let data_home = tmp.path().join("data");
-        fs::create_dir_all(config_home.join("auberge"))?;
-        fs::create_dir_all(&data_home)?;
-        fs::write(
-            config_home.join("auberge/config.toml"),
-            format!(
-                r#"
-domain = "example.com"
-bichon_api_token = "token-123"
-[bichon.hosts.auberge]
-base_url = "{}"
-[bichon.account_overrides."me@sripwoud.xyz"]
-extra_excluded_folders = ["Receipts/2019"]
-{}
-"#,
-                server.uri(),
-                config_extra
-            ),
-        )?;
-        fs::write(
-            config_home.join("auberge/hosts.toml"),
-            r#"
-[[hosts]]
-name = "auberge"
-address = "100.100.100.10"
-user = "root"
-tailscale_ip = "100.100.100.10"
-"#,
-        )?;
-
-        // Caller MUST hold TEST_LOCK; guards restore previous env values on Drop.
-        let xdg_config = EnvVarGuard::set("XDG_CONFIG_HOME", &config_home);
-        let xdg_data = EnvVarGuard::set("XDG_DATA_HOME", &data_home);
-        Ok(TestEnv {
-            _tmp: tmp,
-            _xdg_config: xdg_config,
-            _xdg_data: xdg_data,
-        })
+    async fn mount_mailboxes(server: &MockServer) {
+        Mock::given(method("GET"))
+            .and(path("/api/v1/list-mailboxes/1"))
+            .and(query_param("remote", "true"))
+            .respond_with(
+                ResponseTemplate::new(200).set_body_json(json!([{"name":"INBOX","attributes":[]}])),
+            )
+            .mount(server)
+            .await;
     }
 
     #[tokio::test]
     async fn dry_run_returns_expected_diff() -> Result<()> {
         let _guard = crate::output::TEST_LOCK.lock().unwrap();
         let server = MockServer::start().await;
-        let _env = prepare_config(&server, "")?;
+        let _env = prepare_config(&server)?;
 
         Mock::given(method("GET"))
             .and(path("/api/v1/accounts"))
@@ -327,7 +301,7 @@ tailscale_ip = "100.100.100.10"
     async fn an_unknown_account_errors_instead_of_reconciling_nothing() -> Result<()> {
         let _guard = crate::output::TEST_LOCK.lock().unwrap();
         let server = MockServer::start().await;
-        let _env = prepare_config(&server, "")?;
+        let _env = prepare_config(&server)?;
 
         Mock::given(method("GET"))
             .and(path("/api/v1/accounts"))
@@ -361,7 +335,25 @@ tailscale_ip = "100.100.100.10"
     async fn an_omitted_host_resolves_the_lone_configured_one_off_a_tty() -> Result<()> {
         let _guard = crate::output::TEST_LOCK.lock().unwrap();
         let server = MockServer::start().await;
-        let _env = prepare_config(&server, "")?;
+        let _env = prepare_config(&server)?;
+        mount_one_account_in_sync(&server).await;
+
+        let result = compute_reconcile(None, false, None).await?;
+
+        assert_eq!(result.host, "auberge");
+        assert_eq!(result.account, None);
+        Ok(())
+    }
+
+    /// An empty roster is `connect`'s refusal now, not an empty plan and
+    /// exit 0: there is nothing to reconcile *and* nothing to reconcile it
+    /// against, and the message says which Host answered that way (#934).
+    /// Mutation-test it by dropping the `ensure!` in `connect`.
+    #[tokio::test]
+    async fn an_empty_roster_refuses_rather_than_planning_nothing() -> Result<()> {
+        let _guard = crate::output::TEST_LOCK.lock().unwrap();
+        let server = MockServer::start().await;
+        let _env = prepare_config(&server)?;
 
         Mock::given(method("GET"))
             .and(path("/api/v1/accounts"))
@@ -372,10 +364,10 @@ tailscale_ip = "100.100.100.10"
             .mount(&server)
             .await;
 
-        let result = compute_reconcile(None, false, None).await?;
-
-        assert_eq!(result.host, "auberge");
-        assert_eq!(result.account, None);
+        let err = compute_reconcile(Some("auberge".to_string()), false, None)
+            .await
+            .unwrap_err();
+        assert_eq!(err.to_string(), "Bichon reports no accounts on 'auberge'");
         Ok(())
     }
 
@@ -386,7 +378,7 @@ tailscale_ip = "100.100.100.10"
     async fn apply_patches_sync_folders_once_when_changed() -> Result<()> {
         let _guard = crate::output::TEST_LOCK.lock().unwrap();
         let server = MockServer::start().await;
-        let _env = prepare_config(&server, "")?;
+        let _env = prepare_config(&server)?;
 
         Mock::given(method("GET"))
             .and(path("/api/v1/accounts"))
@@ -437,7 +429,7 @@ tailscale_ip = "100.100.100.10"
     async fn apply_is_idempotent_with_no_diff() -> Result<()> {
         let _guard = crate::output::TEST_LOCK.lock().unwrap();
         let server = MockServer::start().await;
-        let _env = prepare_config(&server, "")?;
+        let _env = prepare_config(&server)?;
 
         Mock::given(method("GET"))
             .and(path("/api/v1/accounts"))
@@ -488,7 +480,7 @@ tailscale_ip = "100.100.100.10"
     async fn retries_on_5xx_then_succeeds() -> Result<()> {
         let _guard = crate::output::TEST_LOCK.lock().unwrap();
         let server = MockServer::start().await;
-        let _env = prepare_config(&server, "")?;
+        let _env = prepare_config(&server)?;
 
         // First call: 500. Second call: success.
         Mock::given(method("GET"))
@@ -497,17 +489,10 @@ tailscale_ip = "100.100.100.10"
             .up_to_n_times(1)
             .mount(&server)
             .await;
-        Mock::given(method("GET"))
-            .and(path("/api/v1/accounts"))
-            .respond_with(ResponseTemplate::new(200).set_body_json(json!({
-                "items": [],
-                "total_items": 0
-            })))
-            .mount(&server)
-            .await;
+        mount_one_account_in_sync(&server).await;
 
         let result = compute_reconcile(Some("auberge".to_string()), false, None).await?;
-        assert!(result.accounts.is_empty());
+        assert_eq!(result.accounts.len(), 1);
         Ok(())
     }
 
@@ -515,7 +500,7 @@ tailscale_ip = "100.100.100.10"
     async fn unknown_host_fails_before_network() -> Result<()> {
         let _guard = crate::output::TEST_LOCK.lock().unwrap();
         let server = MockServer::start().await;
-        let _env = prepare_config(&server, "")?;
+        let _env = prepare_config(&server)?;
 
         let err = compute_reconcile(Some("not-a-host".to_string()), false, None)
             .await
@@ -563,15 +548,16 @@ user = "root"
         Mock::given(method("GET"))
             .and(path("/api/v1/accounts"))
             .respond_with(ResponseTemplate::new(200).set_body_json(json!({
-                "items": [],
-                "total_items": 0
+                "items": [{"id":1, "email":"me@sripwoud.xyz", "sync_folders":["INBOX"]}],
+                "total_items": 1
             })))
             .expect(1)
             .mount(&server)
             .await;
+        mount_mailboxes(&server).await;
 
         let result = compute_reconcile(Some("auberge".to_string()), false, None).await?;
-        assert_eq!(result.accounts, Vec::<AccountPlan>::new());
+        assert_eq!(result.accounts[0].email, "me@sripwoud.xyz");
         Ok(())
     }
 }

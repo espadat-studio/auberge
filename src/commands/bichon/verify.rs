@@ -1,5 +1,4 @@
-use crate::commands::bichon::selection::{select_account, select_synced_folder};
-use crate::config::Config;
+use crate::commands::bichon::selection::{connect, select_account, select_synced_folder};
 use crate::hosts::{HOST_FLAG, select_or_arg};
 use crate::output::{self, OutputFormat};
 use crate::services::bichon::api::{Account, BichonApiClient};
@@ -7,7 +6,6 @@ use crate::services::bichon::coverage::{
     CoverageReport, compare_coverage, parse_sidecar_rows, sidecar_rows_command,
     validate_archive_path_for_shell,
 };
-use crate::services::bichon::derive_base_url;
 use crate::services::bichon::rescan::{sanitize_email, validate_email_for_shell};
 use crate::services::ssh::{LiveSshSession, SshSession};
 use chrono::{Datelike, NaiveDate};
@@ -35,8 +33,7 @@ pub async fn run_verify_coverage(
 /// the Host through `select_or_arg`, the Account and the Folder through the
 /// `selection` pair. Each picker's candidates come from the answer above it —
 /// the Account roster from the Host's Bichon, the Synced Folders from the
-/// Account — which is why the Bichon client is built between them rather
-/// than after.
+/// Account — which is why `connect` runs between them rather than after.
 ///
 /// `--before` has no candidates to offer, so clap keeps it required.
 async fn verify_inner(
@@ -52,16 +49,9 @@ async fn verify_inner(
     validate_archive_path_for_shell(&archive_path)?;
 
     let host = select_or_arg(host_arg, HOST_FLAG)?;
-    let config = Config::load()?;
-    let token = config
-        .get_resolved("bichon_api_token")?
-        .filter(|v| !v.trim().is_empty())
-        .ok_or_else(|| eyre::eyre!("bichon_api_token not set in config.toml"))?;
-    let base_url = derive_base_url(&config, &host)?;
-    let client = BichonApiClient::new(base_url, token)?;
+    let bichon = connect(&host).await?;
 
-    let accounts = client.list_accounts().await?;
-    let account = select_account(account_arg, &accounts)?;
+    let account = select_account(account_arg, &bichon.accounts)?;
     validate_email_for_shell(&account.email)?;
     let folder = select_synced_folder(folder_arg, &account)?;
 
@@ -69,7 +59,15 @@ async fn verify_inner(
     let route = crate::services::route::resolve(&host, Some(ssh_key))?;
     let ssh = LiveSshSession::new(&route, &host.become_method)?;
 
-    let report = compute_coverage(&client, &ssh, &account, &folder, cutoff, &archive_path).await?;
+    let report = compute_coverage(
+        &bichon.client,
+        &ssh,
+        &account,
+        &folder,
+        cutoff,
+        &archive_path,
+    )
+    .await?;
     emit_output(
         &host.name,
         &account.email,
