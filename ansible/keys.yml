@@ -129,6 +129,13 @@ keys:
     secret: false
     doc: "Username for the Forgejo administrator, created on the first deploy"
 
+  forgejo_cors_allow_origins:
+    secret: false
+    doc: >-
+      Comma-separated origins (scheme://host, one "*" wildcard per entry allowed) a browser-based
+      client such as Decap CMS is served from, granted CORS access to the forge (optional); leave
+      unset if nothing talks to it cross-origin.
+
   forgejo_subdomain:
     secret: false
     doc: "Subdomain for the Forgejo git forge"

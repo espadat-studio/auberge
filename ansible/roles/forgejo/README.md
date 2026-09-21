@@ -18,17 +18,18 @@ Deliberately not deployed:
 
 ## Variables
 
-| Variable               | Default                                 | Description                                  |
-| ---------------------- | --------------------------------------- | -------------------------------------------- |
-| `forgejo_install_path` | `/opt/forgejo`                          | Binary install directory                     |
-| `forgejo_data_dir`     | `/var/lib/forgejo`                      | Repositories, SQLite database, indexes       |
-| `forgejo_config_dir`   | `/etc/forgejo`                          | `app.ini` and the three signing secrets      |
-| `forgejo_sys_user`     | `forgejo`                               | System user                                  |
-| `forgejo_port`         | `3043`                                  | Loopback port Caddy proxies to               |
-| `forgejo_domain`       | `{{ forgejo_subdomain }}.{{ domain }}`  | Public hostname                              |
-| `forgejo_app_name`     | `Forgejo`                               | Site name in the header and page titles      |
-| `forgejo_admin_email`  | `{{ forgejo_admin_user }}@{{ domain }}` | Email on the administrator account           |
-| `forgejo_version`      | from `forgejo.meta.yml`                 | Pinned upstream release, tracked by Renovate |
+| Variable                     | Default                                 | Description                                            |
+| ---------------------------- | --------------------------------------- | ------------------------------------------------------ |
+| `forgejo_install_path`       | `/opt/forgejo`                          | Binary install directory                               |
+| `forgejo_data_dir`           | `/var/lib/forgejo`                      | Repositories, SQLite database, indexes                 |
+| `forgejo_config_dir`         | `/etc/forgejo`                          | `app.ini` and the three signing secrets                |
+| `forgejo_sys_user`           | `forgejo`                               | System user                                            |
+| `forgejo_port`               | `3043`                                  | Loopback port Caddy proxies to                         |
+| `forgejo_domain`             | `{{ forgejo_subdomain }}.{{ domain }}`  | Public hostname                                        |
+| `forgejo_app_name`           | `Forgejo`                               | Site name in the header and page titles                |
+| `forgejo_admin_email`        | `{{ forgejo_admin_user }}@{{ domain }}` | Email on the administrator account                     |
+| `forgejo_version`            | from `forgejo.meta.yml`                 | Pinned upstream release, tracked by Renovate           |
+| `forgejo_cors_allow_origins` | `""` (CORS off)                         | Comma-separated origins granted CORS access, see below |
 
 Required config keys: `forgejo_subdomain`, `forgejo_admin_user`, `forgejo_admin_password`.
 
@@ -135,6 +136,15 @@ Read off `decap-cms-backend-gitea` 3.5.2, `decap-cms-lib-auth` 3.3.2, and Forgej
 
 > [!NOTE]
 > Decap [#7867](https://github.com/decaporg/decap-cms/issues/7867), "Impossible to login with forgejo — missing secret", is open with no comments since 2026-06-25. It is titled after that error: `invalid empty client secret` is what Forgejo returns to a **confidential** application whose token exchange carries no secret, and a secretless exchange is the only kind Decap's PKCE path can make. That diagnosis is read off both sources, not off a login — no editor has yet completed this flow against this forge ([#936](https://github.com/espadat-studio/auberge/issues/936)). Prove one before depending on the path.
+
+## Cross-origin access for a browser-based client
+
+Decap runs in the editor's browser on the _site's_ origin, not the forge's, so every call it makes — the OAuth token exchange and every later read/write through the API — is cross-origin from Forgejo's point of view. Forgejo serves no CORS headers by default, and the browser blocks the token exchange before Forgejo ever answers it: `TypeError: Failed to fetch` after the forge redirects back, not a rejection from the forge ([#945](https://github.com/espadat-studio/auberge/issues/945)).
+
+Set `forgejo_cors_allow_origins` to every origin the admin page is served from, comma-separated, exactly as `redirects` is built for the OAuth application above — production, every preview deployment, and `localhost` if the login is exercised from a dev server. A single entry may carry one `*` wildcard (`https://*.example.pages.dev`) to cover a per-branch preview host. Leave it unset and CORS stays off, same as upstream's default.
+
+> [!NOTE]
+> Gitea's CORS middleware once covered `/api/v1` only. Verified against `routers/web/web.go` on current upstream: the `/login/oauth` group is wrapped in the same `optionsCorsHandler()` as the API, so enabling `[cors]` alone unblocks the token exchange — no separate Caddy-level header is needed.
 
 ## Memory
 

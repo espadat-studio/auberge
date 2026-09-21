@@ -34,6 +34,16 @@ INTERNAL_TOKEN_URI = file:{{ forgejo_config_dir }}/internal_token
 ; generates one into app.ini when it cannot load it, which this file exists to
 ; prevent.
 JWT_SECRET_URI = file:{{ forgejo_config_dir }}/jwt_secret
+{% if forgejo_cors_allow_origins | length > 0 %}
+
+[cors]
+; Decap runs the OAuth token exchange from the site's own origin, so without
+; this the browser blocks it before Forgejo ever sees the request (#945).
+ENABLED = true
+ALLOW_DOMAIN = {{ forgejo_cors_allow_origins }}
+METHODS = GET,HEAD,POST,PUT,PATCH,DELETE,OPTIONS
+HEADERS = Content-Type,User-Agent,Authorization
+{% endif %}
 
 [service]
 ; A public login surface: the admin creates every account.
