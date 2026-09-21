@@ -71,13 +71,38 @@ sudo -u forgejo env HOME=/var/lib/forgejo /opt/forgejo/forgejo \
 Registration is disabled, so the administrator creates every account. For a Decap CMS editor:
 
 1. **Settings → Applications → Manage OAuth2 Applications** on the forge, as the administrator.
-2. Application Name: anything. Redirect URI: the callback of whatever OAuth broker the site uses.
-3. **Uncheck Confidential Client.** Decap is a browser app and holds no client secret.
-4. Save. The client ID is shown once; the secret is not needed.
-5. On the site, use `backend: { name: gitea, ... }`, not `forgejo`. Decap reaches Forgejo through `decap-cms-backend-gitea`, which has shipped since 2023-10. `decap-cms-backend-forgejo` is newer, undocumented on decapcms.org, and not what Decap's own Forgejo instructions use. The minimum Forgejo for that path is 1.21.4.
+2. Application Name: anything. Redirect URI: **the Decap admin page itself**, trailing slash included — `https://example.com/admin/`.
+3. **Uncheck Confidential Client.**
+4. Save. Copy the client ID. There is no secret to copy, and none is needed.
+
+Then configure the site:
+
+```yaml
+backend:
+  name: gitea
+  base_url: https://git.example.com
+  api_root: https://git.example.com/api/v1
+  repo: owner/repo
+  branch: main
+  app_id: <client ID from step 4>
+```
+
+### Why those fields
+
+Decap reaches Forgejo through `decap-cms-backend-gitea`, not `decap-cms-backend-forgejo`. The gitea package has shipped since 2023-10; the forgejo one is newer, undocumented on decapcms.org, and not what Decap's own Forgejo instructions use. The minimum Forgejo for the path is 1.21.4.
+
+Every default in that backend points at somebody else's server, and none of them is derived from another. Set all of them:
+
+- **`base_url` is the forge root**, and only the login flow reads it. `PkceAuthenticator` appends `login/oauth/authorize` and `login/oauth/access_token` to it.
+- **`api_root` is the forge root plus `/api/v1`**, and it is a separate setting that does _not_ fall back to `base_url`. Leave it out and the editor signs in to this forge, then reads and writes content on `https://try.gitea.io`.
+- **`branch` defaults to `master`.** A repository on `main` fails to load until this is set.
+- **The redirect URI is `origin + pathname` of the page Decap is served from**, not a broker callback — PKCE has no broker to call back to. `/admin/` and `/admin` are two different URIs; register the one the site serves.
+- **Confidential Client must be off, because the token exchange sends no `client_secret`** — it carries `client_id`, `code`, `grant_type`, `redirect_uri` and `code_verifier`, and nothing else. Forgejo checks a secret only for a confidential application, and answers a missing one with `invalid_client` / `invalid empty client secret`. Unchecking it also puts the authorize endpoint in the mode Decap already speaks: PKCE is _required_ of a public client, and a public client is re-prompted for consent every time rather than silently re-granted.
+
+Read off `decap-cms-backend-gitea` 3.5.2, `decap-cms-lib-auth` 3.3.2, and Forgejo 16.0.5 `routers/web/auth/oauth.go` (lines 503, 532, 773).
 
 > [!NOTE]
-> Decap [#7867](https://github.com/decaporg/decap-cms/issues/7867), "Impossible to login with forgejo — missing secret", is open with no comments since June 2026. Unchecking Confidential Client is the documented step and the likely cause, but nobody has confirmed it. Prove a login before depending on this path.
+> Decap [#7867](https://github.com/decaporg/decap-cms/issues/7867), "Impossible to login with forgejo — missing secret", is open with no comments since 2026-06-25. It is titled after that error: `invalid empty client secret` is what Forgejo returns to a **confidential** application whose token exchange carries no secret, and a secretless exchange is the only kind Decap's PKCE path can make. That diagnosis is read off both sources, not off a login — no editor has yet completed this flow against this forge ([#936](https://github.com/espadat-studio/auberge/issues/936)). Prove one before depending on the path.
 
 ## Push-mirroring
 
