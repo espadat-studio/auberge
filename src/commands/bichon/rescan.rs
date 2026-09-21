@@ -1,7 +1,7 @@
+use crate::commands::bichon::selection::resolve_account_filter;
 use crate::config::Config;
-use crate::hosts::{HOST_FLAG, Host, HostManager, select_or_arg};
+use crate::hosts::{HOST_FLAG, select_or_arg};
 use crate::output::{self, OutputFormat};
-use crate::prompt;
 use crate::services::bichon::api::BichonApiClient;
 use crate::services::bichon::derive_base_url;
 use crate::services::bichon::rescan::{
@@ -10,8 +10,6 @@ use crate::services::bichon::rescan::{
 use crate::services::ssh::LiveSshSession;
 use eyre::{Result, WrapErr};
 use serde::Serialize;
-
-const ALL_ACCOUNTS: &str = "All accounts";
 
 pub async fn run_rescan(
     host_arg: Option<String>,
@@ -32,7 +30,7 @@ async fn rescan_inner(
     account_filter: Option<String>,
     output: OutputFormat,
 ) -> Result<i32> {
-    let host = resolve_host(host_arg)?;
+    let host = select_or_arg(host_arg, HOST_FLAG)?;
 
     let config = Config::load()?;
     let token = config
@@ -49,7 +47,11 @@ async fn rescan_inner(
         eyre::bail!("Bichon reports no accounts on '{}'", host.name);
     }
 
-    let selected = resolve_accounts(account_filter.clone(), &known, HostManager::is_tty())?;
+    let account = resolve_account_filter(account_filter, &known, crate::prompt::is_interactive())?;
+    let selected = match &account {
+        Some(email) => vec![email.clone()],
+        None => known.clone(),
+    };
 
     let ssh_key = crate::services::ssh::resolve_ssh_key_path(&host, None)?;
     let route = crate::services::route::resolve(&host, Some(ssh_key))?;
@@ -79,47 +81,8 @@ async fn rescan_inner(
             Ok(2)
         }
         RescanOutcome::Ran(run) => {
-            emit_output(&host.name, account_filter.as_deref(), &run, output)?;
+            emit_output(&host.name, account.as_deref(), &run, output)?;
             Ok(run.status().exit_code())
-        }
-    }
-}
-
-fn resolve_host(arg: Option<String>) -> Result<Host> {
-    if arg.is_none() && !HostManager::is_tty() {
-        eyre::bail!("--host is required when stdin is not a TTY");
-    }
-    select_or_arg(arg, HOST_FLAG)
-}
-
-fn resolve_accounts(filter: Option<String>, known: &[String], is_tty: bool) -> Result<Vec<String>> {
-    match filter {
-        Some(email) => {
-            if known.iter().any(|k| k == &email) {
-                Ok(vec![email])
-            } else {
-                eyre::bail!(
-                    "unknown account '{}'; Bichon reports: {}",
-                    email,
-                    known.join(", ")
-                )
-            }
-        }
-        None if !is_tty => Ok(known.to_vec()),
-        None => {
-            let mut items = Vec::with_capacity(known.len() + 1);
-            items.push(ALL_ACCOUNTS.to_string());
-            items.extend_from_slice(known);
-            let choice = prompt::select_item(
-                &items,
-                |s: &String| s.clone(),
-                prompt::Choice::new("account").resolved_by("--account <email>"),
-            )?;
-            if choice == ALL_ACCOUNTS {
-                Ok(known.to_vec())
-            } else {
-                Ok(vec![choice])
-            }
         }
     }
 }
@@ -187,37 +150,6 @@ fn emit_output(
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    fn known() -> Vec<String> {
-        vec!["a@x.io".to_string(), "b@x.io".to_string()]
-    }
-
-    #[test]
-    fn missing_host_off_a_tty_names_the_flag() {
-        // cargo test runs with non-TTY stdin, so the guard takes effect.
-        let err = resolve_host(None).unwrap_err();
-        assert!(format!("{err}").contains("--host"));
-    }
-
-    #[test]
-    fn explicit_account_must_be_one_bichon_reports() {
-        let err = resolve_accounts(Some("ghost@x.io".to_string()), &known(), false).unwrap_err();
-        let msg = format!("{err}");
-        assert!(msg.contains("ghost@x.io"));
-        assert!(msg.contains("a@x.io"));
-    }
-
-    #[test]
-    fn explicit_known_account_narrows_to_it() {
-        let selected = resolve_accounts(Some("b@x.io".to_string()), &known(), false).unwrap();
-        assert_eq!(selected, vec!["b@x.io".to_string()]);
-    }
-
-    #[test]
-    fn omitted_account_off_a_tty_means_all_accounts() {
-        let selected = resolve_accounts(None, &known(), false).unwrap();
-        assert_eq!(selected, known());
-    }
 
     #[test]
     fn json_doc_carries_the_load_bearing_fields() {

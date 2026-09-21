@@ -30,13 +30,15 @@ Refuses to run when:
 
 ## Options
 
-| Option              | Description                                                                       | Default  |
-| ------------------- | --------------------------------------------------------------------------------- | -------- |
-| -H, --host HOST     | Target host running Bichon (prompted on a TTY)                                    | prompted |
-| --account EMAIL     | Only reset one account's cursor (prompted on a TTY, `All accounts` offered first) | All      |
-| -o, --output FORMAT | Output format (`human`, `json`)                                                   | `human`  |
+| Option              | Description                                                                         | Default  |
+| ------------------- | ----------------------------------------------------------------------------------- | -------- |
+| -H, --host HOST     | Target host running Bichon (prompted on a TTY)                                      | prompted |
+| --account EMAIL     | Only reset one account's cursor (prompted on a TTY, `[all accounts]` offered first) | All      |
+| -o, --output FORMAT | Output format (`human`, `json`)                                                     | `human`  |
 
-Off a TTY, `--host` is required and the error names it; `--account` omitted means all accounts.
+Off a TTY a lone configured host is implied and a roster holding several exits 2 naming `-H`; `--account` omitted means all accounts.
+
+The `account` field of `--output json` carries the filter that was **resolved**, not the flag that was typed: pick one account from the picker and that address is what the report names.
 
 ## Exit codes
 
