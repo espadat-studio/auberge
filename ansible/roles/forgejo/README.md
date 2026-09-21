@@ -53,7 +53,7 @@ sudo -u forgejo env HOME=/var/lib/forgejo GITEA_WORK_DIR=/var/lib/forgejo \
 ```
 
 > [!WARNING]
-> Forgejo runs `git config --global` on startup and on several admin paths (`syncGitConfig`). With the wrong `HOME` it writes into the invoking user's global git config — including flipping `gpg.format`, which silently breaks commit signing. The unit sets `HOME` for exactly this reason; a hand-run must too.
+> Forgejo runs `git config --global` on startup and on several admin paths (`syncGitConfig`). With the wrong `HOME` it writes into the invoking user's global git config — including flipping `gpg.format`, which silently breaks commit signing. Observed, not theoretical. The unit sets `HOME`, and so does the role's own `admin user create`; a hand-run must too.
 
 ## Rotating the administrator password
 

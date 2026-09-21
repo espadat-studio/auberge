@@ -357,7 +357,7 @@ impl UpstreamClient {
             request = request.bearer_auth(token);
         }
         let releases: Vec<Release> = request.send().await?.error_for_status()?.json().await?;
-        pick(&releases, version)
+        latest_through_pin(&releases, version)
     }
 
     /// Renovate's `forgejo-releases` datasource. The API is Gitea's, which is
@@ -382,12 +382,12 @@ impl UpstreamClient {
             .error_for_status()?
             .json()
             .await?;
-        pick(&releases, version)
+        latest_through_pin(&releases, version)
     }
 }
 
 /// The newest version a release list yields through a pin's coordinates.
-fn pick(releases: &[Release], version: &VersionPin) -> Result<String> {
+fn latest_through_pin(releases: &[Release], version: &VersionPin) -> Result<String> {
     let extract = version
         .extract_version
         .as_deref()

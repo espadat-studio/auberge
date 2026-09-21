@@ -88,7 +88,6 @@
 
     - name: Read the Forgejo sha256 out of the sidecar
       when: forgejo_installed_version != forgejo_version
-      delegate_to: localhost
       ansible.builtin.set_fact:
         forgejo_sha256: "{{ forgejo_checksum_sidecar.content | trim | split() | first }}"
 
@@ -116,12 +115,20 @@
     # that parses it. `creates:` makes this once-per-Host: rotating one is a
     # deliberate act, not a deploy side effect, and regenerating SECRET_KEY
     # would orphan every 2FA enrolment.
+    # Written to a scratch name and moved, because the shell creates the
+    # redirect target before the binary runs: a generator that failed would
+    # leave an empty file at the path `creates:` watches, and every later run
+    # would skip it. Forgejo would then refuse to load the secret and die on
+    # every start, with nothing pointing at the empty file as the cause.
     - name: Generate the Forgejo signing secrets (once per Host)
       ansible.builtin.shell:
         cmd: >-
           umask 027 &&
           {{ forgejo_binary_path }} generate secret {{ item.kind }}
-          > {{ forgejo_config_dir }}/{{ item.file }}
+          > {{ forgejo_config_dir }}/{{ item.file }}.new
+          && test -s {{ forgejo_config_dir }}/{{ item.file }}.new
+          && mv {{ forgejo_config_dir }}/{{ item.file }}.new
+          {{ forgejo_config_dir }}/{{ item.file }}
         creates: "{{ forgejo_config_dir }}/{{ item.file }}"
       loop: "{{ forgejo_secrets }}"
       loop_control:
@@ -211,6 +218,12 @@
           - --config
           - "{{ forgejo_config_file }}"
       environment:
+        # Not decoration and not inherited: `forgejo admin` runs syncGitConfig,
+        # which writes git's *global* config. Under the wrong HOME that is the
+        # invoking user's, and it silently flips their `gpg.format`. The unit
+        # sets these for the same reason.
+        HOME: "{{ forgejo_data_dir }}"
+        USER: "{{ forgejo_sys_user }}"
         GITEA_WORK_DIR: "{{ forgejo_data_dir }}"
       become: true
       become_user: "{{ forgejo_sys_user }}"
