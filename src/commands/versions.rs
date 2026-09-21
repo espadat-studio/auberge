@@ -963,7 +963,7 @@ mod tests {
     /// client's, so a Meta can be perfectly valid to Renovate and still name
     /// an arm that does not exist -- and because `app_drift_reports`
     /// propagates with `?`, that one declaration takes the drift report down
-    /// for **every** App, not just its own (#933).
+    /// for **every** App, not just its own (#933, ADR-0080).
     ///
     /// Behavioural, not a list: each pin is put through the real `latest`
     /// against an unreachable base, so the arm has to exist for the call to

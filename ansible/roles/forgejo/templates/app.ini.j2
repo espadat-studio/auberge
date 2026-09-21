@@ -10,8 +10,8 @@ HTTP_PORT = {{ forgejo_port }}
 DOMAIN = {{ forgejo_domain }}
 ROOT_URL = https://{{ forgejo_domain }}/
 APP_DATA_PATH = {{ forgejo_data_dir }}/data
-; ADR-0079: the forge is reached over HTTPS only. No git system user, no
-; authorized_keys, no second sshd on a box whose real one is hardened.
+; HTTPS only. No git system user, no authorized_keys, and nothing listening
+; beside the Host's hardened sshd. See the role README.
 DISABLE_SSH = true
 START_SSH_SERVER = false
 

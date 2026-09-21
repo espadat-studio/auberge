@@ -166,10 +166,14 @@
     - name: Flush handlers so a pending forgejo restart lands before the probe
       ansible.builtin.meta: flush_handlers
 
+    # /api/healthz pings the database, so a 200 is a verdict on the store and
+    # not just on the listener. It answers 424 while the store is still coming
+    # up, which is why that status is accepted by the module and rejected by
+    # the `until`.
     - name: Wait for Forgejo to answer its health endpoint on loopback
       ansible.builtin.uri:
         url: "http://127.0.0.1:{{ forgejo_port }}/api/healthz"
-        status_code: 200
+        status_code: [200, 424]
       register: forgejo_health
       until: forgejo_health.status == 200
       retries: 30
