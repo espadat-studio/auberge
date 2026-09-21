@@ -28,3 +28,8 @@ forgejo_secrets:
   - { kind: SECRET_KEY, file: secret_key }
   - { kind: INTERNAL_TOKEN, file: internal_token }
   - { kind: JWT_SECRET, file: jwt_secret }
+# Comma-separated origins (scheme://host, one "*" wildcard per entry allowed),
+# passed straight through to app.ini's ALLOW_DOMAIN. Empty leaves CORS off,
+# which is safe: nothing about this role needs it until a browser-based client
+# talks to the forge across origins.
+forgejo_cors_allow_origins: ""
