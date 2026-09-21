@@ -111,9 +111,10 @@ impl Choice {
 /// today — and the reader on the non-interactive path is a log rather than
 /// someone who can scroll.
 ///
-/// Not every picker can reach this error: `headscale`, `bichon` and `backup`'s
-/// ID picker sit behind their own `is_tty` guards and bail before
-/// `select_item`, so the cap is sized for the callers that do reach it.
+/// Not every picker can reach this error: `headscale`, `backup`'s ID picker
+/// and `bichon`'s account filter sit behind their own `is_tty` guards and
+/// bail before `select_item`, so the cap is sized for the callers that do
+/// reach it. `bichon`'s host picker stopped being one of them in #922.
 const MAX_NAMED_CANDIDATES: usize = 10;
 
 fn name_candidates(candidates: &[String]) -> String {
@@ -446,8 +447,8 @@ mod tests {
     fn select_item_auto_selects_a_lone_candidate_without_a_tty() {
         // Deliberate: one candidate is not a choice, so scripts need no flag.
         // With the two tests above, this is the whole no-TTY policy that
-        // `backup verify` leans on since #911 — asserted here, not per
-        // command.
+        // `backup verify` leans on since #911 and `bichon`'s host argument
+        // since #922 — asserted here, not per command.
         let only = vec!["auberge".to_string()];
         let selected = select_item(
             &only,

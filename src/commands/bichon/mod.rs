@@ -1,5 +1,6 @@
 mod reconcile;
 mod rescan;
+mod selection;
 mod verify;
 
 use crate::output::OutputArg;
@@ -18,11 +19,18 @@ pub enum BichonCommands {
         about = "Reconcile account sync_folders from live IMAP folders"
     )]
     ReconcileFolders {
-        #[arg(short = 'H', long, help = "Target host running Bichon")]
-        host: String,
+        #[arg(
+            short = 'H',
+            long,
+            help = "Target host running Bichon (prompts if omitted; in a script a lone configured host is implied and several fail naming the flag rather than hang)"
+        )]
+        host: Option<String>,
         #[arg(long, help = "Apply changes to Bichon accounts")]
         apply: bool,
-        #[arg(long, help = "Only reconcile one account email")]
+        #[arg(
+            long,
+            help = "Only reconcile one account email (prompted on a TTY; omitted means all accounts)"
+        )]
         account: Option<String>,
         #[command(flatten)]
         output: OutputArg,
@@ -64,12 +72,12 @@ pub enum BichonCommands {
         #[arg(
             short = 'H',
             long,
-            help = "Target host running Bichon (prompted on a TTY when omitted)"
+            help = "Target host running Bichon (prompts if omitted; in a script a lone configured host is implied and several exit 2 rather than hang)"
         )]
         host: Option<String>,
         #[arg(
             long,
-            help = "Only rescan one account email (prompted on a TTY when omitted)"
+            help = "Only rescan one account email (prompted on a TTY; omitted means all accounts)"
         )]
         account: Option<String>,
         #[command(flatten)]

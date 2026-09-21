@@ -76,6 +76,7 @@ pub const CRATE_MODULES: &[&str] = &[
     "src/commands/bichon/mod.rs",
     "src/commands/bichon/reconcile.rs",
     "src/commands/bichon/rescan.rs",
+    "src/commands/bichon/selection.rs",
     "src/commands/bichon/verify.rs",
     "src/commands/config_cmd.rs",
     "src/commands/deploy.rs",

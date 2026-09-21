@@ -1,5 +1,6 @@
+use crate::commands::bichon::selection::resolve_accounts;
 use crate::config::Config;
-use crate::hosts::HostManager;
+use crate::hosts::{HOST_FLAG, HostManager, select_or_arg};
 use crate::output::{self, OutputFormat};
 use crate::services::bichon::api::{Account, BichonApiClient};
 use crate::services::bichon::derive_base_url;
@@ -33,7 +34,7 @@ pub struct ReconcileOutput {
 }
 
 pub async fn run_reconcile_folders(
-    host: String,
+    host: Option<String>,
     apply: bool,
     account_filter: Option<String>,
     output: OutputFormat,
@@ -54,13 +55,22 @@ pub async fn run_reconcile_folders(
     Ok(())
 }
 
+/// `-H` and `--account` are both resolved here rather than filtered later:
+/// the two questions have one answer each, shared with `rescan`.
+///
+/// `-H` names the Host acted on, so it routes through the roster picker; an
+/// unknown name is an error before any network call. `--account` narrows a
+/// listing, so an omitted one still means every Account. Before #922 it was
+/// a plain equality match over the listing, and an address Bichon does not
+/// report filtered every Account away — the run then reconciled nothing and
+/// said so as a success.
 pub async fn compute_reconcile(
-    host: String,
+    host_arg: Option<String>,
     apply: bool,
     account_filter: Option<String>,
 ) -> Result<ReconcileOutput> {
-    let host_record =
-        HostManager::get_host(&host).wrap_err_with(|| format!("unknown host '{host}'"))?;
+    let host_record = select_or_arg(host_arg, HOST_FLAG)?;
+    let host = host_record.name.clone();
 
     let config = Config::load()?;
     let token = config
@@ -73,10 +83,11 @@ pub async fn compute_reconcile(
     let mut accounts = client.list_accounts().await?;
     accounts.sort_by(|a, b| a.email.cmp(&b.email));
 
-    let accounts: Vec<Account> = if let Some(email) = &account_filter {
-        accounts.into_iter().filter(|a| &a.email == email).collect()
-    } else {
-        accounts
+    let known: Vec<String> = accounts.iter().map(|a| a.email.clone()).collect();
+    let account_filter = resolve_accounts(account_filter, &known, HostManager::is_tty())?;
+    let accounts: Vec<Account> = match &account_filter {
+        Some(email) => accounts.into_iter().filter(|a| &a.email == email).collect(),
+        None => accounts,
     };
 
     let mut plans = Vec::new();
@@ -275,7 +286,7 @@ tailscale_ip = "100.100.100.10"
             .await;
 
         let result = compute_reconcile(
-            "auberge".to_string(),
+            Some("auberge".to_string()),
             false,
             Some("me@sripwoud.xyz".to_string()),
         )
@@ -307,6 +318,68 @@ tailscale_ip = "100.100.100.10"
                 changed_accounts: 1
             }
         );
+        Ok(())
+    }
+
+    /// The bug #922 was filed for. Before the fix `--account` was a plain
+    /// equality match over the listing, so an address Bichon does not report
+    /// filtered every Account away and the run reported
+    /// `0 folders added across 0 accounts` as a success. Mutation-test it by
+    /// restoring the `.filter()`: this returns `Ok` with an empty plan and
+    /// the assertion below fails.
+    #[tokio::test]
+    async fn an_unknown_account_errors_instead_of_reconciling_nothing() -> Result<()> {
+        let _guard = crate::output::TEST_LOCK.lock().unwrap();
+        let server = MockServer::start().await;
+        let _env = prepare_config(&server, "")?;
+
+        Mock::given(method("GET"))
+            .and(path("/api/v1/accounts"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+                "items": [
+                    {"id":1, "email":"me@sripwoud.xyz", "sync_folders":["INBOX"]}
+                ],
+                "total_items": 1
+            })))
+            .mount(&server)
+            .await;
+
+        let err = compute_reconcile(
+            Some("auberge".to_string()),
+            false,
+            Some("me@exmaple.com".to_string()),
+        )
+        .await
+        .unwrap_err();
+
+        let msg = format!("{err:#}");
+        assert!(msg.contains("me@exmaple.com"), "{msg}");
+        assert!(msg.contains("me@sripwoud.xyz"), "{msg}");
+        Ok(())
+    }
+
+    /// `cargo test` runs without a TTY, so this exercises the scripted path:
+    /// a lone configured Host is implied rather than refused. Mutation-test
+    /// it by reinstating an `is_tty` guard ahead of `select_or_arg`.
+    #[tokio::test]
+    async fn an_omitted_host_resolves_the_lone_configured_one_off_a_tty() -> Result<()> {
+        let _guard = crate::output::TEST_LOCK.lock().unwrap();
+        let server = MockServer::start().await;
+        let _env = prepare_config(&server, "")?;
+
+        Mock::given(method("GET"))
+            .and(path("/api/v1/accounts"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+                "items": [],
+                "total_items": 0
+            })))
+            .mount(&server)
+            .await;
+
+        let result = compute_reconcile(None, false, None).await?;
+
+        assert_eq!(result.host, "auberge");
+        assert_eq!(result.account, None);
         Ok(())
     }
 
@@ -356,7 +429,7 @@ tailscale_ip = "100.100.100.10"
             .mount(&server)
             .await;
 
-        let result = compute_reconcile("auberge".to_string(), true, None).await?;
+        let result = compute_reconcile(Some("auberge".to_string()), true, None).await?;
         assert!(result.apply);
         assert_eq!(result.summary.changed_accounts, 1);
         assert_eq!(result.summary.added, 1);
@@ -399,7 +472,7 @@ tailscale_ip = "100.100.100.10"
             .mount(&server)
             .await;
 
-        let result = compute_reconcile("auberge".to_string(), true, None).await?;
+        let result = compute_reconcile(Some("auberge".to_string()), true, None).await?;
         assert!(result.apply);
         assert_eq!(
             result.summary,
@@ -437,7 +510,7 @@ tailscale_ip = "100.100.100.10"
             .mount(&server)
             .await;
 
-        let result = compute_reconcile("auberge".to_string(), false, None).await?;
+        let result = compute_reconcile(Some("auberge".to_string()), false, None).await?;
         assert!(result.accounts.is_empty());
         Ok(())
     }
@@ -448,7 +521,7 @@ tailscale_ip = "100.100.100.10"
         let server = MockServer::start().await;
         let _env = prepare_config(&server, "")?;
 
-        let err = compute_reconcile("not-a-host".to_string(), false, None)
+        let err = compute_reconcile(Some("not-a-host".to_string()), false, None)
             .await
             .unwrap_err();
         let msg = format!("{err:?}");
@@ -501,7 +574,7 @@ user = "root"
             .mount(&server)
             .await;
 
-        let result = compute_reconcile("auberge".to_string(), false, None).await?;
+        let result = compute_reconcile(Some("auberge".to_string()), false, None).await?;
         assert_eq!(result.accounts, Vec::<AccountPlan>::new());
         Ok(())
     }

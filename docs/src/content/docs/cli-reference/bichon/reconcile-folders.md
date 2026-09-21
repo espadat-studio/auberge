@@ -5,7 +5,7 @@ title: "auberge bichon reconcile-folders"
 ## Synopsis
 
 ```bash
-auberge bichon reconcile-folders --host <HOST> [OPTIONS]
+auberge bichon reconcile-folders [--host <HOST>] [--account <EMAIL>] [OPTIONS]
 ```
 
 ## Description
@@ -36,12 +36,16 @@ On Bichon >= 2.0 the remote folder list is served from a cache. On a cold cache 
 
 ## Options
 
-| Option              | Description                             | Default |
-| ------------------- | --------------------------------------- | ------- |
-| -H, --host HOST     | Target host running Bichon              | -       |
-| --apply             | Commit `sync_folders` updates in Bichon | false   |
-| --account EMAIL     | Reconcile only one account email        | All     |
-| -o, --output FORMAT | Output format (`human`, `json`)         | `human` |
+| Option              | Description                                                                          | Default  |
+| ------------------- | ------------------------------------------------------------------------------------ | -------- |
+| -H, --host HOST     | Target host running Bichon (prompted on a TTY)                                       | prompted |
+| --apply             | Commit `sync_folders` updates in Bichon                                              | false    |
+| --account EMAIL     | Reconcile only one account email (prompted on a TTY, `[all accounts]` offered first) | All      |
+| -o, --output FORMAT | Output format (`human`, `json`)                                                      | `human`  |
+
+Omit `-H` on a terminal and the host picker is drawn, like every other `bichon` command. It cannot hang in a script: with no terminal a lone configured host is implied, and a roster holding several fails naming the flag rather than waiting for an answer nobody can give. `--account` omitted means every account, on a terminal or off one.
+
+An `--account` Bichon does not report is an error naming the accounts it does. It used to be matched by plain equality, so a typo filtered every account away and the run reported `0 folders added across 0 accounts` as a success.
 
 ## Bichon API base URL
 
@@ -90,6 +94,9 @@ If neither a per-host override, a global `bichon_base_url`, nor `domain` is set,
 ## Examples
 
 ```bash
+# Pick the host and the account interactively
+auberge bichon reconcile-folders
+
 # Dry-run all accounts
 auberge bichon reconcile-folders --host auberge
 
