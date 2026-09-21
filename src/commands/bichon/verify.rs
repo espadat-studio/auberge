@@ -1,7 +1,8 @@
+use crate::commands::bichon::selection::{select_account, select_synced_folder};
 use crate::config::Config;
-use crate::hosts::HostManager;
+use crate::hosts::{HOST_FLAG, select_or_arg};
 use crate::output::{self, OutputFormat};
-use crate::services::bichon::api::BichonApiClient;
+use crate::services::bichon::api::{Account, BichonApiClient};
 use crate::services::bichon::coverage::{
     CoverageReport, compare_coverage, parse_sidecar_rows, sidecar_rows_command,
     validate_archive_path_for_shell,
@@ -14,9 +15,9 @@ use eyre::{Result, WrapErr};
 use serde::Serialize;
 
 pub async fn run_verify_coverage(
-    host: String,
-    account: String,
-    folder: String,
+    host: Option<String>,
+    account: Option<String>,
+    folder: Option<String>,
     before: String,
     archive_path: String,
     output: OutputFormat,
@@ -30,35 +31,54 @@ pub async fn run_verify_coverage(
     }
 }
 
+/// All three subjects are resolved here, before the walk that needs them:
+/// the Host through `select_or_arg`, the Account and the Folder through the
+/// `selection` pair. Each picker's candidates come from the answer above it —
+/// the Account roster from the Host's Bichon, the Synced Folders from the
+/// Account — which is why the Bichon client is built between them rather
+/// than after.
+///
+/// `--before` has no candidates to offer, so clap keeps it required.
 async fn verify_inner(
-    host: String,
-    account: String,
-    folder: String,
+    host_arg: Option<String>,
+    account_arg: Option<String>,
+    folder_arg: Option<String>,
     before: String,
     archive_path: String,
     output: OutputFormat,
 ) -> Result<i32> {
     let cutoff = NaiveDate::parse_from_str(&before, "%Y-%m-%d")
         .wrap_err_with(|| format!("--before must be a YYYY-MM-DD date, got '{before}'"))?;
-    validate_email_for_shell(&account)?;
     validate_archive_path_for_shell(&archive_path)?;
 
-    let host_record =
-        HostManager::get_host(&host).wrap_err_with(|| format!("unknown host '{host}'"))?;
+    let host = select_or_arg(host_arg, HOST_FLAG)?;
     let config = Config::load()?;
     let token = config
         .get_resolved("bichon_api_token")?
         .filter(|v| !v.trim().is_empty())
         .ok_or_else(|| eyre::eyre!("bichon_api_token not set in config.toml"))?;
-    let base_url = derive_base_url(&config, &host_record)?;
+    let base_url = derive_base_url(&config, &host)?;
     let client = BichonApiClient::new(base_url, token)?;
 
-    let ssh_key = crate::services::ssh::resolve_ssh_key_path(&host_record, None)?;
-    let route = crate::services::route::resolve(&host_record, Some(ssh_key))?;
-    let ssh = LiveSshSession::new(&route, &host_record.become_method)?;
+    let mut accounts = client.list_accounts().await?;
+    accounts.sort_by(|a, b| a.email.cmp(&b.email));
+    let account = select_account(account_arg, &accounts)?;
+    validate_email_for_shell(&account.email)?;
+    let folder = select_synced_folder(folder_arg, &account)?;
+
+    let ssh_key = crate::services::ssh::resolve_ssh_key_path(&host, None)?;
+    let route = crate::services::route::resolve(&host, Some(ssh_key))?;
+    let ssh = LiveSshSession::new(&route, &host.become_method)?;
 
     let report = compute_coverage(&client, &ssh, &account, &folder, cutoff, &archive_path).await?;
-    emit_output(&host, &account, &folder, &before, &report, output)?;
+    emit_output(
+        &host.name,
+        &account.email,
+        &folder,
+        &before,
+        &report,
+        output,
+    )?;
     Ok(report.status().exit_code())
 }
 
@@ -67,28 +87,11 @@ async fn verify_inner(
 async fn compute_coverage(
     client: &BichonApiClient,
     ssh: &dyn SshSession,
-    account: &str,
+    account: &Account,
     folder: &str,
     cutoff: NaiveDate,
     archive_path: &str,
 ) -> Result<CoverageReport> {
-    let accounts = client.list_accounts().await?;
-    let account_id = accounts
-        .iter()
-        .find(|a| a.email == account)
-        .map(|a| a.id)
-        .ok_or_else(|| {
-            eyre::eyre!(
-                "Bichon knows no account '{}'; it reports: {}",
-                account,
-                accounts
-                    .iter()
-                    .map(|a| a.email.as_str())
-                    .collect::<Vec<_>>()
-                    .join(", ")
-            )
-        })?;
-
     // The window is "strictly older than the cutoff date"; Bichon's `before`
     // bound is inclusive, so back off the midnight timestamp by one.
     let cutoff_ms = cutoff
@@ -97,12 +100,12 @@ async fn compute_coverage(
         .and_utc()
         .timestamp_millis()
         - 1;
-    let envelopes = client.search_messages(account_id, cutoff_ms).await?;
+    let envelopes = client.search_messages(account.id, cutoff_ms).await?;
 
     let archive_dir = format!(
         "{}/{}",
         archive_path.trim_end_matches('/'),
-        sanitize_email(account)
+        sanitize_email(&account.email)
     );
     let walk = ssh.run(&sidecar_rows_command(&archive_dir))?;
     if !walk.success {
@@ -180,7 +183,7 @@ fn emit_output(
 #[cfg(test)]
 mod tests {
     use super::compute_coverage;
-    use crate::services::bichon::api::BichonApiClient;
+    use crate::services::bichon::api::{Account, BichonApiClient};
     use crate::services::bichon::coverage::CoverageStatus;
     use crate::services::ssh::{CommandResult, MockSshSession, SshOp};
     use chrono::NaiveDate;
@@ -192,6 +195,17 @@ mod tests {
         NaiveDate::from_ymd_opt(2026, 5, 13).unwrap()
     }
 
+    /// The Account arrives resolved: `select_account` answered "which
+    /// account", so the verdict no longer re-asks the API for the roster and
+    /// no longer owns an unknown-address error of its own.
+    fn account() -> Account {
+        Account {
+            id: 7,
+            email: "me@x.io".to_string(),
+            sync_folders: vec!["INBOX".to_string()],
+        }
+    }
+
     fn stdout(text: &str) -> CommandResult {
         CommandResult {
             success: true,
@@ -201,21 +215,9 @@ mod tests {
         }
     }
 
-    async fn mount_accounts(server: &MockServer) {
-        Mock::given(method("GET"))
-            .and(path("/api/v1/accounts"))
-            .respond_with(ResponseTemplate::new(200).set_body_json(json!({
-                "items": [{"id": 7, "email": "me@x.io", "sync_folders": ["INBOX"]}],
-                "total_items": 1
-            })))
-            .mount(server)
-            .await;
-    }
-
     #[tokio::test]
     async fn a_covered_folder_reports_covered() {
         let server = MockServer::start().await;
-        mount_accounts(&server).await;
 
         // 2026-05-13T00:00:00Z is 1778630400000; the inclusive bound backs
         // off by one so a message dated exactly at midnight stays outside.
@@ -244,7 +246,7 @@ mod tests {
         let report = compute_coverage(
             &client,
             &ssh,
-            "me@x.io",
+            &account(),
             "INBOX",
             cutoff(),
             "/var/lib/bichon-archive",
@@ -266,7 +268,6 @@ mod tests {
     #[tokio::test]
     async fn a_store_message_the_archive_lacks_is_a_gap() {
         let server = MockServer::start().await;
-        mount_accounts(&server).await;
 
         Mock::given(method("POST"))
             .and(path("/api/v1/search-messages"))
@@ -288,7 +289,7 @@ mod tests {
         let report = compute_coverage(
             &client,
             &ssh,
-            "me@x.io",
+            &account(),
             "INBOX",
             cutoff(),
             "/var/lib/bichon-archive",
@@ -302,33 +303,8 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn an_unknown_account_names_what_bichon_reports() {
-        let server = MockServer::start().await;
-        mount_accounts(&server).await;
-
-        let ssh = MockSshSession::new();
-        let client = BichonApiClient::new(server.uri(), "token").unwrap();
-        let err = compute_coverage(
-            &client,
-            &ssh,
-            "ghost@x.io",
-            "INBOX",
-            cutoff(),
-            "/var/lib/bichon-archive",
-        )
-        .await
-        .unwrap_err();
-
-        let msg = format!("{err}");
-        assert!(msg.contains("ghost@x.io"));
-        assert!(msg.contains("me@x.io"));
-        assert!(ssh.calls().is_empty());
-    }
-
-    #[tokio::test]
     async fn a_missing_archive_directory_is_an_operational_error() {
         let server = MockServer::start().await;
-        mount_accounts(&server).await;
 
         Mock::given(method("POST"))
             .and(path("/api/v1/search-messages"))
@@ -352,7 +328,7 @@ mod tests {
         let err = compute_coverage(
             &client,
             &ssh,
-            "me@x.io",
+            &account(),
             "INBOX",
             cutoff(),
             "/var/lib/bichon-archive",
