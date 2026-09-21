@@ -54,11 +54,16 @@ pub fn resolve_account_filter(
 
 /// The one refusal both Account resolvers hand back, so a typo reads the same
 /// whether it narrowed a listing or named a subject.
+///
+/// Sorted here so the list it names is the list a picker would have drawn,
+/// whatever order the roster arrived in.
 fn unknown_account(email: &str, known: &[String]) -> eyre::Report {
-    let reported = if known.is_empty() {
+    let mut reported: Vec<&str> = known.iter().map(String::as_str).collect();
+    reported.sort_unstable();
+    let reported = if reported.is_empty() {
         "no accounts".to_string()
     } else {
-        known.join(", ")
+        reported.join(", ")
     };
     eyre::eyre!("unknown account '{email}'; Bichon reports {reported}")
 }
@@ -77,12 +82,18 @@ fn unknown_account(email: &str, known: &[String]) -> eyre::Report {
 ///
 /// The no-TTY policy is [`prompt::select_item`]'s, unchanged: a lone Account
 /// is implied and several error naming `--account`.
+///
+/// The roster is ordered here rather than trusted from the API or from the
+/// caller, so the picker's rows and the refusal's list read the same way
+/// whoever asks.
 pub fn select_account(arg: Option<String>, accounts: &[Account]) -> Result<Account> {
+    let mut roster = accounts.to_vec();
+    roster.sort_by(|a, b| a.email.cmp(&b.email));
+
     match arg {
-        Some(email) => accounts
-            .iter()
+        Some(email) => roster
+            .into_iter()
             .find(|a| a.email == email)
-            .cloned()
             .ok_or_else(|| {
                 let known: Vec<String> = accounts.iter().map(|a| a.email.clone()).collect();
                 unknown_account(&email, &known)
@@ -90,9 +101,9 @@ pub fn select_account(arg: Option<String>, accounts: &[Account]) -> Result<Accou
         None => {
             // `select_item` would call this "No accounts configured", which
             // reads as auberge's own config; the roster is Bichon's.
-            eyre::ensure!(!accounts.is_empty(), "Bichon reports no accounts");
+            eyre::ensure!(!roster.is_empty(), "Bichon reports no accounts");
             prompt::select_item(
-                accounts,
+                &roster,
                 |a: &Account| a.email.clone(),
                 prompt::Choice::new("account").resolved_by("--account <email>"),
             )
@@ -106,11 +117,16 @@ pub fn select_account(arg: Option<String>, accounts: &[Account]) -> Result<Accou
 /// The Email Archive ingests a Synced Folder continuously, so it is the only
 /// folder whose coverage it can vouch for: sidecars for a folder that has
 /// left the set linger in the append-only Archive and would answer on stale
-/// evidence. That is the eligibility rule the Expunge Sweep already applies,
-/// and it neither offers nor accepts anything else — so an explicit
-/// `--folder` is checked against the same set the picker draws. Letting one
-/// through instead matches no store message and reports `covered` over
-/// nothing, which is #922's shape with a folder in place of an address.
+/// evidence. An explicit `--folder` is checked against the same set the
+/// picker draws, because letting one through instead matches no store
+/// message and reports `covered` over nothing — #922's shape with a folder
+/// in place of an address.
+///
+/// The set is the `sync_folders` Bichon holds: what Account Reconcile last
+/// wrote, and what the Archive is ingesting now. The Expunge Sweep starts
+/// from the same set and then narrows it — re-reconciling against the live
+/// folder list and refusing a folder pending removal — because it is about
+/// to delete mail. This command only reports, so it stops at the set.
 ///
 /// The set is sorted here rather than trusted from the API, so the picker's
 /// rows and the refusal's list read in one order.
@@ -118,25 +134,25 @@ pub fn select_synced_folder(arg: Option<String>, account: &Account) -> Result<St
     let mut synced = account.sync_folders.clone();
     synced.sort();
 
+    // Both arms need this, so it is asked once: an Account that syncs nothing
+    // has no coverage to prove, whether or not a folder was named.
+    eyre::ensure!(
+        !synced.is_empty(),
+        "{} syncs no folder, so the Email Archive can vouch for nothing — run `auberge bichon reconcile-folders --apply`",
+        account.email
+    );
+
     match arg {
         Some(folder) if synced.contains(&folder) => Ok(folder),
-        Some(folder) => {
-            let reported = if synced.is_empty() {
-                "nothing — run `auberge bichon reconcile-folders --apply`".to_string()
-            } else {
-                synced.join(", ")
-            };
-            eyre::bail!(
-                "'{folder}' is not a Synced Folder of {}; it syncs {reported}",
-                account.email
-            )
-        }
+        Some(folder) => eyre::bail!(
+            "'{folder}' is not a Synced Folder of {}; it syncs {}",
+            account.email,
+            synced.join(", ")
+        ),
         None => prompt::select_item(
             &synced,
             |f: &String| f.clone(),
-            prompt::Choice::new("synced folder")
-                .resolved_by("--folder <name>")
-                .populated_by("auberge bichon reconcile-folders --apply"),
+            prompt::Choice::new("synced folder").resolved_by("--folder <name>"),
         ),
     }
 }
@@ -184,19 +200,27 @@ mod tests {
         assert_eq!(resolve_account_filter(None, &[], true).unwrap(), None);
     }
 
+    /// Deliberately out of order, so a dropped sort shows up in the rows the
+    /// refusals name.
     fn accounts() -> Vec<Account> {
         vec![
-            Account {
-                id: 1,
-                email: "a@x.io".to_string(),
-                sync_folders: vec!["Sent".to_string(), "INBOX".to_string()],
-            },
             Account {
                 id: 2,
                 email: "b@x.io".to_string(),
                 sync_folders: Vec::new(),
             },
+            Account {
+                id: 1,
+                email: "a@x.io".to_string(),
+                sync_folders: vec!["Sent".to_string(), "INBOX".to_string()],
+            },
         ]
+    }
+
+    /// The Account with two Synced Folders; `accounts()` holds it second so
+    /// the ordering assertions below have something to prove.
+    fn synced() -> Account {
+        accounts().remove(1)
     }
 
     #[test]
@@ -221,7 +245,7 @@ mod tests {
     /// resolver reaches it rather than answering for itself.
     #[test]
     fn a_lone_account_is_implied_without_a_tty() {
-        let only = vec![accounts().remove(0)];
+        let only = vec![synced()];
         assert_eq!(select_account(None, &only).unwrap().email, "a@x.io");
     }
 
@@ -244,7 +268,7 @@ mod tests {
     #[test]
     fn an_explicit_synced_folder_passes_through() {
         assert_eq!(
-            select_synced_folder(Some("Sent".to_string()), &accounts()[0]).unwrap(),
+            select_synced_folder(Some("Sent".to_string()), &synced()).unwrap(),
             "Sent"
         );
     }
@@ -254,20 +278,30 @@ mod tests {
     /// reported `covered` over nothing.
     #[test]
     fn an_explicit_folder_must_be_one_the_account_syncs() {
-        let err = select_synced_folder(Some("Trash".to_string()), &accounts()[0]).unwrap_err();
+        let err = select_synced_folder(Some("Trash".to_string()), &synced()).unwrap_err();
         let msg = format!("{err}");
         assert!(msg.contains("Trash"), "{msg}");
         assert!(msg.contains("a@x.io"), "{msg}");
         assert!(msg.contains("INBOX, Sent"), "{msg}");
     }
 
+    /// One guard for both arms: naming a folder does not make an Account that
+    /// syncs nothing answerable. Mutation-test it by moving the `ensure!`
+    /// into either arm — the other assertion then fails.
     #[test]
-    fn an_explicit_folder_on_an_account_syncing_nothing_says_so() {
-        let err = select_synced_folder(Some("INBOX".to_string()), &accounts()[1])
+    fn an_account_syncing_nothing_is_refused_named_or_not() {
+        let expected = "b@x.io syncs no folder, so the Email Archive can vouch for nothing — \
+                        run `auberge bichon reconcile-folders --apply`";
+
+        let named = select_synced_folder(Some("INBOX".to_string()), &accounts()[0])
             .unwrap_err()
             .to_string();
-        assert!(err.contains("b@x.io"), "{err}");
-        assert!(err.contains("reconcile-folders"), "{err}");
+        let omitted = select_synced_folder(None, &accounts()[0])
+            .unwrap_err()
+            .to_string();
+
+        assert_eq!(named, expected);
+        assert_eq!(omitted, expected);
     }
 
     #[test]
@@ -284,21 +318,23 @@ mod tests {
     /// names are the rows the picker would have drawn, in one order.
     #[test]
     fn an_omitted_folder_names_the_flag_and_the_sorted_set_without_a_tty() {
-        let err = select_synced_folder(None, &accounts()[0])
+        let err = select_synced_folder(None, &synced())
             .unwrap_err()
             .to_string();
         assert!(err.contains("--folder <name>"), "{err}");
         assert!(err.contains("INBOX, Sent"), "{err}");
     }
 
+    /// The roster arrives unsorted, so the refusal's list proves the ordering
+    /// is this function's job rather than each caller's.
     #[test]
-    fn an_account_syncing_nothing_points_at_the_reconcile() {
-        let err = select_synced_folder(None, &accounts()[1])
+    fn the_account_refusal_names_the_roster_in_one_order() {
+        let err = select_account(Some("ghost@x.io".to_string()), &accounts())
             .unwrap_err()
             .to_string();
         assert_eq!(
             err,
-            "No synced folders configured — run `auberge bichon reconcile-folders --apply`"
+            "unknown account 'ghost@x.io'; Bichon reports a@x.io, b@x.io"
         );
     }
 }

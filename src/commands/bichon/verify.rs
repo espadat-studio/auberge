@@ -60,8 +60,7 @@ async fn verify_inner(
     let base_url = derive_base_url(&config, &host)?;
     let client = BichonApiClient::new(base_url, token)?;
 
-    let mut accounts = client.list_accounts().await?;
-    accounts.sort_by(|a, b| a.email.cmp(&b.email));
+    let accounts = client.list_accounts().await?;
     let account = select_account(account_arg, &accounts)?;
     validate_email_for_shell(&account.email)?;
     let folder = select_synced_folder(folder_arg, &account)?;

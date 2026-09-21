@@ -37,7 +37,9 @@ Omit any of the first three on a terminal and a picker is drawn for it, each off
 
 Pickers cannot hang a script. With no terminal a lone candidate is implied, and several fail naming the flag rather than waiting for an answer nobody can give.
 
-The folder picker offers Synced Folders and nothing else, and `--folder` accepts nothing else either — the same eligibility rule `examples/bichon-expunge.sh` applies. The Archive can vouch only for folders it ingests continuously; sidecars for a folder that has left the set linger in the append-only Archive, so a coverage question about one would be answered on stale evidence. A folder outside the set used to match no store message and report `covered` over nothing.
+The folder picker offers Synced Folders and nothing else, and `--folder` accepts nothing else either. The Archive can vouch only for folders it ingests continuously; sidecars for a folder that has left the set linger in the append-only Archive, so a coverage question about one would be answered on stale evidence. A folder outside the set used to match no store message and report `covered` over nothing.
+
+The set is the `sync_folders` Bichon holds: what [reconcile-folders](/cli-reference/bichon/reconcile-folders/) last wrote, and what the Archive is ingesting now. `examples/bichon-expunge.sh` starts from the same set and then narrows it — it re-reconciles against the live folder list and refuses a folder pending removal. That extra step guards a deletion. This command only reports, so it stops at the set.
 
 An `--account` Bichon does not report is an error naming the accounts it does.
 
