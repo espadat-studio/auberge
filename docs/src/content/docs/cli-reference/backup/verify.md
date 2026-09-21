@@ -10,14 +10,16 @@ auberge backup verify [OPTIONS]
 
 ## Options
 
-| Option                | Description                                 | Default                                       |
-| --------------------- | ------------------------------------------- | --------------------------------------------- |
-| `-H, --host HOST`     | Host whose snapshots to check               | The sole configured host; required if several |
-| `-a, --app APP`       | Check the newest snapshot holding this app  | No app check                                  |
-| `--max-age DURATION`  | Freshness threshold, `<number><s\|m\|h\|d>` | `24h`                                         |
-| `-o, --output FORMAT` | `human` or `json`                           | `human`                                       |
+| Option                | Description                                 | Default                                           |
+| --------------------- | ------------------------------------------- | ------------------------------------------------- |
+| `-H, --host HOST`     | Host whose snapshots to check               | Interactive; the sole configured host in a script |
+| `-a, --app APP`       | Check the newest snapshot holding this app  | No app check                                      |
+| `--max-age DURATION`  | Freshness threshold, `<number><s\|m\|h\|d>` | `24h`                                             |
+| `-o, --output FORMAT` | `human` or `json`                           | `human`                                           |
 
-Verify never prompts, so it is safe in scripts and timers.
+Omit `-H` on a terminal and verify draws the host picker, like every other `backup` command. It cannot hang in a script: with no terminal a lone configured host is implied, and a roster holding several exits 2 naming the flag rather than waiting for an answer nobody can give.
+
+`-H` names the host a snapshot is tagged with, not an entry in `hosts.toml`, so snapshots of a retired host stay verifiable. A name with no snapshots fails check 2, whose remediation lists the hosts that do have them.
 
 ## Checks
 
@@ -53,11 +55,11 @@ The checklist is data on stdout; remediation for a failed check goes to stderr.
 
 ## Exit codes
 
-| Code | Meaning                                                                                                             |
-| ---- | ------------------------------------------------------------------------------------------------------------------- |
-| `0`  | Verified — every check passed                                                                                       |
-| `1`  | A check failed — no snapshot for the host, no snapshot holds the app, or the selected one is older than `--max-age` |
-| `2`  | Operational error — restic not installed, repository unreachable, config keys or `--max-age` unusable               |
+| Code | Meaning                                                                                                                                |
+| ---- | -------------------------------------------------------------------------------------------------------------------------------------- |
+| `0`  | Verified — every check passed                                                                                                          |
+| `1`  | A check failed — no snapshot for the host, no snapshot holds the app, or the selected one is older than `--max-age`                    |
+| `2`  | Operational error — restic not installed, repository unreachable, config keys or `--max-age` unusable, or no host resolved in a script |
 
 Gate a destructive step on it:
 

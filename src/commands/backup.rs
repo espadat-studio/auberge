@@ -1,6 +1,8 @@
 use crate::commands::opml::OpmlCommands;
 use crate::config::Config;
-use crate::hosts::{HOST_FLAG, Host, HostManager, select_or_arg as hosts_select_or_arg};
+use crate::hosts::{
+    HOST_FLAG, Host, HostManager, host_choice, host_label, select_or_arg as hosts_select_or_arg,
+};
 use crate::output;
 use crate::playbook_meta::unit_file_name;
 use crate::prompt::confirm;
@@ -172,7 +174,7 @@ pub enum BackupCommands {
         #[arg(
             short = 'H',
             long,
-            help = "Host whose snapshots to check (default: the sole configured host)"
+            help = "Host whose snapshots to check (prompts if omitted; in a script a lone configured host is implied and several exit 2 rather than hang)"
         )]
         host: Option<String>,
         #[arg(short, long, help = "Also assert this app is in the latest snapshot")]
@@ -1138,30 +1140,39 @@ fn verify_and_report(opts: VerifyOptions) -> Result<Status> {
     Ok(verdict.status)
 }
 
+/// The host whose snapshots to check, prompting for it when `-H` is omitted.
+///
+/// Two deliberate choices from #377 survive here, both still in force:
+///
+/// `-H` is **not** validated against `hosts.toml`. It names the host a
+/// snapshot is tagged with, not a roster entry, so snapshots of a retired
+/// Host stay verifiable. A typo lands on check 2, whose remediation lists the
+/// hosts that do have snapshots — routing `Some` through
+/// `HostManager::get_host` would silently revert that.
+///
+/// Verify runs in scripts and timers, so it must never hang on a prompt.
+/// `select_item` is what enforces that now: without a terminal a lone
+/// configured Host is implied and a roster holding several errors naming the
+/// flag.
 fn resolve_snapshot_host(host_arg: Option<String>) -> Result<String> {
     match host_arg {
         Some(name) => Ok(name),
-        None => sole_configured_host(&HostManager::load_hosts()?),
+        None => pick_from_roster(&HostManager::load_hosts()?),
     }
 }
 
-/// Verify is a scripted gate, so it never prompts: a single configured Host is
-/// implied, anything else makes `--host` mandatory.
-fn sole_configured_host(hosts: &[Host]) -> Result<String> {
-    match hosts {
-        [only] => Ok(only.name.clone()),
-        [] => eyre::bail!(
-            "No hosts configured. Pass --host <name> or add one with `auberge host add`"
-        ),
-        many => {
-            let names: Vec<&str> = many.iter().map(|h| h.name.as_str()).collect();
-            eyre::bail!(
-                "{} hosts configured; pass --host <{}>",
-                many.len(),
-                names.join("|")
-            )
-        }
-    }
+fn pick_from_roster(hosts: &[Host]) -> Result<String> {
+    // The shared picker tells an empty-handed operator to add a Host. That is
+    // the wrong advice here, and only here: `-H` needs no roster entry, so the
+    // box that just retired its last Host can still verify that Host's
+    // snapshots. Every other `select_or_arg` caller resolves `-H` through
+    // `HostManager::get_host`, where an empty roster really is a dead end.
+    eyre::ensure!(
+        !hosts.is_empty(),
+        "No hosts configured. Pass {HOST_FLAG} — verify needs no roster entry — or add one with `auberge host add`"
+    );
+
+    Ok(crate::prompt::select_item(hosts, host_label, host_choice(HOST_FLAG))?.name)
 }
 
 fn print_verify_checklist(verdict: &Verdict) {
@@ -1586,29 +1597,30 @@ mod tests {
         };
     }
 
+    /// `-H` names a snapshot tag, not a roster entry — see
+    /// `resolve_snapshot_host` for why. Mutation-test it by routing the `Some`
+    /// arm through `HostManager::get_host`: the name below is in no roster, so
+    /// that lookup fails and this assertion does too.
     #[test]
-    fn sole_configured_host_is_implied() {
-        let hosts = vec![test_host()];
-        assert_eq!(sole_configured_host(&hosts).unwrap(), "test");
+    fn verify_passes_an_explicit_host_through_unvalidated() {
+        let retired = "retired-host-not-in-any-roster";
+
+        assert_eq!(
+            resolve_snapshot_host(Some(retired.to_string())).unwrap(),
+            retired
+        );
     }
 
+    /// The shared picker's empty-roster message says to run `auberge host
+    /// add`, which is the wrong advice for verify alone. Mutation-test it by
+    /// deleting the `ensure!` — `select_item` then answers without naming the
+    /// flag and the first assertion fails.
     #[test]
-    fn sole_configured_host_errors_without_hosts() {
-        let err = sole_configured_host(&[]).unwrap_err().to_string();
-        assert!(err.contains("No hosts configured"), "{err}");
-    }
+    fn an_empty_roster_still_points_at_the_flag() {
+        let err = pick_from_roster(&[]).unwrap_err().to_string();
 
-    #[test]
-    fn sole_configured_host_errors_with_several_hosts() {
-        let second = Host {
-            name: "other".to_string(),
-            ..test_host()
-        };
-        let err = sole_configured_host(&[test_host(), second])
-            .unwrap_err()
-            .to_string();
-        assert!(err.contains("2 hosts configured"), "{err}");
-        assert!(err.contains("--host <test|other>"), "{err}");
+        assert!(err.contains(HOST_FLAG), "{err}");
+        assert!(err.contains("auberge host add"), "{err}");
     }
 
     #[test]
@@ -1833,24 +1845,6 @@ mod tests {
             "df: /nope: No such file\n",
         ));
         assert!(check_remote_disk_space(&mock, "/nope").is_err());
-    }
-
-    fn test_host() -> Host {
-        Host {
-            name: "test".to_string(),
-            address: "192.0.2.1".to_string(),
-            user: "deploy".to_string(),
-            port: 2222,
-            ssh_key: None,
-            tags: vec![],
-            description: None,
-            python_interpreter: None,
-            become_method: "sudo".to_string(),
-            tailscale_ip: None,
-            tailnet_tag: None,
-            prefer_tailnet: false,
-            unknown: toml::Table::new(),
-        }
     }
 
     #[test]
