@@ -66,6 +66,38 @@ sudo -u forgejo env HOME=/var/lib/forgejo /opt/forgejo/forgejo \
   --config /etc/forgejo/app.ini admin user change-password -u <user> -p '<new>'
 ```
 
+## Onboarding a site for Decap
+
+GitHub stays origin. Decap writes to a **separate, content-only repository on this forge**: it holds the client-editable copy and nothing else, shares no history with the site's source, and has no git relation to github.com. The site's own CI reads that repository, merges the editable keys into its source on GitHub, and deploys from there.
+
+`examples/forgejo-onboard.sh` in this repository is the whole forge-side onboarding — it creates the content repository and registers the OAuth application described below. It migrates nothing and creates no mirror.
+
+### Why not migrate the site and mirror back
+
+Migrating the site's repository onto the forge and push-mirroring back to GitHub is the shape that suggests itself, and it destroys the repository it is pointed at.
+
+> [!CAUTION]
+> A push mirror runs `git push -f --mirror` unconditionally (`services/mirror/mirror_push.go`). `--mirror` marks for deletion **every advertised remote ref with no local counterpart**, and that code path never consults a refspec — so Forgejo's per-branch filter is not a mitigation. A branch that exists only on the target is deleted on the first sync.
+
+Reproduced with two bare repositories and Forgejo's exact configuration, `remote add` plus a `master`-only push refspec:
+
+```text
+GitHub branches BEFORE:  master, renovate/all-minor-patch
+git push -f --mirror gh   (branch filter = master only)
+   - [deleted]         renovate/all-minor-patch
+GitHub branches AFTER:   master
+```
+
+Every branch a bot owns lives only on GitHub, so every one of them is in that set. GitHub closes the pull request attached to a deleted branch, and what that costs depends on the title it closed:
+
+- A grouped Renovate PR (`group:allNonMajor`) has no version in its title, so Renovate cannot use it as a cache key. It treats the PR as immortal and recreates it — an open/close loop for as long as the mirror runs.
+- A single-dependency PR does carry a version, which Renovate caches. Closed once, it reads as declined and is **silently never offered again**.
+- Template-sync PRs die the same way.
+
+The replica discipline is the smaller cost and still real: from the first sync the GitHub repository is downstream, so anything pushed to it by hand is destroyed on the next one, with no merge and no warning.
+
+Decided against for a live site, not in the abstract: it kept GitHub as origin for exactly this reason. That ADR lives in the site's own repository, which is private.
+
 ## Creating the OAuth application for an editor
 
 Registration is disabled, so the administrator creates every account. For a Decap CMS editor:
@@ -82,8 +114,8 @@ backend:
   name: gitea
   base_url: https://git.example.com
   api_root: https://git.example.com/api/v1
-  repo: owner/repo
-  branch: main
+  repo: owner/site-content
+  branch: master
   app_id: <client ID from step 4>
 ```
 
@@ -95,7 +127,7 @@ Every default in that backend points at somebody else's server, and none of them
 
 - **`base_url` is the forge root**, and only the login flow reads it. `PkceAuthenticator` appends `login/oauth/authorize` and `login/oauth/access_token` to it.
 - **`api_root` is the forge root plus `/api/v1`**, and it is a separate setting that does _not_ fall back to `base_url`. Leave it out and the editor signs in to this forge, then reads and writes content on `https://try.gitea.io`.
-- **`branch` defaults to `master`.** A repository on `main` fails to load until this is set.
+- **`branch` defaults to `master`**, which is what the onboarding script initialises the content repository on. A repository on `main` fails to load until this is set.
 - **The redirect URI is `origin + pathname` of the page Decap is served from**, not a broker callback — PKCE has no broker to call back to. `/admin/` and `/admin` are two different URIs; register the one the site serves.
 - **Confidential Client must be off, because the token exchange sends no `client_secret`** — it carries `client_id`, `code`, `grant_type`, `redirect_uri` and `code_verifier`, and nothing else. Forgejo checks a secret only for a confidential application, and answers a missing one with `invalid_client` / `invalid empty client secret`. Unchecking it also puts the authorize endpoint in the mode Decap already speaks: PKCE is _required_ of a public client, and a public client is re-prompted for consent every time rather than silently re-granted.
 
@@ -103,11 +135,6 @@ Read off `decap-cms-backend-gitea` 3.5.2, `decap-cms-lib-auth` 3.3.2, and Forgej
 
 > [!NOTE]
 > Decap [#7867](https://github.com/decaporg/decap-cms/issues/7867), "Impossible to login with forgejo — missing secret", is open with no comments since 2026-06-25. It is titled after that error: `invalid empty client secret` is what Forgejo returns to a **confidential** application whose token exchange carries no secret, and a secretless exchange is the only kind Decap's PKCE path can make. That diagnosis is read off both sources, not off a login — no editor has yet completed this flow against this forge ([#936](https://github.com/espadat-studio/auberge/issues/936)). Prove one before depending on the path.
-
-## Push-mirroring
-
-> [!CAUTION]
-> A push mirror **force-pushes** to its target on every sync. The mirrored remote is a replica: anything pushed to it by hand is destroyed on the next sync, with no merge and no warning. Push to the forge; let the mirror follow.
 
 ## Memory
 

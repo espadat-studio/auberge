@@ -4,15 +4,14 @@
 #
 # REFERENCE SCRIPT — NOT SHIPPED IN THE auberge BINARY
 # ---------------------------------------------------
-# Onboards one GitHub repository onto a self-hosted Forgejo so that an editor
-# who has no github.com account can edit it through Decap CMS. Three API calls,
-# in order:
+# Onboards one client site onto a self-hosted Forgejo so that an editor who has
+# no github.com account can edit its copy through Decap CMS. Two things to
+# create, in order:
 #
-#   1. migrate      clones the GitHub repository into Forgejo with its history.
-#                   The forge becomes origin.
-#   2. push mirror  points back at GitHub, syncing on every commit. GitHub goes
-#                   on running CI and the deploy; it is now a replica.
-#   3. oauth app    one redirect URI per <site-origin>, each the Decap admin
+#   1. repository   creates a private content repository on the forge, holding
+#                   only the README that initialised it. Decap commits the
+#                   editable copy into it, and nothing else writes there.
+#   2. oauth app    one redirect URI per <site-origin>, each the Decap admin
 #                   page itself, and confidential_client is false. A browser
 #                   app holds no secret, and leaving it true is the documented
 #                   cause of "Impossible to login with forgejo"
@@ -20,25 +19,30 @@
 #
 # It then prints the backend block to paste into the site's Decap config.
 #
-# A push mirror FORCE-PUSHES. From step 2 on, the GitHub repository is a
-# replica: anything pushed to it by hand is destroyed on the next sync, with no
-# merge and no warning. Repoint your local origin at the forge. See the
-# Push-mirroring section of the forgejo role README.
+# GITHUB STAYS ORIGIN, AND THIS SCRIPT DOES NOT TOUCH IT. The content
+# repository is not a copy of the site: it shares no history with it and has no
+# git relation to github.com. The site's own CI carries an edit from the forge
+# into its source and deploys from there.
+#
+# Do not migrate the site's repository onto the forge, and do not add a push
+# mirror back to GitHub. A push mirror force-pushes with --mirror, which
+# deletes every branch that exists only on GitHub and closes its pull request
+# — Renovate and template-sync branches are exactly that. The per-branch
+# filter does not prevent it. Recorded in full under "Why not migrate the site
+# and mirror back" in the forgejo role README.
 #
 # Configuration is the environment, and the script knows nothing about any
 # secret store:
 #
 #   FORGEJO_URL     base URL of the forge, e.g. https://git.example.com
 #   FORGEJO_TOKEN   Forgejo token, scopes write:repository and write:user
-#   GITHUB_TOKEN    GitHub PAT that can read the source repository, and push to
-#                   it — the mirror reuses this one credential
 #
 # Re-running is safe, and it is also how the redirect URIs are changed. The
-# migrate and mirror steps look for their own result and skip it; the OAuth
-# step reconciles instead, PATCHing the application to exactly the origins
-# given on this run. The client ID survives that, so the site's Decap config
-# never has to be edited — a site moving from a staging host to its real
-# domain is one re-run with both origins passed.
+# repository step looks for its own result and skips it; the OAuth step
+# reconciles instead, PATCHing the application to exactly the origins given on
+# this run. The client ID survives that, so the site's Decap config never has
+# to be edited — a site moving from a staging host to its real domain is one
+# re-run with both origins passed.
 #
 # Pass every origin the admin page will be served from. OAuth redirect
 # matching is exact: an origin that is not listed cannot log in, and a
@@ -48,13 +52,14 @@
 
 set -euo pipefail
 
-readonly USAGE="usage: ${0##*/} <github-owner/repo> <site-origin>...
+readonly USAGE="usage: ${0##*/} <content-repo> <site-origin>...
 
-  ${0##*/} espadat-studio/nathalieconan.fr https://nathalieconan.fr \\
-    https://site.example.workers.dev http://localhost:4321
+  ${0##*/} client-content https://client.example.com \\
+    http://localhost:4321
 
-Each <site-origin> becomes the redirect URI <site-origin>/admin/. The set is
-replaced on every run, so pass all of them every time."
+<content-repo> is a bare name, created under the account FORGEJO_TOKEN belongs
+to. Each <site-origin> becomes the redirect URI <site-origin>/admin/. The set
+is replaced on every run, so pass all of them every time."
 
 # Set by main() before the first api call. Globals rather than main()'s locals
 # because the EXIT trap outlives main(): it runs once the frame is gone, so a
@@ -77,10 +82,27 @@ note() {
   printf '    %s\n' "$*" >&2
 }
 
+# <site-origin> -> the redirect URI to register, or non-zero if the argument is
+# not an origin. Decap's redirect target is the admin page itself, trailing
+# slash included: /admin/ and /admin are two different URIs to an exact
+# matcher, and only one of them is what the site serves.
+redirect_uri_for() {
+  local site="$1"
+  [[ $site == http://?* || $site == https://?* ]] || return 1
+  printf '%s/admin/' "${site%/}"
+}
+
+# A bare repository name. Anchored on an alphanumeric because curl resolves a
+# `.` or `..` segment out of a request path: a repository named `..` would
+# probe /repos/ and the answer would be read as this repository's.
+repo_name_is_bare() {
+  [[ $1 =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]]
+}
+
 api() {
   local method="$1" path="$2"
   shift 2
-  curl -fsS --max-time 120 --config "${curlrc}" \
+  curl -fsS --max-time 60 --config "${curlrc}" \
     -X "${method}" -H 'Content-Type: application/json' \
     "$@" "${forge}/api/v1${path}"
 }
@@ -93,25 +115,27 @@ api_code() {
 main() {
   [[ $# -ge 2 ]] || die "$USAGE"
 
-  local source="$1"
+  local repo="$1"
   shift
-  [[ $source == */* ]] || die "expected <github-owner/repo>, got: ${source}"
+  # So that the old <github-owner/repo> argument is refused rather than turned
+  # into a repository with a slash in its name. Nothing here is derived from
+  # GitHub any more.
+  repo_name_is_bare "${repo}" \
+    || die "expected a bare repository name, got: ${repo}"
 
   local var
-  for var in FORGEJO_URL FORGEJO_TOKEN GITHUB_TOKEN; do
+  for var in FORGEJO_URL FORGEJO_TOKEN; do
     [[ -n ${!var:-} ]] || die "${var} is not set"
   done
 
   command -v jq >/dev/null || die 'jq is required'
 
   forge="${FORGEJO_URL%/}"
-  local repo="${source#*/}"
-  local clone="https://github.com/${source}.git"
 
   local site redirects=()
   for site in "$@"; do
-    [[ $site == http*://* ]] || die "expected an origin URL, got: ${site}"
-    redirects+=("${site%/}/admin/")
+    redirects+=("$(redirect_uri_for "${site}")") \
+      || die "expected an origin URL, got: ${site}"
   done
 
   # The token is written to a 0600 config rather than passed as an argument, so
@@ -122,42 +146,39 @@ main() {
   printf 'header = "Authorization: token %s"\n' "${FORGEJO_TOKEN}" >"${curlrc}"
 
   local owner
-  owner="$(api GET /user | jq -r '.login')" \
+  owner="$(api GET /user | jq -er '.login')" \
     || die "cannot reach ${forge} — check FORGEJO_URL and FORGEJO_TOKEN"
 
-  step "Repository ${owner}/${repo}"
-  if [[ "$(api_code "/repos/${owner}/${repo}")" == 200 ]]; then
-    note 'already on the forge, leaving it alone'
-  else
-    jq -n \
-      --arg addr "${clone}" \
-      --arg token "${GITHUB_TOKEN}" \
-      --arg name "${repo}" \
-      '{clone_addr: $addr, auth_token: $token, repo_name: $name,
-        service: "github", private: true, mirror: false,
-        issues: false, pull_requests: false, releases: false, wiki: false}' \
-      | api POST /repos/migrate --data @- >/dev/null
-    note "migrated from github.com/${source} with its history"
-  fi
-
-  step 'Push mirror back to GitHub'
-  local mirrors
-  mirrors="$(api GET "/repos/${owner}/${repo}/push_mirrors")"
-  if [[ "$(jq -r --arg s "${source}" \
-    '[.[] | select(.remote_address | contains($s))] | length' \
-    <<<"${mirrors}")" != 0 ]]; then
-    note 'already configured, leaving it alone'
-  else
-    jq -n \
-      --arg addr "${clone}" \
-      --arg user "${source%%/*}" \
-      --arg token "${GITHUB_TOKEN}" \
-      '{remote_address: $addr, remote_username: $user, remote_password: $token,
-        sync_on_commit: true, interval: "8h0m0s"}' \
-      | api POST "/repos/${owner}/${repo}/push_mirrors" --data @- >/dev/null
-    note "syncing to github.com/${source} on every commit"
-    note 'github.com is now a REPLICA — do not push to it by hand'
-  fi
+  # The branch the backend block names is read off the forge, never assumed. A
+  # repository created by hand in the web UI lands on whatever that forge
+  # defaults to, and naming the wrong branch is the silent load failure the
+  # role README warns about.
+  local code branch
+  step "Content repository ${owner}/${repo}"
+  code="$(api_code "/repos/${owner}/${repo}")"
+  case "${code}" in
+    200)
+      branch="$(api GET "/repos/${owner}/${repo}" \
+        | jq -er '.default_branch')" \
+        || die "cannot read the default branch of ${owner}/${repo}"
+      note 'already on the forge, leaving it alone'
+      ;;
+    404)
+      # auto_init, because Decap resolves `branch` on load and an
+      # uninitialised repository has no branch to resolve — the CMS fails
+      # before the editor sees a field. So it is empty of content, not of
+      # commits.
+      branch='master'
+      jq -n --arg name "${repo}" --arg branch "${branch}" \
+        '{name: $name, default_branch: $branch, private: true,
+          auto_init: true, readme: "Default"}' \
+        | api POST /user/repos --data @- >/dev/null
+      note "created private and initialised on ${branch}"
+      ;;
+    *)
+      die "unexpected HTTP ${code} from ${forge} for ${owner}/${repo}"
+      ;;
+  esac
 
   local app_name="decap-${repo}"
   step "OAuth application ${app_name}"
@@ -180,8 +201,9 @@ main() {
       | jq -r '.client_id')"
     note 'registered as a public client, no secret to store'
   fi
-  for site in "${redirects[@]}"; do
-    note "redirect ${site}"
+  local uri
+  for uri in "${redirects[@]}"; do
+    note "redirect ${uri}"
   done
 
   step 'Decap backend block'
@@ -192,13 +214,15 @@ backend:
   base_url: ${forge}
   api_root: ${forge}/api/v1
   repo: ${owner}/${repo}
-  branch: master
+  branch: ${branch}
   app_id: ${client_id}
 
 CONFIG
-  note 'Remaining by hand: give the editor a Forgejo account and write access,'
-  note "then repoint origin: git remote set-url origin \
-${forge}/${owner}/${repo}.git"
+  note 'Remaining by hand: give the editor a Forgejo account and write access'
+  note 'to this repository, and wire the site CI that carries a commit here'
+  note 'into the site source on GitHub. GitHub stays origin; nothing mirrors.'
 }
 
-main "$@"
+if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
+  main "$@"
+fi
