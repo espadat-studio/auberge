@@ -34,10 +34,10 @@ fn declared_keys(playbooks_dir: &Path, stem: &str, registry: &KeyRegistry) -> Re
 /// behind a `when:` guard.
 struct RunSource {
     name: String,
-    /// True only when an untagged run swept this role out of the roster and it
-    /// carries a `when:`. The Playbook's own Meta is never behind a guard, and
-    /// neither is a role a tag named — naming a role is the operator asserting
-    /// it runs.
+    /// True only when an untagged run reached this role through the roster and
+    /// it carries a `when:`. The Playbook's own Meta is never behind a guard,
+    /// and neither is a role a tag named — naming a role is the operator
+    /// asserting it runs.
     behind_a_guard: bool,
 }
 
@@ -979,18 +979,18 @@ mod tests {
     // ── a guarded role's zone ─────────────────────────────────────────────────
 
     /// An ansible dir whose `infra.yml` roster gates `blocky` behind the
-    /// serving-gate `when:` the repo's `infrastructure.yml` writes, beside an
-    /// unguarded role that publishes nothing.
+    /// serving-gate `when:` the repo's `infrastructure.yml` writes. The Meta
+    /// names a subdomain, so `publishes_a_name` is true on every Host and only
+    /// the gate can tell the Hosts apart.
     fn guard_fixture() -> tempfile::TempDir {
         fixture_ansible_dir(
             &[],
             &[
                 ("infra.meta.yml", "required_keys: []\n"),
-                ("tailscale.meta.yml", "required_keys: []\n"),
                 ("blocky.meta.yml", "required_keys: []\nsubdomain: blocky\n"),
                 (
                     "infra.yml",
-                    "---\n- hosts: all\n  roles:\n    - role: tailscale\n      tags: [infra, tailscale]\n    - role: blocky\n      tags: [infra, blocky]\n      when: blocky_subdomain is defined and blocky_subdomain | length > 0\n",
+                    "---\n- hosts: all\n  roles:\n    - role: blocky\n      tags: [infra, blocky]\n      when: blocky_subdomain is defined and blocky_subdomain | length > 0\n",
                 ),
             ],
         )
@@ -1002,10 +1002,14 @@ mod tests {
     /// refuses an untagged run on a Host that never serves blocky.
     #[test]
     fn test_a_guarded_role_demands_no_zone_until_its_gate_is_answered() {
+        let dir = guard_fixture();
+        assert!(
+            dir.path().join(PLAYBOOKS_DIR).join("infra.yml").is_file(),
+            "the roster has to exist, or the assertion below passes over nothing"
+        );
         let empty = Config::from_toml_str("").unwrap();
         assert!(
-            assert_zones_resolve(guard_fixture().path(), &empty, "infra.yml", None, "ruche")
-                .is_ok(),
+            assert_zones_resolve(dir.path(), &empty, "infra.yml", None, "ruche").is_ok(),
             "a Host answering no gate serves no guarded role, so it needs no Zone"
         );
     }
@@ -1016,19 +1020,14 @@ mod tests {
     /// Withholding the token used to pass Preflight and die mid-play.
     #[test]
     fn test_a_guarded_role_demands_its_zone_once_its_gate_is_answered() {
+        let dir = guard_fixture();
         let config = Config::from_toml_str(
             "domain = \"fleet.example\"\n\n[hosts.auberge]\nblocky_subdomain = \"blocky\"\n",
         )
         .unwrap();
-        let err = assert_zones_resolve(
-            guard_fixture().path(),
-            &config,
-            "infra.yml",
-            None,
-            "auberge",
-        )
-        .unwrap_err()
-        .to_string();
+        let err = assert_zones_resolve(dir.path(), &config, "infra.yml", None, "auberge")
+            .unwrap_err()
+            .to_string();
         assert!(err.contains("blocky"), "names the app: {err}");
         assert!(
             err.contains("cloudflare_dns_api_token"),
@@ -1043,9 +1042,10 @@ mod tests {
     /// keys, held for Zones.
     #[test]
     fn test_a_tag_naming_a_guarded_role_demands_its_zone_with_no_gate_answered() {
+        let dir = guard_fixture();
         let config = Config::from_toml_str("domain = \"fleet.example\"\n").unwrap();
         let err = assert_zones_resolve(
-            guard_fixture().path(),
+            dir.path(),
             &config,
             "infra.yml",
             Some(&["blocky".into()]),
@@ -1132,6 +1132,30 @@ mod tests {
         );
         assert!(run_enters_role(dir.path(), "apps.yml", None, "tailscale").unwrap());
         assert!(!run_enters_role(dir.path(), "apps.yml", None, "caddy").unwrap());
+    }
+
+    /// An untagged run does not *enter* a `when:`-guarded role, and naming its
+    /// tag does. The same answer [`required_keys_for`] gives about the same
+    /// role, which is the agreement this function's doc promises: a caller
+    /// gating an SSH round trip on "does this run reach X" and the Preflight
+    /// demanding X's keys read one walk. Asking the Zone demand a narrower
+    /// question about the same entry must not widen this one.
+    #[test]
+    fn test_an_untagged_run_does_not_enter_a_guarded_roster_role() {
+        let dir = fixture_ansible_dir(
+            &[],
+            &[(
+                "apps.yml",
+                "---\n- hosts: all\n  roles:\n    - role: tailscale\n      tags: [network]\n      when: \"'x' in group_names\"\n",
+            )],
+        );
+        assert!(!run_enters_role(dir.path(), "apps.yml", None, "tailscale").unwrap());
+
+        let network = ["network".to_string()];
+        assert!(
+            run_enters_role(dir.path(), "apps.yml", Some(&network), "tailscale").unwrap(),
+            "naming the tag is the operator asserting the role runs"
+        );
     }
 
     #[test]

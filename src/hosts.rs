@@ -183,12 +183,22 @@ pub fn serving_hosts<'a>(
 ) -> Vec<&'a Host> {
     hosts
         .iter()
-        .filter(|h| {
-            config
-                .get_for_host(gate_key, Some(&h.name))
-                .is_some_and(|v| !v.trim().is_empty())
-        })
+        .filter(|h| gate_answered(config, gate_key, Some(&h.name)))
         .collect()
+}
+
+/// Whether `config` answers one serving gate for one Host.
+///
+/// The ADR-0051 shape — config alone answers it, and a blank value is no
+/// answer — read through ADR-0058's host-scoped view. One spelling, because
+/// two expressions of one rule is the divergence class ADR-0081 deletes
+/// rather than fences. [`serving_hosts`] asks it of every Host;
+/// [`crate::services::zone::serving_gate_answered`] asks it of an App's own
+/// gate key, to decide whether a `when:`-guarded role runs (ADR-0083).
+pub fn gate_answered(config: &crate::config::Config, gate_key: &str, host: Option<&str>) -> bool {
+    config
+        .get_for_host(gate_key, host)
+        .is_some_and(|v| !v.trim().is_empty())
 }
 
 impl Host {

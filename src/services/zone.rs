@@ -307,10 +307,7 @@ pub fn publishes_a_name(
 /// role's Zone therefore follows this half and never the Meta's, which is
 /// exactly the half that cannot tell the two apart (ADR-0083).
 pub fn serving_gate_answered(config: &Config, app: &str, host: Option<&str>) -> bool {
-    config
-        .get_for_host(&format!("{app}{SUBDOMAIN_SUFFIX}"), host)
-        .map(|s| !s.trim().is_empty())
-        .unwrap_or(false)
+    crate::hosts::gate_answered(config, &format!("{app}{SUBDOMAIN_SUFFIX}"), host)
 }
 
 /// Every App that publishes a name on `host`, the Zone it lands in and that
