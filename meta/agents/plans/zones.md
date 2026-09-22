@@ -190,6 +190,21 @@ Nothing in ansible reads them yet. Deployable, no-op.
 | `feat(caddy): every vhost states its acme token` | 18 templates; `caddy-env.conf.j2`; `infrastructure.yml` | `vhost_acme_token.rs`    |
 | `docs(adr): record per-site acme`                | ADR-0082; `adr.md`                                      | `check-adr-numbering.sh` |
 
+> [!IMPORTANT]
+> **Phase 4 landed as PR #<this>, with nine deviations from the rows above.**
+>
+> - **The fleet's line is not taken from the Zone set, and ADR-0082 is amended for it.** A Zone is in a Host's set when an App that publishes a name resolves to it — and every App answers its `<app>_subdomain` fleet-wide, so the fleet Zone is in _every_ Host's set, the agent tier's included. Deriving that line writes the parent domain's token onto the one Host ADR-0068 exists to keep it off. `caddy_dns_api_token` stays the fleet Zone's line on every Host, chosen by `infrastructure.yml`; the set supplies the **named** Zones only.
+> - **A named Zone also needs the Host's table to declare it serves the App**, so this phase changed `zone.rs` where the plan had it Ansible-only. A Meta's `zone:` holds on every Host, so the pin alone put the agent tier's token on all three boxes. `declared_on_host` reads `<app>_zone` or `<app>_subdomain` under `[hosts.<name>]` — the same declaration ADR-0072's gate already reads, and the only fact in the repo that says where an App runs.
+> - **`Zone::env_var` is the Zone's token key uppercased**, not a spelling of its own. The fleet's comes out as `CLOUDFLARE_DNS_API_TOKEN` — what caddy already reads — rather than being asserted as a special case, which is where the drop-in and the vhost would drift apart.
+> - **A third Computed Var, `<app>_dns_api_token_env`, carries the name to the vhost.** ADR-0082's `{env.<ZONE>_DNS_API_TOKEN}` can only be a literal, and a literal names the Zone the repo guessed; an operator moves an App from `config.toml`. Phase 1 cut `Zone::env_var` for having no caller — it has two now, the App's var and the Host's set, which is what keeps them one derivation.
+> - **`infrastructure.yml` is untouched.** `host_zones` is in every run's `@vars` file, so the caddy role reads it like any other variable; there was nothing to feed.
+> - **17 vhosts carry `tls`, not 18.** colporteur's second site is `http://localhost:<port>` over loopback — no name, no certificate, no challenge — and is a declared exemption the fence refuses once it grows one.
+> - **`no_log: true` on the drop-in task.** `host_zones` carries a token per Zone under a name none of `config.rs`'s redaction suffixes match, which `services::zone` warned about when it was added; a `--diff` run would have printed all of them.
+> - **Two fences moved, neither narrowed.** `installed_units.rs` asserted the drop-in holds exactly one `Environment=`; it now names both lines, which also refuses an unrelated one. `aoe_dashboard_exposure.rs` renders the aoe vhost under a strict renderer and had to seed the new Computed Var beside the role's defaults — the shape phase 3 left in `headscale_derp_fallback.rs`.
+> - **The ADR row is an amendment, not a record.** ADR-0082 landed with the design (f00b9dfc), so this phase amended it with what implementing it found.
+>
+> **Rollout order, before the cutover's step 3.** aoe's vhost stops reading `CLOUDFLARE_DNS_API_TOKEN` and starts reading `AGENTS_CLOUDFLARE_DNS_API_TOKEN`, which only the new drop-in writes. Deploy `infrastructure` on `ruche` before, or with, `aoe` — an App role deployed alone leaves its vhost naming a variable no drop-in defines, and caddy fails to start. The Ingress Gate catches it in the same run.
+
 ### Phase 5 — CLI surface
 
 | Commit                                           | Changes           | Tests                            |
