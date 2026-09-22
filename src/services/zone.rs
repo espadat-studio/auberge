@@ -22,8 +22,9 @@
 
 use crate::config::Config;
 use crate::playbook_meta::{DEFAULT_DOMAIN_KEY, PlaybookMeta};
-use eyre::Result;
-use std::collections::BTreeSet;
+use eyre::{Result, WrapErr};
+use serde::Serialize;
+use std::collections::BTreeMap;
 
 /// The second half of a Zone's key pair, and the tail every `domain_key:`
 /// carries — `agents_domain` is the `agents` Zone said the old way.
@@ -34,6 +35,27 @@ const TOKEN_SUFFIX: &str = "cloudflare_dns_api_token";
 
 /// The Config key placing an App in a Zone: `<app>_zone`.
 const ZONE_SUFFIX: &str = "_zone";
+
+/// The Computed Var holding an App's resolved apex: `<app>_parent_domain`.
+pub const PARENT_DOMAIN_SUFFIX: &str = "_parent_domain";
+
+/// The Computed Var holding an App's resolved Cloudflare token:
+/// `<app>_dns_api_token`. Named for what a role does with it rather than for
+/// the Registry key it came out of — a role composing a `dns_record` call
+/// asks its App for a token, never a Zone for one.
+pub const DNS_TOKEN_SUFFIX: &str = "_dns_api_token";
+
+/// The Computed Var holding every Zone one Host serves, as JSON: what its
+/// Caddy needs an ACME token for (ADR-0082).
+///
+/// **Its value embeds Cloudflare tokens under a name that `config.rs`'s
+/// `SENSITIVE_SUFFIXES` test does not match.** Every other secret a run
+/// carries is named `…_token` or `…_key` and is redacted by that suffix
+/// test; this one is a list, and no honest name for a list of Zones carries
+/// the suffix. Nothing renders a run's variables today, so there is no leak
+/// path — but a caller that ever does must redact this name explicitly
+/// rather than by heuristic, and the Ansible task reading it needs `no_log`.
+pub const HOST_ZONES_VAR: &str = "host_zones";
 
 /// A DNS zone, identified by the prefix its Key Registry pair shares. `None`
 /// is the fleet's Zone, whose pair is unprefixed.
@@ -91,6 +113,24 @@ impl Zone {
 /// Both of a Zone's answers for one Host.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ZonePair {
+    pub domain: String,
+    pub token: String,
+}
+
+/// One Zone a Host serves, as [`HOST_ZONES_VAR`] hands it to Ansible.
+///
+/// Carries the token beside the prefix rather than leaving the template to
+/// look one up by name: a Zone is a pair (ADR-0081), and an entry naming a
+/// Zone whose token the template resolves separately is the same pair split
+/// across two expressions again.
+///
+/// The prefix is `null` for the fleet's Zone, which is the shape
+/// [`Zone::prefix`] answers in — a template deriving a name from it decides
+/// how the fleet's Zone spells that name, and nothing here pre-empts it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[cfg_attr(test, derive(serde::Deserialize))]
+pub struct HostZone {
+    pub prefix: Option<String>,
     pub domain: String,
     pub token: String,
 }
@@ -247,29 +287,84 @@ pub fn publishes_a_name(
         || answered(config.get_for_host(&format!("{app}_subdomain"), host))
 }
 
-/// Every Zone answered for one Host — what its Caddy needs ACME tokens for
-/// (ADR-0082).
+/// Every App that publishes a name on `host`, the Zone it lands in and that
+/// Zone's answers — the one walk both derivations above and below read.
 ///
-/// Derived, not declared: a Zone is in the set when some App that publishes a
-/// name resolves to it *and* its pair answers for this Host. A Host that
-/// withdrew the fleet's token contributes no fleet Zone, which is how the
-/// agent tier's box ends up holding one token rather than two.
-pub fn host_zone_set(
+/// "Which name does this App compose against" and "which tokens does this
+/// Host hold" are the same walk read two ways. Deriving them separately is
+/// two predicates a test hopes agree, which is the divergence class ADR-0081
+/// deletes rather than fences.
+///
+/// A Zone that does not answer for this Host drops its App silently: an
+/// operator who never onboarded a second Zone has no name there to publish,
+/// and the run that would have published one is refused in Preflight, where
+/// the App and the missing key can both be named.
+fn placements<'a>(
     config: &Config,
     host: &str,
-    metas: &[(String, PlaybookMeta)],
-) -> Result<BTreeSet<Zone>> {
-    let mut zones = BTreeSet::new();
+    metas: &'a [(String, PlaybookMeta)],
+) -> Result<Vec<(&'a str, Zone, ZonePair)>> {
+    let mut placed = Vec::new();
     for (app, meta) in metas {
         if !publishes_a_name(meta, config, app, Some(host)) {
             continue;
         }
         let zone = effective_zone(meta, config, app, Some(host))?;
-        if resolve(&zone, config, Some(host)).is_ok() {
-            zones.insert(zone);
-        }
+        let Ok(pair) = resolve(&zone, config, Some(host)) else {
+            continue;
+        };
+        placed.push((app.as_str(), zone, pair));
     }
-    Ok(zones)
+    Ok(placed)
+}
+
+/// Every **Computed Var** one run hands Ansible: each App's resolved Zone,
+/// and the Zone set of the Host it runs against (ADR-0081, ADR-0082).
+///
+/// A Computed Var is not an Injected Key. An Injected Key is in the Key
+/// Registry precisely so a stale `config.toml` value can be overridden
+/// (ADR-0063); a resolved Zone has no such value to override, so these names
+/// are absent from the Registry and `config set` will not offer one. The
+/// overlay onto a run's variables is written *after* config, so a
+/// hand-written entry of one of these names reaches no role.
+///
+/// Computed for every App with a Meta, not only the run's: blocky builds its
+/// `customDNS` map `run_once` over all of them, so a map missing the Apps
+/// this run happens not to deploy is a name the tailnet stops resolving.
+///
+/// The Host's Zone set is derived, not declared: a Zone is in it when some
+/// App that publishes a name resolves to it *and* its pair answers for this
+/// Host. A Host that withdrew a Zone's token contributes no such Zone, which
+/// is how the agent tier's box ends up holding one token rather than two.
+pub fn computed_vars(
+    metas: &[(String, PlaybookMeta)],
+    config: &Config,
+    host: &str,
+) -> Result<BTreeMap<String, String>> {
+    let placed = placements(config, host, metas)?;
+
+    let mut vars = BTreeMap::new();
+    for (app, _, pair) in &placed {
+        vars.insert(format!("{app}{PARENT_DOMAIN_SUFFIX}"), pair.domain.clone());
+        vars.insert(format!("{app}{DNS_TOKEN_SUFFIX}"), pair.token.clone());
+    }
+
+    let zones: BTreeMap<&Zone, &ZonePair> =
+        placed.iter().map(|(_, zone, pair)| (zone, pair)).collect();
+    let set: Vec<HostZone> = zones
+        .into_iter()
+        .map(|(zone, pair)| HostZone {
+            prefix: zone.prefix().map(str::to_string),
+            domain: pair.domain.clone(),
+            token: pair.token.clone(),
+        })
+        .collect();
+    vars.insert(
+        HOST_ZONES_VAR.to_string(),
+        serde_json::to_string(&set).wrap_err("Failed to serialize the host's zone set")?,
+    );
+
+    Ok(vars)
 }
 
 /// Refuse a fleet-wide `<app>_zone`.
@@ -439,35 +534,16 @@ mod tests {
     }
 
     // ── host zone set ─────────────────────────────────────────────────────────
+    //
+    // Read off `computed_vars`, which is the one derivation: the set the
+    // drop-in is written from and the pair each App composes against come out
+    // of the same walk, so neither can be narrowed without the other moving.
 
-    #[test]
-    fn test_one_off_zone_app_gives_its_host_two_zones_and_the_rest_one() {
-        let config = config(&format!(
-            "{ZONES_ANSWERED}\n[hosts.auberge]\nforgejo_zone = \"studio\"\n"
-        ));
-        let metas = vec![
-            ("forgejo".to_string(), meta(BARE)),
-            (
-                "navidrome".to_string(),
-                meta("required_keys: []\nsubdomain: navidrome\n"),
-            ),
-        ];
-        assert_eq!(
-            host_zone_set(&config, "auberge", &metas).unwrap(),
-            BTreeSet::from([Zone::fleet(), Zone::named("studio")])
-        );
-        assert_eq!(
-            host_zone_set(&config, "lechuck", &metas).unwrap(),
-            BTreeSet::from([Zone::fleet()])
-        );
-    }
-
-    /// A Host that withdrew the fleet's token holds no fleet Zone — ADR-0068's
-    /// isolation, read off the same derivation the drop-in is written from.
+    /// A Host that withdrew a Zone's token holds no such Zone — ADR-0068's
+    /// isolation, arrived at from the derivation rather than declared.
     #[test]
     fn test_a_host_withdrawing_a_pair_drops_that_zone_from_its_set() {
-        let config = config(
-            r#"
+        let toml = r#"
             domain = "fleet.example"
             cloudflare_dns_api_token = "fleet-token"
             agents_domain = "agents.example"
@@ -475,8 +551,7 @@ mod tests {
 
             [hosts.ruche]
             cloudflare_dns_api_token = ""
-        "#,
-        );
+        "#;
         let metas = vec![
             (
                 "aoe".to_string(),
@@ -487,9 +562,17 @@ mod tests {
                 meta("required_keys: []\nsubdomain: navidrome\n"),
             ),
         ];
+        let vars = computed(toml, "ruche", &metas);
         assert_eq!(
-            host_zone_set(&config, "ruche", &metas).unwrap(),
-            BTreeSet::from([Zone::named("agents")])
+            zone_set(&vars)
+                .into_iter()
+                .map(|z| z.prefix)
+                .collect::<Vec<_>>(),
+            vec![Some("agents".to_string())]
+        );
+        assert!(
+            !vars.contains_key("navidrome_parent_domain"),
+            "the withdrawn Zone must take its Apps with it: {vars:?}"
         );
     }
 
@@ -497,12 +580,10 @@ mod tests {
     /// Zone — and cannot drag a token onto a Host that serves nothing.
     #[test]
     fn test_an_app_publishing_no_name_contributes_no_zone() {
-        let config = config(ZONES_ANSWERED);
         let metas = vec![("tgtg".to_string(), meta("required_keys: []\n"))];
-        assert!(
-            host_zone_set(&config, "auberge", &metas)
-                .unwrap()
-                .is_empty()
+        assert_eq!(
+            zone_set(&computed(ZONES_ANSWERED, "auberge", &metas)),
+            vec![]
         );
     }
 
@@ -515,6 +596,173 @@ mod tests {
             "calibre",
             None
         ));
+    }
+
+    // ── computed vars ─────────────────────────────────────────────────────────
+
+    fn computed(
+        toml: &str,
+        host: &str,
+        metas: &[(String, PlaybookMeta)],
+    ) -> BTreeMap<String, String> {
+        computed_vars(metas, &config(toml), host).unwrap()
+    }
+
+    fn zone_set(vars: &BTreeMap<String, String>) -> Vec<HostZone> {
+        serde_json::from_str(&vars[HOST_ZONES_VAR]).expect("the host zone set must be JSON")
+    }
+
+    /// Both halves land under the App's own name, so a role asks its App and
+    /// never a Zone. Written-out values, not the keys read back, or the
+    /// assertion holds for a resolver that returns its own input.
+    #[test]
+    fn test_an_app_gets_both_halves_of_its_zone() {
+        let metas = vec![("navidrome".to_string(), meta(BARE))];
+        let vars = computed(ZONES_ANSWERED, "auberge", &metas);
+        assert_eq!(vars["navidrome_parent_domain"], "fleet.example");
+        assert_eq!(vars["navidrome_dns_api_token"], "fleet-token");
+    }
+
+    /// The point of the whole model: an App the operator placed elsewhere
+    /// composes against *that* Zone, and does so on that Host alone.
+    #[test]
+    fn test_an_off_zone_app_gets_its_own_zones_pair() {
+        let toml = format!("{ZONES_ANSWERED}\n[hosts.auberge]\nforgejo_zone = \"studio\"\n");
+        let metas = vec![("forgejo".to_string(), meta(BARE))];
+
+        let auberge = computed(&toml, "auberge", &metas);
+        assert_eq!(auberge["forgejo_parent_domain"], "studio.example");
+        assert_eq!(auberge["forgejo_dns_api_token"], "studio-token");
+
+        let ruche = computed(&toml, "ruche", &metas);
+        assert_eq!(ruche["forgejo_parent_domain"], "fleet.example");
+        assert_eq!(ruche["forgejo_dns_api_token"], "fleet-token");
+    }
+
+    /// An App with no name serves no vhost and writes no record, so it is
+    /// handed no Zone — a var for one would be a token in a run that reads it
+    /// for nothing.
+    #[test]
+    fn test_an_app_publishing_no_name_gets_no_vars() {
+        let metas = vec![("tgtg".to_string(), meta("required_keys: []\n"))];
+        let vars = computed(ZONES_ANSWERED, "auberge", &metas);
+        assert!(!vars.contains_key("tgtg_parent_domain"), "{vars:?}");
+        assert!(!vars.contains_key("tgtg_dns_api_token"), "{vars:?}");
+    }
+
+    /// An unanswered Zone yields absence, not an empty string: a role reading
+    /// an undefined var fails the play, where one reading `""` composes
+    /// `essaim.` and publishes it (ADR-0071).
+    #[test]
+    fn test_an_unanswered_zone_yields_no_vars_rather_than_empty_ones() {
+        let metas = vec![(
+            "aoe".to_string(),
+            meta("required_keys: []\nsubdomain: essaim\nzone: agents\n"),
+        )];
+        let vars = computed(ZONES_ANSWERED, "auberge", &metas);
+        assert!(!vars.contains_key("aoe_parent_domain"), "{vars:?}");
+        assert!(!vars.contains_key("aoe_dns_api_token"), "{vars:?}");
+    }
+
+    /// A pin the operator tried to override fails the computation rather than
+    /// resolving one of the two answers: the run is about to write a vhost,
+    /// and neither answer is the one the operator believes in.
+    #[test]
+    fn test_a_pin_the_config_contradicts_fails_the_computation() {
+        let toml = format!("{ZONES_ANSWERED}\n[hosts.auberge]\naoe_zone = \"studio\"\n");
+        let metas = vec![(
+            "aoe".to_string(),
+            meta("required_keys: []\nsubdomain: essaim\nzone: agents\n"),
+        )];
+        let err = computed_vars(&metas, &config(&toml), "auberge")
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("aoe_zone"), "{err}");
+    }
+
+    /// The Host's Zone set carries each Zone once with its pair, so the
+    /// drop-in writes one line per Zone and reads no token by name.
+    #[test]
+    fn test_the_host_zone_set_carries_each_zone_once_with_its_pair() {
+        let toml = format!("{ZONES_ANSWERED}\n[hosts.auberge]\nforgejo_zone = \"studio\"\n");
+        let metas = vec![
+            ("forgejo".to_string(), meta(BARE)),
+            (
+                "navidrome".to_string(),
+                meta("required_keys: []\nsubdomain: navidrome\n"),
+            ),
+            (
+                "calibre".to_string(),
+                meta("required_keys: []\nsubdomain: books\n"),
+            ),
+        ];
+        assert_eq!(
+            zone_set(&computed(&toml, "auberge", &metas)),
+            vec![
+                HostZone {
+                    prefix: None,
+                    domain: "fleet.example".to_string(),
+                    token: "fleet-token".to_string(),
+                },
+                HostZone {
+                    prefix: Some("studio".to_string()),
+                    domain: "studio.example".to_string(),
+                    token: "studio-token".to_string(),
+                },
+            ]
+        );
+    }
+
+    /// A Host serving one Zone holds one token. The derivation that widens a
+    /// Host's token set is the one ADR-0068 exists to bound.
+    #[test]
+    fn test_a_host_with_no_off_zone_app_holds_one_zone() {
+        let toml = format!("{ZONES_ANSWERED}\n[hosts.auberge]\nforgejo_zone = \"studio\"\n");
+        let metas = vec![("forgejo".to_string(), meta(BARE))];
+        assert_eq!(
+            zone_set(&computed(&toml, "lechuck", &metas))
+                .into_iter()
+                .map(|z| z.prefix)
+                .collect::<Vec<_>>(),
+            vec![None]
+        );
+    }
+
+    /// Every App's pair is one the Host's set also holds. Both come off one
+    /// walk, and this is the assertion that fails if a later edit splits them.
+    #[test]
+    fn test_every_apps_pair_is_in_its_hosts_zone_set() {
+        let toml = format!("{ZONES_ANSWERED}\n[hosts.auberge]\nforgejo_zone = \"studio\"\n");
+        let metas = vec![
+            ("forgejo".to_string(), meta(BARE)),
+            (
+                "navidrome".to_string(),
+                meta("required_keys: []\nsubdomain: navidrome\n"),
+            ),
+        ];
+        let vars = computed(&toml, "auberge", &metas);
+        let pairs: Vec<(String, String)> = zone_set(&vars)
+            .into_iter()
+            .map(|z| (z.domain, z.token))
+            .collect();
+        for app in ["forgejo", "navidrome"] {
+            let pair = (
+                vars[&format!("{app}{PARENT_DOMAIN_SUFFIX}")].clone(),
+                vars[&format!("{app}{DNS_TOKEN_SUFFIX}")].clone(),
+            );
+            assert!(
+                pairs.contains(&pair),
+                "{app} resolves to {pair:?}, absent from {pairs:?}"
+            );
+        }
+    }
+
+    /// An empty set is still an answer: the drop-in writer needs the var
+    /// defined to iterate it, and a Host serving nothing writes no line.
+    #[test]
+    fn test_a_host_serving_nothing_still_gets_an_empty_zone_set() {
+        let vars = computed(ZONES_ANSWERED, "auberge", &[]);
+        assert_eq!(zone_set(&vars), vec![]);
     }
 
     // ── host scope ────────────────────────────────────────────────────────────

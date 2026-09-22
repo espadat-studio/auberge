@@ -154,6 +154,18 @@ Dump its assertion domain, then dump the replacement's. A quietly smaller fence 
 
 Nothing in ansible reads them yet. Deployable, no-op.
 
+> [!IMPORTANT]
+> **Phase 2 landed as PR #TBD, with five deviations from the rows above.**
+>
+> - **The injection point is `Preflight`, not `ansible_runner.rs`.** `run_playbook`'s `extra_vars` is a per-call `-e` list; `Preflight::flat_vars` is the `@vars` file every run already writes. `preflight_for` overlays the Computed Vars there, _after_ the config flatten — `flatten_for_ansible` hands Ansible every top-level `config.toml` entry, Key Registry or not, so overlaying last is what makes a hand-written entry of one of these names reach no role rather than quietly win. `ansible_runner.rs` is untouched.
+> - **`host_zone_set` is deleted.** Phase 1 added it; it never gained a production caller, and once `computed_vars` derived the same set it was a second derivation of one fact. Both questions now read one private walk, `placements()`, which returns each App with its Zone _and_ that Zone's pair. Its four unit cases moved onto `computed_vars`; one was fully covered by the new cases and dropped.
+> - **The Host's Zone set is `host_zones`: JSON, `[{prefix, domain, token}]`, prefix `null` for the fleet's.** It carries the token beside the prefix so phase 4's template resolves nothing by name — a Zone is a pair, and an entry whose token the template looks up separately is the same pair split across two expressions again. **It commits to no `Environment=` spelling**, which is phase 4's to decide, as phase 1 left it.
+> - **A contradicted pin fails _every_ run, not only the one deploying that App.** `computed_vars` walks all Metas, so a Meta `zone:` an operator's `<app>_zone` contradicts refuses a `deploy navidrome` too. Wider than plan C's per-run refusal, and deliberately: it is the same class as a fleet-wide `<app>_zone`, which `assert_no_fleet_wide_zone` already refuses fleet-wide. A config contradiction the operator has to resolve is not made smaller by deploying something else.
+> - **An unanswered Zone yields _absence_, not an empty string.** Phase 3's roles will read an undefined var and fail the play, which is the intent: a role composing `{{ subdomain }}.{{ <app>_parent_domain }}` off `""` publishes `git.` silently. Preflight refuses the run first for any App the run deploys, so the undefined var is only reachable for an App this run does not touch.
+> - **`app_verify_config` now skips an empty parent domain.** Pre-existing bug, made reachable by pair resolution: it composed `rss.` and failed the deploy with NXDOMAIN on a name no role ever tried to create. `services/dns.rs`'s old doc claimed the caller already handled this; it did not.
+>
+> `PlaybookMeta` derives `Default`, so `app_parent_domain` can resolve an App whose Meta will not load as an unpinned one — `<app>_zone` still places it. The Meta enumerator is the existing `playbook_meta::load_all_metas`, which is strict: a committed Meta that will not parse fails every run rather than silently dropping that App's Computed Vars and its `customDNS` entry.
+
 ### Phase 3 — Roles (Ansible)
 
 | Commit                                                  | Changes                                    | Tests                                                                     |

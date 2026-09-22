@@ -141,6 +141,11 @@ pub fn run_enters_role(
 /// `ansible_dir` is the caller's already-prepared Assets Tree: a deploy
 /// preflights every run in its plan, and preparing the tree per run would take
 /// the extract-and-sweep lock once per playbook instead of once (ADR-0034).
+///
+/// The **Computed Vars** it overlays are derived over *every* Meta, not the
+/// run's: blocky builds its `customDNS` map `run_once` over all of them, so a
+/// map narrowed to the run's Apps is a name the tailnet stops resolving the
+/// next time one App deploys alone (ADR-0081).
 pub fn preflight_for(
     config: &Config,
     ansible_dir: &Path,
@@ -155,7 +160,11 @@ pub fn preflight_for(
     assert_host_overrides_known(config, &known)?;
     zone::assert_no_fleet_wide_zone(config)?;
     assert_zones_resolve(ansible_dir, config, playbook, tags, host)?;
-    config.preflight_with_keys(&required_keys_for(ansible_dir, playbook, tags)?, Some(host))
+    let metas = crate::playbook_meta::load_all_metas(&ansible_dir.join(PLAYBOOKS_DIR))?;
+    let computed = zone::computed_vars(&metas, config, host)?;
+    Ok(config
+        .preflight_with_keys(&required_keys_for(ansible_dir, playbook, tags)?, Some(host))?
+        .with_computed_vars(computed))
 }
 
 /// Every App this run deploys has its effective **Zone**'s pair answered for
@@ -216,7 +225,7 @@ pub(crate) fn assert_host_overrides_known(config: &Config, known: &[String]) -> 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::collections::HashSet;
+    use std::collections::{BTreeMap, HashSet};
 
     fn repo_ansible_dir() -> PathBuf {
         PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("ansible")
@@ -753,6 +762,108 @@ mod tests {
             .unwrap_err()
             .to_string();
         assert!(err.contains("domain"), "{err}");
+    }
+
+    // ── preflight and the computed vars agree ─────────────────────────────────
+
+    /// The two derivations `preflight_for` runs back to back, held against
+    /// each other.
+    ///
+    /// `assert_zones_resolve` refuses the run when an App it deploys has no
+    /// Zone; `computed_vars` silently drops such an App. That asymmetry is
+    /// deliberate — one covers the run, the other the whole tree — but it is
+    /// only safe while every App the first *accepts* is an App the second
+    /// *emits*. If they ever disagree, a run passes Preflight and the role
+    /// reads an undefined var mid-play, which is the failure Preflight exists
+    /// to move earlier.
+    fn computed(dir: &std::path::Path, config: &Config, host: &str) -> BTreeMap<String, String> {
+        let metas = crate::playbook_meta::load_all_metas(&dir.join(PLAYBOOKS_DIR)).unwrap();
+        zone::computed_vars(&metas, config, host).unwrap()
+    }
+
+    #[test]
+    fn test_every_app_preflight_accepts_gets_its_computed_vars() {
+        let dir = zone_fixture(&[
+            ("navidrome", "required_keys: []\nsubdomain: navidrome\n"),
+            ("forgejo", "required_keys: []\nsubdomain: git\n"),
+        ]);
+        let config = Config::from_toml_str(&format!(
+            "{FLEET_ANSWERED}\n\
+             studio_domain = \"studio.example\"\n\
+             studio_cloudflare_dns_api_token = \"studio-token\"\n\n\
+             [hosts.auberge]\nforgejo_zone = \"studio\"\n"
+        ))
+        .unwrap();
+
+        assert_zones_resolve(dir.path(), &config, "apps.yml", None, "auberge").unwrap();
+
+        let vars = computed(dir.path(), &config, "auberge");
+        assert_eq!(vars["navidrome_parent_domain"], "fleet.example");
+        assert_eq!(vars["navidrome_dns_api_token"], "fleet-token");
+        assert_eq!(vars["forgejo_parent_domain"], "studio.example");
+        assert_eq!(vars["forgejo_dns_api_token"], "studio-token");
+    }
+
+    /// An App outside the roster is still handed its Zone. Blocky's map is
+    /// built `run_once` over every Meta, so a walk narrowed to the run would
+    /// drop that App's name from the tailnet the next time something else
+    /// deploys — and every other test here would still pass, since none of
+    /// them deploys more than it names.
+    #[test]
+    fn test_an_app_outside_the_roster_still_gets_its_computed_vars() {
+        let dir = zone_fixture(&[("navidrome", "required_keys: []\nsubdomain: navidrome\n")]);
+        std::fs::write(
+            dir.path().join(PLAYBOOKS_DIR).join("forgejo.meta.yml"),
+            "required_keys: []\nsubdomain: git\n",
+        )
+        .unwrap();
+        let config = Config::from_toml_str(FLEET_ANSWERED).unwrap();
+
+        let vars = computed(dir.path(), &config, "auberge");
+        assert_eq!(
+            vars["forgejo_parent_domain"], "fleet.example",
+            "an App the run never touches still needs a name blocky can publish"
+        );
+    }
+
+    /// A contradicted pin fails the whole computation, so it fails *every*
+    /// run rather than only the one deploying that App. Wider than
+    /// `assert_zones_resolve`'s per-run refusal, and deliberately so: it is
+    /// the same class as a fleet-wide `<app>_zone`, which
+    /// `assert_no_fleet_wide_zone` already refuses fleet-wide. A config
+    /// contradiction the operator has to resolve is not made smaller by
+    /// deploying something else.
+    #[test]
+    fn test_a_contradicted_pin_fails_a_run_that_deploys_another_app() {
+        let dir = zone_fixture(&[("navidrome", "required_keys: []\nsubdomain: navidrome\n")]);
+        std::fs::write(
+            dir.path().join(PLAYBOOKS_DIR).join("aoe.meta.yml"),
+            "required_keys: []\nsubdomain: essaim\nzone: agents\n",
+        )
+        .unwrap();
+        let config = Config::from_toml_str(&format!(
+            "{FLEET_ANSWERED}\n[hosts.auberge]\naoe_zone = \"studio\"\n"
+        ))
+        .unwrap();
+
+        // The run itself is clean: it deploys navidrome, whose Zone resolves.
+        assert_zones_resolve(
+            dir.path(),
+            &config,
+            "apps.yml",
+            Some(&["navidrome".into()]),
+            "auberge",
+        )
+        .unwrap();
+
+        let metas = crate::playbook_meta::load_all_metas(&dir.path().join(PLAYBOOKS_DIR)).unwrap();
+        let err = zone::computed_vars(&metas, &config, "auberge")
+            .unwrap_err()
+            .to_string();
+        assert!(
+            err.contains("aoe_zone"),
+            "names the contradicting key: {err}"
+        );
     }
 
     /// An App with no name has no vhost and no record. Demanding a Zone of one

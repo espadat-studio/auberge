@@ -213,7 +213,7 @@ fn every_zone_placement_key_names_an_app_with_a_meta() {
 
 /// A Zone is where an App's **public name** lives, so pinning one on an App
 /// that publishes no name declares a token for a vhost that does not exist —
-/// and `host_zone_set` would land it on the Host anyway.
+/// and `computed_vars` would land it on the Host anyway.
 #[test]
 fn every_pinned_app_publishes_a_name() {
     let nameless: Vec<String> = declared_pins()
