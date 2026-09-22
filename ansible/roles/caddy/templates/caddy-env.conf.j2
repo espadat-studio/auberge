@@ -1,2 +1,10 @@
 [Service]
+# The fleet's token is the one this file does not take from the Zone set: every
+# App answers its own `<app>_subdomain` fleet-wide, so the fleet Zone is in
+# every Host's set — the agent tier's included, and that Host must never hold
+# the parent domain's token (ADR-0068). `infrastructure.yml` chooses this one
+# per Host instead, as it has since ADR-0072.
 Environment="CLOUDFLARE_DNS_API_TOKEN={{ caddy_dns_api_token }}"
+{% for zone in host_zones | from_json if zone.prefix %}
+Environment="{{ zone.env }}={{ zone.token }}"
+{% endfor %}

@@ -1,4 +1,7 @@
 {{ grimmory_domain }} {
+	tls {
+		dns cloudflare {env.{{ grimmory_dns_api_token_env }}}
+	}
 	reverse_proxy 127.0.0.1:{{ grimmory_port }} {
 		header_up X-Real-IP {remote_ip}
 		header_up X-Forwarded-For {remote_ip}

@@ -1,3 +1,6 @@
 {{ headscale_domain }} {
+	tls {
+		dns cloudflare {env.{{ headscale_dns_api_token_env }}}
+	}
 	reverse_proxy 127.0.0.1:{{ headscale_port }}
 }

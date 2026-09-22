@@ -1,4 +1,7 @@
 {{ yourls_domain }} {
+	tls {
+		dns cloudflare {env.{{ yourls_dns_api_token_env }}}
+	}
 	root * /var/www/yourls
 
 	redir / /admin/index.php

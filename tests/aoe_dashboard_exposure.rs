@@ -104,6 +104,11 @@ fn vhost() -> String {
             ("aoe_tailscale_ip", TAILNET_ADDRESS),
             ("aoe_bind_host", LOOPBACK),
             ("aoe_port", PORT),
+            // The Computed Var naming the environment variable caddy reads
+            // this site's ACME token from, resolved by the CLI off aoe's Zone
+            // (ADR-0082). It sits beside the role's defaults rather than
+            // among them: nothing in the repo answers it.
+            ("aoe_dns_api_token_env", "AGENTS_CLOUDFLARE_DNS_API_TOKEN"),
         ],
     )
 }

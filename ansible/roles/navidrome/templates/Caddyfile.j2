@@ -1,4 +1,7 @@
 {{ navidrome_domain }} {
+	tls {
+		dns cloudflare {env.{{ navidrome_dns_api_token_env }}}
+	}
 	reverse_proxy 127.0.0.1:{{ navidrome_port }} {
 		header_up Host {host}
 		header_up X-Real-IP {remote_ip}
