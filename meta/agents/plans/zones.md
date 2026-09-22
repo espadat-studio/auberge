@@ -136,6 +136,15 @@ Dump its assertion domain, then dump the replacement's. A quietly smaller fence 
 | `feat(config): preflight demands an app's effective zone` | `preflight_for`; `config.rs` fleet-wide refusal; drop `domain`/`cloudflare_dns_api_token` from 20 Metas | `zone_declaration.rs`    |
 | `docs(adr): record the zone model`                        | ADR-0081; `CONTEXT.md` **Zone** + **Computed Var**; `adr.md`                                            | `check-adr-numbering.sh` |
 
+> [!IMPORTANT]
+> **Phase 1 landed as PR #957, with three deviations from the rows above.**
+>
+> - **Seven Metas declared `domain` or `cloudflare_dns_api_token`, not twenty.** Six dropped them. `infrastructure.meta.yml` keeps `domain` on purpose: blocky and headscale still compose against `{{ domain }}` behind `when:` guards, and an untagged run does not demand a guarded role's keys, so the Zone demand cannot reach them. **Phase 3 drops it**, once those two roles read the Computed Var.
+> - **Only an App that publishes a name is asked for a Zone** (`zone::publishes_a_name`). Demanding the fleet's pair of every Meta breaks `deploy ruche` and `bootstrap`. Recorded in `CONTEXT.md` under **Zone**.
+> - **`Zone::env_var` was cut.** It had no caller and its spelling contradicted ADR-0082's `<ZONE>_DNS_API_TOKEN`. **Phase 4 decides the name** with the drop-in in front of it; the fleet's must stay `CLOUDFLARE_DNS_API_TOKEN`.
+>
+> `effective_zone` reads `zone:` **and** `domain_key:`, because ADR-0081 keeps both live. Phase 5 (#952, PR #958) shipped first and added a second resolver, `PlaybookMeta::zone()`, which reads `domain_key:` only. **Phase 2 must delete it** rather than leave `dns` and Preflight disagreeing about which Zone an App is in.
+
 ### Phase 2 — Injection (Rust)
 
 | Commit                                                 | Changes                                 | Tests                 |
