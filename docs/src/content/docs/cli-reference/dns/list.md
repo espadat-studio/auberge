@@ -10,6 +10,8 @@ auberge dns list [OPTIONS]
 
 Requires `cloudflare_dns_api_token` and `domain` in `config.toml`. Displays A, AAAA, CNAME, MX, TXT, NS, and SRV records.
 
+The listing covers one zone — `dns` resolves the fleet's Zone per run (ADR-0081). Apps in another Zone are named on stderr after the table, on both output formats, so a listing read against the app roster is not short of it without saying so. They are not added to the JSON body: ADR-0004 fixes that body as a bare array of records, and these are apps rather than records.
+
 ## Options
 
 | Option                 | Description         | Default     |
