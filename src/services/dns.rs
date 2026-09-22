@@ -139,23 +139,53 @@ pub struct SubdomainEntry {
     pub ip_override: Option<String>,
 }
 
+/// A Public App whose Zone is not the one a `dns` run holds.
+///
+/// `dns` is one zone per run: `CloudflareDns::connect` resolves the fleet's
+/// Zone and nothing below that seam can reach another, so every subcommand's
+/// view stops at the fleet's zone. Carried as its own partition rather than
+/// dropped, because a report that is quietly short of the roster is the
+/// quiet success ADR-0071 was written about — `set-all` announcing "17
+/// records set" while the forge was never a candidate.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct OffZoneApp {
+    pub app: String,
+    pub subdomain: String,
+    /// The Zone's name — the prefix its Key Registry pair shares (ADR-0081).
+    pub zone: String,
+}
+
 #[derive(Default)]
 pub struct DiscoveredSubdomains {
     pub public: HashMap<String, SubdomainEntry>,
     pub tailnet_only: HashMap<String, SubdomainEntry>,
+    /// Sorted by App, so every command that names these reports them in one
+    /// order without sorting at each call site.
+    pub off_zone: Vec<OffZoneApp>,
 }
 
 /// Walks the playbooks directory once and returns App subdomains partitioned
-/// by ADR-0003 publication channel:
-/// - `public`     — Cloudflare A records
+/// by the channel that can publish them:
+/// - `public`     — Cloudflare A records, in the run's zone
 /// - `tailnet_only` — Blocky `customDNS` map (no Cloudflare A record ever)
+/// - `off_zone`   — a Cloudflare zone this run does not hold
 ///
-/// Both channels read the same per-App `<app>_tailscale_ip` override into
-/// `ip_override`, because both publish an address and neither one's address is
-/// a property of the Host the publisher runs on (ADR-0059). The tailnet-only
-/// half hardcoded `None` while only one Host existed, which read as "a
-/// tailnet-only App has no address of its own" rather than as the assumption
-/// it was.
+/// The first two are the ADR-0003 channels. The third is not a channel but a
+/// reach limit: `dns` resolves one Zone per run, so a Public App in a second
+/// one is outside every subcommand's view and must be named rather than
+/// counted out (ADR-0081).
+///
+/// `tailnet_only` wins where both apply — the agent tier is Tailnet-only
+/// *and* in its own Zone. ADR-0003 is the stronger claim: "off-Zone" tells a
+/// reader to look in the other zone, and for a Tailnet-only App there is no
+/// other zone to look in.
+///
+/// Both address-publishing channels read the same per-App `<app>_tailscale_ip`
+/// override into `ip_override`, because both publish an address and neither
+/// one's address is a property of the Host the publisher runs on (ADR-0059).
+/// The tailnet-only half hardcoded `None` while only one Host existed, which
+/// read as "a tailnet-only App has no address of its own" rather than as the
+/// assumption it was.
 ///
 /// Metas with an empty/missing `subdomain` are silently dropped; the integrity
 /// test in this module (`test_every_app_meta_has_subdomain_unless_tailnet_only_or_excluded`)
@@ -166,14 +196,25 @@ pub fn discover_all_subdomains() -> DiscoveredSubdomains {
         Ok(a) => a,
         Err(_) => return DiscoveredSubdomains::default(),
     };
-    let entries = match std::fs::read_dir(assets.playbooks_dir()) {
+    discover_all_subdomains_in(&assets.playbooks_dir(), Config::load().ok().as_ref())
+}
+
+/// The walk itself, over a directory the caller names. Split out for the
+/// reason `app_parent_domain` takes its `playbooks_dir`: the partition turns
+/// on Meta fields, and no in-tree Meta puts a Public App in a second Zone
+/// yet, so the branch is only reachable from a test that writes the Meta.
+fn discover_all_subdomains_in(
+    playbooks_dir: &Path,
+    config: Option<&Config>,
+) -> DiscoveredSubdomains {
+    let entries = match std::fs::read_dir(playbooks_dir) {
         Ok(e) => e,
         Err(_) => return DiscoveredSubdomains::default(),
     };
 
-    let config = Config::load().ok();
     let mut public: HashMap<String, SubdomainEntry> = HashMap::new();
     let mut tailnet_only: HashMap<String, SubdomainEntry> = HashMap::new();
+    let mut off_zone: Vec<OffZoneApp> = Vec::new();
 
     for entry in entries.flatten() {
         let path = entry.path();
@@ -186,7 +227,7 @@ pub fn discover_all_subdomains() -> DiscoveredSubdomains {
         let Ok(meta) = PlaybookMeta::load(&path) else {
             continue;
         };
-        let config_override = config.as_ref().and_then(|c| {
+        let config_override = config.and_then(|c| {
             let key = format!("{}_subdomain", app);
             c.get(&key).filter(|v| !v.is_empty())
         });
@@ -196,7 +237,18 @@ pub fn discover_all_subdomains() -> DiscoveredSubdomains {
             continue;
         };
 
-        let ip_override = config.as_ref().and_then(|c| {
+        if !meta.tailnet_only
+            && let Some(zone) = meta.zone()
+        {
+            off_zone.push(OffZoneApp {
+                app: app.to_string(),
+                subdomain,
+                zone: zone.to_string(),
+            });
+            continue;
+        }
+
+        let ip_override = config.and_then(|c| {
             let key = format!("{}_tailscale_ip", app);
             c.get(&key).filter(|v| !v.is_empty())
         });
@@ -214,9 +266,11 @@ pub fn discover_all_subdomains() -> DiscoveredSubdomains {
         );
     }
 
+    off_zone.sort_by(|a, b| a.app.cmp(&b.app));
     DiscoveredSubdomains {
         public,
         tailnet_only,
+        off_zone,
     }
 }
 
@@ -269,18 +323,34 @@ pub fn is_tailscale_ip(ip: &str) -> bool {
 }
 
 /// Why a record is neither written nor repointed.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SkipReason {
     /// ADR-0003 keeps Tailnet-only Apps off Cloudflare, which each subcommand
     /// meets from its own side: `set-all` never creates the record, and
     /// `migrate` never repoints one that already holds a tailnet address.
     TailnetOnly,
+    /// The App's Zone is not the one the run holds, so its record is in a
+    /// zone this run cannot reach (ADR-0081). Carries both names: "skipped"
+    /// alone does not tell a record the run *must not* write from one it
+    /// *cannot*, and only the second is fixed by running again elsewhere.
+    OffZone { zone: String, run_domain: String },
 }
 
 impl SkipReason {
-    pub fn as_str(self) -> &'static str {
+    pub fn as_str(&self) -> &'static str {
         match self {
             Self::TailnetOnly => "tailnet_only",
+            Self::OffZone { .. } => "off_zone",
+        }
+    }
+
+    /// The phrase a human report puts after the App's name.
+    pub fn describe(&self) -> String {
+        match self {
+            Self::TailnetOnly => "tailnet-only — published via Blocky".to_string(),
+            Self::OffZone { zone, run_domain } => {
+                format!("in DNS zone `{zone}` — this run holds {run_domain}")
+            }
         }
     }
 }
@@ -333,13 +403,16 @@ pub struct SetAllOutcome {
 }
 
 /// Decides which A records `set-all` writes and which Apps it skips, applying
-/// `--subdomains` / `--skip` operator intent and the ADR-0003 invariants:
+/// `--subdomains` / `--skip` operator intent, the ADR-0003 invariants and the
+/// one-Zone-per-run reach (ADR-0081):
 ///
-/// - Implicit (`subdomains` empty): every `--skip`-filtered tailnet-only App is
-///   skipped; the remaining Public Apps are scheduled to create.
+/// - Implicit (`subdomains` empty): every `--skip`-filtered tailnet-only and
+///   off-Zone App is skipped, each naming its own reason; the remaining Public
+///   Apps are scheduled to create.
 /// - Explicit (`subdomains` non-empty): if any non-`--skip`-excluded entry names
-///   a tailnet-only App, hard-error before any provider call. `skipped` is empty
-///   in this branch — explicit means the operator owns the choice.
+///   a tailnet-only or an off-Zone App, hard-error before any provider call.
+///   `skipped` is empty in this branch — explicit means the operator owns the
+///   choice, and a silent skip of a name they typed is not a choice at all.
 ///
 /// Both lists come back sorted by App name so output is deterministic
 /// regardless of `HashMap` iteration order. A named App the discovery does not
@@ -354,6 +427,7 @@ pub fn plan_set_all(
     let DiscoveredSubdomains {
         mut public,
         tailnet_only,
+        off_zone,
     } = discovered;
 
     let (selected, skipped): (Vec<(String, SubdomainEntry)>, Vec<SkippedApp>) =
@@ -366,6 +440,19 @@ pub fn plan_set_all(
                     subdomain: entry.subdomain,
                     reason: SkipReason::TailnetOnly,
                 })
+                .chain(
+                    off_zone
+                        .into_iter()
+                        .filter(|o| !skip.contains(&o.app))
+                        .map(|o| SkippedApp {
+                            app: o.app,
+                            subdomain: o.subdomain,
+                            reason: SkipReason::OffZone {
+                                zone: o.zone,
+                                run_domain: domain.to_string(),
+                            },
+                        }),
+                )
                 .collect();
             skipped.sort_by(|a, b| a.app.cmp(&b.app));
 
@@ -375,12 +462,16 @@ pub fn plan_set_all(
                 .collect();
             (selected, skipped)
         } else {
-            let offenders: Vec<String> = subdomains
+            let named: Vec<&String> = subdomains
                 .iter()
                 .filter(|app| !skip.contains(*app))
+                .collect();
+
+            let offenders: Vec<String> = named
+                .iter()
                 .filter_map(|app| {
                     tailnet_only
-                        .get(app)
+                        .get(*app)
                         .map(|entry| format!("  • {} (subdomain: {})", app, entry.subdomain))
                 })
                 .collect();
@@ -391,6 +482,29 @@ pub fn plan_set_all(
                     offenders.join("\n")
                 );
             }
+
+            let off_zone_offenders: Vec<String> = named
+                .iter()
+                .filter_map(|app| {
+                    off_zone.iter().find(|o| &o.app == *app).map(|o| {
+                        format!(
+                            "  • {} (subdomain: {}, zone: {})",
+                            o.app, o.subdomain, o.zone
+                        )
+                    })
+                })
+                .collect();
+            if !off_zone_offenders.is_empty() {
+                eyre::bail!(
+                    "apps in another DNS zone are out of this run's reach (ADR-0081):\n{}\n\n\
+                 `dns` resolves one zone per run and this run holds {}. Answer that \
+                 zone's `<zone>_domain` and `<zone>_cloudflare_dns_api_token`, then \
+                 publish the app from a run scoped to it.",
+                    off_zone_offenders.join("\n"),
+                    domain
+                );
+            }
+
             let selected = subdomains
                 .into_iter()
                 .filter(|app| !skip.contains(app))
@@ -843,6 +957,101 @@ mod tests {
         );
     }
 
+    /// A Public App in a second Zone is partitioned out of `public` rather
+    /// than left in it: `plan_set_all` composes every `public` entry's FQDN
+    /// against the run's one domain, so leaving it there writes
+    /// `git.<fleet domain>` — a record in the wrong zone, reported as a
+    /// success.
+    #[test]
+    fn discover_partitions_a_public_off_zone_app_out_of_the_public_channel() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(
+            dir.path().join("forgejo.meta.yml"),
+            "required_keys: []\nsubdomain: git\ndomain_key: studio_domain\n",
+        )
+        .unwrap();
+        std::fs::write(
+            dir.path().join("colporteur.meta.yml"),
+            "required_keys: []\nsubdomain: blog\ndomain_key: studio_domain\n",
+        )
+        .unwrap();
+        std::fs::write(
+            dir.path().join("freshrss.meta.yml"),
+            "required_keys: []\nsubdomain: rss\n",
+        )
+        .unwrap();
+
+        let discovered = discover_all_subdomains_in(dir.path(), None);
+
+        let mut found = discovered.off_zone.clone();
+        found.sort_by(|a, b| a.app.cmp(&b.app));
+        assert_eq!(
+            found,
+            vec![
+                off_zone("colporteur", "blog", "studio"),
+                off_zone("forgejo", "git", "studio"),
+            ]
+        );
+        assert!(!discovered.public.contains_key("forgejo"));
+        assert_eq!(discovered.public["freshrss"].subdomain, "rss");
+    }
+
+    /// The tripwire this partition needs, because it is unreachable in-tree.
+    ///
+    /// Today the only Zone declaration is a Meta's `domain_key:`, and
+    /// `tests/tailnet_only_parent_domain.rs` still forbids a Public App from
+    /// carrying one — so `off_zone` is empty for any tree that passes the
+    /// suite, and emptying the partition's branch would break nothing but the
+    /// tests above. Reachability arrives with `<app>_zone` (ADR-0081), the
+    /// operator's declaration site, which the walk below does not read.
+    ///
+    /// This fails the moment that key enters the registry. Wiring it in is the
+    /// same edit as answering it: a run that resolves an App into a second
+    /// Zone while this walk still reads only the Meta puts it back in
+    /// `public`, and `plan_set_all` writes `git.<fleet domain>` and reports a
+    /// success — the exact defect #952 closed.
+    #[test]
+    fn the_operator_zone_key_is_not_yet_a_declaration_this_walk_can_miss() {
+        let keys = std::fs::read_to_string(
+            std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+                .join("ansible")
+                .join("keys.yml"),
+        )
+        .expect("the Key Registry must be readable");
+
+        assert!(
+            !keys.contains("_zone:"),
+            "`<app>_zone` is now answerable, so an App's effective Zone is no \
+             longer a Meta-only fact. `discover_all_subdomains_in` must resolve \
+             it the way ADR-0081's `effective_zone` does — Meta pin, else \
+             `<app>_zone` for the Host, else the fleet's — or an operator-placed \
+             App falls back into `public` and is published into the wrong zone \
+             without a word. Delete this test once the walk reads the key."
+        );
+    }
+
+    /// The agent tier is Tailnet-only *and* in its own Zone, and ADR-0003 is
+    /// the stronger claim: it has no Cloudflare record in any zone, so
+    /// "look in the other zone" is advice that leads nowhere.
+    #[test]
+    fn discover_keeps_a_tailnet_only_app_off_the_off_zone_channel() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(
+            dir.path().join("aoe.meta.yml"),
+            "required_keys: []\nsubdomain: essaim\ndomain_key: agents_domain\ntailnet_only: true\n",
+        )
+        .unwrap();
+
+        let discovered = discover_all_subdomains_in(dir.path(), None);
+
+        assert_eq!(discovered.tailnet_only["aoe"].subdomain, "essaim");
+        assert!(
+            discovered.off_zone.is_empty(),
+            "a Tailnet-only App's Zone is not a reach limit on Cloudflare: {:?}",
+            discovered.off_zone
+        );
+    }
+
     // ── Crate-local record types ──────────────────────────────────────────────
 
     fn a_record(name: &str, ip: &str) -> DnsRecord {
@@ -1016,6 +1225,15 @@ mod tests {
                 .iter()
                 .map(|(app, sub)| ((*app).to_string(), entry(sub)))
                 .collect(),
+            off_zone: vec![],
+        }
+    }
+
+    fn off_zone(app: &str, subdomain: &str, zone: &str) -> OffZoneApp {
+        OffZoneApp {
+            app: app.to_string(),
+            subdomain: subdomain.to_string(),
+            zone: zone.to_string(),
         }
     }
 
@@ -1130,6 +1348,131 @@ mod tests {
             msg.contains("auberge deploy"),
             "error must point to the corrective action"
         );
+    }
+
+    /// The defect the issue names: `set-all` announcing a record count while
+    /// an App it never considered goes unmentioned. The App is in `skipped`,
+    /// so the count's denominator accounts for it.
+    #[test]
+    fn plan_implicit_names_an_off_zone_app_rather_than_dropping_it() {
+        let mut d = discovered(&[("freshrss", entry("rss"))], &[("bichon", "bichon")]);
+        d.off_zone = vec![off_zone("forgejo", "git", "studio")];
+
+        let p = plan(d, &[], &[]).unwrap();
+
+        let created: Vec<&str> = p.to_create.iter().map(|r| r.app.as_str()).collect();
+        assert_eq!(created, vec!["freshrss"]);
+        assert_eq!(
+            p.skipped,
+            vec![
+                SkippedApp {
+                    app: "bichon".to_string(),
+                    subdomain: "bichon".to_string(),
+                    reason: SkipReason::TailnetOnly,
+                },
+                SkippedApp {
+                    app: "forgejo".to_string(),
+                    subdomain: "git".to_string(),
+                    reason: SkipReason::OffZone {
+                        zone: "studio".to_string(),
+                        run_domain: "example.com".to_string(),
+                    },
+                },
+            ],
+            "both reasons sort into one list by App, so no reason's rows are printed last by accident"
+        );
+    }
+
+    /// The reason names both Zones. Only one of the two skips is fixable by
+    /// running again somewhere else, and a reader cannot tell which from the
+    /// word "skipped".
+    #[test]
+    fn an_off_zone_skip_reason_names_the_apps_zone_and_the_runs() {
+        let mut d = discovered(&[], &[]);
+        d.off_zone = vec![off_zone("forgejo", "git", "studio")];
+
+        let p = plan(d, &[], &[]).unwrap();
+        let described = p.skipped[0].reason.describe();
+
+        assert_eq!(p.skipped[0].reason.as_str(), "off_zone");
+        assert!(
+            described.contains("studio"),
+            "must name the App's Zone: {described}"
+        );
+        assert!(
+            described.contains("example.com"),
+            "must name the run's: {described}"
+        );
+    }
+
+    /// Asserted here rather than on the discovery walk, whose input order is
+    /// `read_dir`'s and not a test's: an assertion there passes whether the
+    /// sort runs or not.
+    #[test]
+    fn plan_implicit_sorts_off_zone_apps_into_the_skipped_list() {
+        let mut d = discovered(&[], &[("paperless", "docs")]);
+        d.off_zone = vec![
+            off_zone("forgejo", "git", "studio"),
+            off_zone("colporteur", "blog", "studio"),
+        ];
+
+        let p = plan(d, &[], &[]).unwrap();
+
+        let names: Vec<&str> = p.skipped.iter().map(|s| s.app.as_str()).collect();
+        assert_eq!(names, vec!["colporteur", "forgejo", "paperless"]);
+    }
+
+    #[test]
+    fn plan_implicit_skip_excludes_an_off_zone_app_from_skipped_list() {
+        let mut d = discovered(&[], &[]);
+        d.off_zone = vec![
+            off_zone("forgejo", "git", "studio"),
+            off_zone("colporteur", "blog", "studio"),
+        ];
+
+        let p = plan(d, &[], &["forgejo"]).unwrap();
+
+        let names: Vec<&str> = p.skipped.iter().map(|s| s.app.as_str()).collect();
+        assert_eq!(names, vec!["colporteur"]);
+    }
+
+    /// A name the operator typed is never silently skipped, matching the
+    /// tailnet-only refusal above: an explicit `--subdomains` entry the run
+    /// cannot honour is the operator's mistake, and returning a plan without
+    /// it would write the rest and report success.
+    #[test]
+    fn plan_explicit_off_zone_target_errors_before_returning() {
+        let mut d = discovered(&[("freshrss", entry("rss"))], &[]);
+        d.off_zone = vec![off_zone("forgejo", "git", "studio")];
+
+        let err = plan(d, &["forgejo", "freshrss"], &[]).unwrap_err();
+        let msg = err.to_string();
+
+        assert!(msg.contains("forgejo"), "error must name the offender");
+        assert!(
+            msg.contains("subdomain: git"),
+            "error must surface the effective subdomain"
+        );
+        assert!(
+            msg.contains("zone: studio"),
+            "error must name the App's Zone"
+        );
+        assert!(
+            msg.contains("example.com"),
+            "error must name the Zone the run does hold"
+        );
+        assert!(msg.contains("ADR-0081"), "error must reference the ADR");
+    }
+
+    #[test]
+    fn plan_explicit_skip_excludes_an_off_zone_target_avoids_error() {
+        let mut d = discovered(&[], &[]);
+        d.off_zone = vec![off_zone("forgejo", "git", "studio")];
+
+        let p = plan(d, &["forgejo"], &["forgejo"]).unwrap();
+
+        assert!(p.to_create.is_empty());
+        assert!(p.skipped.is_empty());
     }
 
     #[test]
