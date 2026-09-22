@@ -1,6 +1,6 @@
 use crate::ansible_assets::AnsibleAssets;
 use crate::config::Config;
-use crate::playbook_meta::{DEFAULT_DOMAIN_KEY, PlaybookMeta};
+use crate::playbook_meta::PlaybookMeta;
 use eyre::Result;
 use std::collections::{HashMap, HashSet};
 use std::net::{Ipv4Addr, Ipv6Addr};
@@ -280,19 +280,26 @@ fn discover_all_subdomains_in(
     }
 }
 
-/// The parent domain `app`'s FQDN composes against, read through `host`'s view
-/// of `Config` (ADR-0058): the Key Registry key the App's Meta names in
-/// `domain_key:`, or `domain` where it names none.
+/// The parent domain `app`'s FQDN composes against on `host` — its **Zone**'s
+/// apex, resolved through the one resolver (ADR-0081).
 ///
-/// The agent tier holds its own Cloudflare zone (ADR-0068), so an App there
-/// composes against `agents_domain` while every other App composes against the
-/// domain the fleet shares. Blocky's `customDNS` map answers the same question
-/// off the same field, in ansible; a consumer that resolved only `domain` would
-/// verify a name nothing publishes.
+/// Every declaration site is read here because `deploy` verifies DNS
+/// Publication through this function: a role publishing `git.espadat.com`
+/// while this resolved `git.{domain}` reports success for a name nothing
+/// serves, and `git.{domain}` resolves to the Host anyway, so the check would
+/// not even have to be lucky. Reading `domain_key:` alone was exactly that
+/// bug for an App placed by `<app>_zone`.
 ///
-/// Empty when the key has no answer — an operator who never onboarded the
-/// second zone — and empty when the App has no Meta, which is what the caller
-/// already treats an unset `domain` as.
+/// Empty means "nothing to verify", and the Zone's *pair* decides it. A
+/// domain whose zone-scoped token is unanswered publishes no record and
+/// serves no certificate, so there is no name to check — the operator never
+/// onboarded that Zone. `app_verify_config` skips on the empty string rather
+/// than composing `git.` out of it.
+///
+/// A pin the operator contradicted is also empty here. That collision is
+/// refused loudly in Preflight, where the App and both declaration sites can
+/// be named; by the time a verification runs, the run it would have failed
+/// has already been refused.
 ///
 /// `playbooks_dir` is passed rather than resolved here so the Meta the lookup
 /// reads is a test's to write; the deploy path hands over the directory the
@@ -303,13 +310,12 @@ pub fn app_parent_domain(
     config: &Config,
     host: Option<&str>,
 ) -> String {
-    let key = PlaybookMeta::load(&playbooks_dir.join(format!("{app}.meta.yml")))
-        .map(|meta| meta.parent_domain_key().to_string())
-        .unwrap_or_else(|_| DEFAULT_DOMAIN_KEY.to_string());
+    let meta =
+        PlaybookMeta::load(&playbooks_dir.join(format!("{app}.meta.yml"))).unwrap_or_default();
 
-    config
-        .get_for_host(&key, host)
-        .map(|value| value.trim().to_string())
+    crate::services::zone::effective_zone(&meta, config, app, host)
+        .and_then(|zone| crate::services::zone::resolve(&zone, config, host))
+        .map(|pair| pair.domain)
         .unwrap_or_default()
 }
 
@@ -818,20 +824,30 @@ mod tests {
         );
     }
 
-    /// A Meta naming no `domain_key:` composes against the fleet's `domain`,
-    /// which is every App but the agent tier's.
+    /// Both halves of every Zone these cases resolve. A Zone is a pair, and a
+    /// fixture answering only the domain describes a config ADR-0081 calls
+    /// incomplete — the vhost could never complete an ACME challenge, so the
+    /// name it would verify was never published.
+    const ZONES: &str = "domain = \"example.com\"\n\
+                         cloudflare_dns_api_token = \"fleet-token\"\n\
+                         agents_domain = \"agents-example.com\"\n\
+                         agents_cloudflare_dns_api_token = \"agents-token\"\n";
+
+    fn meta_dir(app: &str, body: &str) -> tempfile::TempDir {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join(format!("{app}.meta.yml")), body).unwrap();
+        dir
+    }
+
+    /// A Meta naming no Zone composes against the fleet's, which is every App
+    /// but the agent tier's.
     #[test]
     fn app_parent_domain_falls_back_to_the_fleet_domain() {
-        let dir = tempfile::tempdir().unwrap();
-        std::fs::write(
-            dir.path().join("paperless.meta.yml"),
+        let dir = meta_dir(
+            "paperless",
             "required_keys: []\nsubdomain: docs\ntailnet_only: true\n",
-        )
-        .unwrap();
-        let config = Config::from_toml_str(
-            "domain = \"example.com\"\nagents_domain = \"agents-example.com\"\n",
-        )
-        .unwrap();
+        );
+        let config = Config::from_toml_str(ZONES).unwrap();
 
         assert_eq!(
             app_parent_domain(dir.path(), "paperless", &config, None),
@@ -839,20 +855,15 @@ mod tests {
         );
     }
 
-    /// A Meta naming one composes against that key, so the check verifies the
+    /// A Meta naming one composes against that Zone, so the check verifies the
     /// name Blocky publishes rather than the one the fleet's domain would make.
     #[test]
     fn app_parent_domain_reads_the_key_the_meta_names() {
-        let dir = tempfile::tempdir().unwrap();
-        std::fs::write(
-            dir.path().join("aoe.meta.yml"),
+        let dir = meta_dir(
+            "aoe",
             "required_keys: []\nsubdomain: essaim\ndomain_key: agents_domain\ntailnet_only: true\n",
-        )
-        .unwrap();
-        let config = Config::from_toml_str(
-            "domain = \"example.com\"\nagents_domain = \"agents-example.com\"\n",
-        )
-        .unwrap();
+        );
+        let config = Config::from_toml_str(ZONES).unwrap();
 
         assert_eq!(
             app_parent_domain(dir.path(), "aoe", &config, None),
@@ -860,36 +871,92 @@ mod tests {
         );
     }
 
-    /// A key with no answer resolves to nothing rather than to the fleet's
+    /// The bug ADR-0081 exists to delete. An App the operator placed in a Zone
+    /// of their own publishes there, and a verification reading only
+    /// `domain_key:` would check `git.example.com` — which resolves to the
+    /// same Host, so the check would pass on a name nothing serves.
+    #[test]
+    fn app_parent_domain_follows_an_operators_app_zone() {
+        let dir = meta_dir("forgejo", "required_keys: []\nsubdomain: git\n");
+        let config = Config::from_toml_str(&format!(
+            "{ZONES}studio_domain = \"espadat.com\"\n\
+             studio_cloudflare_dns_api_token = \"studio-token\"\n\n\
+             [hosts.auberge]\nforgejo_zone = \"studio\"\n"
+        ))
+        .unwrap();
+
+        assert_eq!(
+            app_parent_domain(dir.path(), "forgejo", &config, Some("auberge")),
+            "espadat.com"
+        );
+        assert_eq!(
+            app_parent_domain(dir.path(), "forgejo", &config, Some("lechuck")),
+            "example.com",
+            "the placement is host-scoped, and so is what it verifies"
+        );
+    }
+
+    /// A Zone with no answer resolves to nothing rather than to the fleet's
     /// domain: an operator who never onboarded the second zone has no name
     /// there to verify, and falling back would verify a name in the wrong zone.
     #[test]
     fn app_parent_domain_is_empty_when_its_key_is_unanswered() {
-        let dir = tempfile::tempdir().unwrap();
-        std::fs::write(
-            dir.path().join("aoe.meta.yml"),
+        let dir = meta_dir(
+            "aoe",
             "required_keys: []\nsubdomain: essaim\ndomain_key: agents_domain\ntailnet_only: true\n",
-        )
-        .unwrap();
+        );
         let config = Config::from_toml_str("domain = \"example.com\"\n").unwrap();
 
         assert_eq!(app_parent_domain(dir.path(), "aoe", &config, None), "");
+    }
+
+    /// A domain whose zone-scoped token is unanswered is half a Zone. Nothing
+    /// could have published the record or served the certificate, so there is
+    /// no name to verify — returning the domain would check a name the deploy
+    /// had no way to create and report the operator's gap as the App's fault.
+    #[test]
+    fn app_parent_domain_is_empty_when_the_zones_token_is_unanswered() {
+        let dir = meta_dir(
+            "aoe",
+            "required_keys: []\nsubdomain: essaim\nzone: agents\ntailnet_only: true\n",
+        );
+        let config =
+            Config::from_toml_str("domain = \"example.com\"\nagents_domain = \"a.example\"\n")
+                .unwrap();
+
+        assert_eq!(app_parent_domain(dir.path(), "aoe", &config, None), "");
+    }
+
+    /// A pin the operator contradicted yields nothing here. Preflight refuses
+    /// that run by name; a verification that picked a side would report on a
+    /// name the operator does not believe in either way.
+    #[test]
+    fn app_parent_domain_is_empty_when_a_pin_is_contradicted() {
+        let dir = meta_dir(
+            "aoe",
+            "required_keys: []\nsubdomain: essaim\nzone: agents\ntailnet_only: true\n",
+        );
+        let config =
+            Config::from_toml_str(&format!("{ZONES}\n[hosts.ruche]\naoe_zone = \"studio\"\n"))
+                .unwrap();
+
+        assert_eq!(
+            app_parent_domain(dir.path(), "aoe", &config, Some("ruche")),
+            ""
+        );
     }
 
     /// `[hosts.<name>]` scopes it like every other key (ADR-0058), so a Host
     /// serving a second zone answers for itself.
     #[test]
     fn app_parent_domain_answers_per_host() {
-        let dir = tempfile::tempdir().unwrap();
-        std::fs::write(
-            dir.path().join("aoe.meta.yml"),
+        let dir = meta_dir(
+            "aoe",
             "required_keys: []\nsubdomain: essaim\ndomain_key: agents_domain\ntailnet_only: true\n",
-        )
-        .unwrap();
-        let config = Config::from_toml_str(
-            "domain = \"example.com\"\nagents_domain = \"agents-example.com\"\n\n\
-             [hosts.ruche]\nagents_domain = \"swarm-example.com\"\n",
-        )
+        );
+        let config = Config::from_toml_str(&format!(
+            "{ZONES}\n[hosts.ruche]\nagents_domain = \"swarm-example.com\"\n"
+        ))
         .unwrap();
 
         assert_eq!(
@@ -898,9 +965,6 @@ mod tests {
         );
     }
 
-    // The ADR-0003 partition read off the live playbook tree, not a fixture:
-    // a meta that loses `tailnet_only` would otherwise only surface as a
-    // Cloudflare A record published for an App that must not have one.
     #[test]
     fn discover_all_subdomains_partitions_tailnet_only() {
         // discover_all_subdomains -> Config::load() reads XDG_CONFIG_HOME, which

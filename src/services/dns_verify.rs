@@ -191,7 +191,8 @@ impl TailnetResolver {
 /// only while the App runs on the resolver's own Host.
 ///
 /// Returns `Ok(None)` when:
-/// - the app has no `{app}_subdomain` config key, or
+/// - the app has no `{app}_subdomain` config key,
+/// - the app's Zone has no answer for this Host, so `domain` is empty, or
 /// - the app is public and `verify_public` is `false`.
 ///
 /// Returns `Err` when the app is Tailnet-only and the resolver is unlocatable:
@@ -213,6 +214,13 @@ pub fn app_verify_config(
     else {
         return Ok(None);
     };
+    // An App whose Zone has no answer for this Host publishes nothing, so
+    // there is no name to check. Composing one anyway yields `books.`, which
+    // is not the App's FQDN missing a domain — it is a different name, and
+    // the NXDOMAIN it earns reads as the App failing to publish (ADR-0081).
+    if domain.trim().is_empty() {
+        return Ok(None);
+    }
     let fqdn = format!("{}.{}", subdomain, domain);
 
     let tailscale_key = format!("{}_tailscale_ip", app);
@@ -602,6 +610,36 @@ freshrss_subdomain = "rss"
             .unwrap()
             .is_none()
         );
+    }
+
+    /// An App whose Zone has no answer for this Host publishes nothing, so
+    /// there is nothing to check. Verifying `rss.` instead would fail the
+    /// deploy with NXDOMAIN on a name no role ever tried to create — the
+    /// operator's un-onboarded Zone reported as the App's failure.
+    #[test]
+    fn test_app_verify_config_skips_an_app_with_no_parent_domain() {
+        let config = make_config(
+            r#"
+domain = "example.com"
+freshrss_subdomain = "rss"
+"#,
+        );
+        for domain in ["", "   "] {
+            assert!(
+                app_verify_config(
+                    "freshrss",
+                    domain,
+                    "203.0.113.10",
+                    &config,
+                    None,
+                    true,
+                    &resolver_at("100.64.0.1"),
+                )
+                .unwrap()
+                .is_none(),
+                "an empty parent domain is no name to verify, not a name to compose"
+            );
+        }
     }
 
     // ── format_dns_error ──────────────────────────────────────────────────────
