@@ -444,10 +444,10 @@
         state: started
         daemon_reload: true
 
-    - name: Ensure Cloudflare DNS A record exists for {{ baikal_subdomain + '.' + domain }}
+    - name: Ensure Cloudflare DNS A record exists for {{ baikal_domain }}
       ansible.builtin.include_role:
         name: dns_record
       vars:
         dns_record_subdomain: "{{ baikal_subdomain }}"
-        dns_record_domain: "{{ domain }}"
-        dns_record_cloudflare_api_token: "{{ cloudflare_dns_api_token }}"
+        dns_record_domain: "{{ baikal_parent_domain }}"
+        dns_record_cloudflare_api_token: "{{ baikal_dns_api_token }}"

@@ -155,7 +155,7 @@ Dump its assertion domain, then dump the replacement's. A quietly smaller fence 
 Nothing in ansible reads them yet. Deployable, no-op.
 
 > [!IMPORTANT]
-> **Phase 2 landed as PR #TBD, with five deviations from the rows above.**
+> **Phase 2 landed as PR #959, with five deviations from the rows above.**
 >
 > - **The injection point is `Preflight`, not `ansible_runner.rs`.** `run_playbook`'s `extra_vars` is a per-call `-e` list; `Preflight::flat_vars` is the `@vars` file every run already writes. `preflight_for` overlays the Computed Vars there, _after_ the config flatten — `flatten_for_ansible` hands Ansible every top-level `config.toml` entry, Key Registry or not, so overlaying last is what makes a hand-written entry of one of these names reach no role rather than quietly win. `ansible_runner.rs` is untouched.
 > - **`host_zone_set` is deleted.** Phase 1 added it; it never gained a production caller, and once `computed_vars` derived the same set it was a second derivation of one fact. Both questions now read one private walk, `placements()`, which returns each App with its Zone _and_ that Zone's pair. Its four unit cases moved onto `computed_vars`; one was fully covered by the new cases and dropped.
@@ -171,6 +171,17 @@ Nothing in ansible reads them yet. Deployable, no-op.
 | Commit                                                  | Changes                                    | Tests                                                                     |
 | ------------------------------------------------------- | ------------------------------------------ | ------------------------------------------------------------------------- |
 | `refactor(ansible): roles compose off their app's zone` | 17 defaults; 11 `dns_record` sites; blocky | `roles_compose_off_the_zone.rs`; replaces `tailnet_only_parent_domain.rs` |
+
+> [!IMPORTANT]
+> **Phase 3 landed as PR #961, with seven deviations from the row above.**
+>
+> - **18 defaults, not 17.** `aoe` composed off `{{ agents_domain }}` — the same defect spelled with the other Zone's key. Left alone it would have been the one role in the tree still resolving a Zone itself, which is the asymmetry this row's own rationale rejects. `aoe_parent_domain` resolves through the Meta's `domain_key:` to the same answer, so nothing moves.
+> - **`infrastructure.meta.yml` keeps `domain`.** Phase 1 expected phase 3 to drop it. It cannot: headscale still reads `{{ domain }}` for `headscale_base_domain`, the MagicDNS suffix, and for the split-DNS entry in `headscale-config.yaml.j2`. Both are fleet-wide facts, not headscale's own name, and neither follows an App that changes Zone.
+> - **Three more sites, because this change is what makes them wrong.** `yourls.caddyfile.j2` composed its site line off `{{ yourls_subdomain }}.{{ domain }}` where its six siblings read `{{ <app>_domain }}`; blocky's two Lego sites held the fleet's token for a certificate on `blocky_domain`; the 11 `dns_record` task `name:` strings composed the FQDN a third time. Each agreed with `<app>_domain` before this commit and could disagree after it, so they are consequences rather than adjacent cleanup.
+> - **`variable_answerability.rs` learned what a Computed Var is.** It subtracts the Key Registry, `group_vars/` and the Meta-derived injections from what a run reads; a Computed Var is none of those, so all 29 new references read as names nothing can answer. The answer is gated on the App publishing a name — the Meta's `subdomain:`, or a `required_keys` entry demanding `<app>_subdomain`, which is the repo-side reading of `zone::publishes_a_name`. An App composing off a Zone it never publishes into still fails, verified by mutation.
+> - **`headscale_derp_fallback.rs` seeds `headscale_parent_domain`.** It resolves the role's defaults to a fixpoint under a strict renderer, so the Computed Var has to sit beside its Key Registry answers rather than among them.
+> - **The fence grew a third walk, because the two the issue specifies are shape-bound.** Review mutation-proved it: reverting `yourls.caddyfile.j2`'s site line _and_ blocky's Lego token left all 1539 tests passing, so the two sites the bullet above calls consequences had no fence at all. The third walk is the complement — every surviving read of a Zone's registry pair under `ansible/roles/`, written out with its reason, and an undeclared one refused. It is a declared regime rather than a drift check, so it also refuses a row whose read is gone, and an emptied walk fails by making all five rows stale. Reach is therefore three: 18 defaults, 11 `dns_record` sites, 5 declared reads.
+> - **The deleted fence's surviving properties moved; none were dropped silently.** Its six Blocky evaluations are re-stated in `roles_compose_off_the_zone.rs` against the Computed Var. "Every declared `domain_key` is a registry key" was already held more strictly by `zone_declaration.rs`, which demands the pin name a Zone whose _pair_ the registry holds. "Only a Tailnet-only App declares a `domain_key`" is the one deliberate loss: its premise is what this work makes false. The cross-language assertion inverted — the accumulator must now name `PARENT_DOMAIN_SUFFIX` and must **not** mention `domain_key`.
 
 ### Phase 4 — Caddy (Ansible)
 
@@ -202,6 +213,7 @@ Nothing in ansible reads them yet. Deployable, no-op.
 | Re-spell `domain_key:` as `zone:`, supersede ADR-0071    | Touches live agent-tier behaviour; not driven by this change          |
 | Name a vhost file after its App, not its FQDN (11 roles) | A rename mid-cutover means one reload where every site is new-and-old |
 | `dns` subcommands go multi-zone                          | One off-Zone App does not pay for the surgery                         |
+| #960 — a guarded role's Zone is demanded nowhere         | Needs a decision about guard-vs-`publishes_a_name`, not a phase-3 fix |
 
 ## F. Close-out
 

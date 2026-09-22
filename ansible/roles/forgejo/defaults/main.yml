@@ -12,7 +12,7 @@ forgejo_config_file: "{{ forgejo_config_dir }}/app.ini"
 forgejo_sys_user: forgejo
 forgejo_sys_group: forgejo
 forgejo_port: 3043
-forgejo_domain: "{{ forgejo_subdomain }}.{{ domain }}"
+forgejo_domain: "{{ forgejo_subdomain }}.{{ forgejo_parent_domain }}"
 forgejo_admin_email: "{{ forgejo_admin_user }}@{{ domain }}"
 # Forgejo's own name, shown in the page title and the site header. A default for
 # every operator, so it must not carry anyone's branding.

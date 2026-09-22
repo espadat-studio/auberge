@@ -325,10 +325,10 @@
         mode: "0644"
       notify: Restart caddy
 
-    - name: Ensure Cloudflare DNS A record exists for {{ gokapi_subdomain + '.' + domain }}
+    - name: Ensure Cloudflare DNS A record exists for {{ gokapi_domain }}
       ansible.builtin.include_role:
         name: dns_record
       vars:
         dns_record_subdomain: "{{ gokapi_subdomain }}"
-        dns_record_domain: "{{ domain }}"
-        dns_record_cloudflare_api_token: "{{ cloudflare_dns_api_token }}"
+        dns_record_domain: "{{ gokapi_parent_domain }}"
+        dns_record_cloudflare_api_token: "{{ gokapi_dns_api_token }}"

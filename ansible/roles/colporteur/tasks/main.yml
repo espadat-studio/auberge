@@ -310,10 +310,10 @@
             path: "{{ colporteur_opml_tmpfile.path }}"
             state: absent
 
-    - name: Ensure Cloudflare DNS A record exists for {{ colporteur_subdomain + '.' + domain }}
+    - name: Ensure Cloudflare DNS A record exists for {{ colporteur_domain }}
       ansible.builtin.include_role:
         name: dns_record
       vars:
         dns_record_subdomain: "{{ colporteur_subdomain }}"
-        dns_record_domain: "{{ domain }}"
-        dns_record_cloudflare_api_token: "{{ cloudflare_dns_api_token }}"
+        dns_record_domain: "{{ colporteur_parent_domain }}"
+        dns_record_cloudflare_api_token: "{{ colporteur_dns_api_token }}"
