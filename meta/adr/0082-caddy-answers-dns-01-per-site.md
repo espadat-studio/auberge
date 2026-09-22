@@ -22,11 +22,17 @@ A per-App systemd drop-in fragment was the tempting shape — no Host-to-Zone kn
 
 ## Amendment (2026-09-22): the fleet's line keeps its per-Host choice
 
+**Two numbers above are wrong, and one claim with them.** There are **eighteen** vhosts, not twenty — seventeen roles, colporteur serving two. Seventeen gained the `tls` block; the eighteenth answers no challenge and is exempt.
+
+And "nineteen of them name the value they already inherit, so the behaviour change is nil" describes a global `acme_dns` this repo does not have. Only **five** vhosts carried a `tls` block before — the tailnet-bound ones, which cannot be reached over port 80. The other **twelve** were issuing over HTTP-01 and TLS-ALPN, and naming a DNS provider disables both: they move to DNS-01. For them the token stops being irrelevant and starts being the thing renewal depends on. That is a real behaviour change, and it is what makes the paragraph below about the fleet's name necessary rather than tidy.
+
 The decision above has the caddy role write one `Environment=` line per Zone the Host serves, from the derived set. Implementing it showed the fleet's Zone cannot be one of those lines.
 
 A Zone is in a Host's set when an App that publishes a name resolves to it and its pair answers there. Every App answers its own `<app>_subdomain` fleet-wide, so the fleet Zone is in **every** Host's set — the agent tier's included, and keeping the parent domain's token off that box is what ADR-0068 exists for. Deriving the fleet's line would have written it onto the one Host ADR-0054 assumes compromisable.
 
-So `caddy_dns_api_token` is not the default for a Host with nothing to say. It is the fleet Zone's line, on every Host, chosen per Host by `infrastructure.yml` exactly as ADR-0072 has it. The Zone set supplies the **named** Zones only.
+So `caddy_dns_api_token` is not the default for a Host with nothing to say. It is the fleet Zone's line, chosen per Host by `infrastructure.yml` exactly as ADR-0072 has it. The Zone set supplies the **named** Zones only.
+
+That line is **withheld** on a Host whose per-Host choice fell on a Zone that Host serves — the agent tier's, which `infrastructure.yml` hands the agents token. Writing it under the fleet's name was harmless while twelve fleet vhosts answered over HTTP-01 and read nothing; now one of them on that Host would answer DNS-01 with a token scoped to another zone, go green, and fail at renewal weeks later. Absent instead, caddy refuses to start and the Ingress Gate reports it in the same run. A Host with genuinely nothing to say — no public App at all — still takes the fleet's line, which is the sentence above read as it was meant.
 
 A named Zone needs one thing more than resolving: the Host's own table has to declare that Host serves the App — `<app>_zone` for one the operator placed, `<app>_subdomain` for one the repo pinned. A Meta's `zone:` holds on every Host, so the pin alone put the agent tier's token on all three boxes, and no declaration of which Host runs which App exists anywhere else in the repo. It is stricter than ADR-0072's gate, which reads the merged value and is satisfied by a fleet-wide answer: a fleet-wide `<app>_subdomain` places a pinned App's Zone nowhere, and that App's vhost then names a variable no drop-in writes. A Host serving an App its table never mentions writes no token for it and fails the Ingress Gate, which is the loud end of that trade.
 
