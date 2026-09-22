@@ -22,7 +22,11 @@ _Avoid_: Schema, dictionary, catalog
 
 **Injected Key**:
 A **Key Registry** entry marked `injected: true`: the CLI computes the value and hands it to the run as an extra-var, so `config.toml` is an override rather than the source. No **Playbook Meta** may declare one under `required_keys` — a Preflight demanding what the CLI is about to supply fails runs on config they never needed (`tests/injected_keys.rs`). `tailscale_authkey` is the only one: a pre-auth key is one-shot with a TTL, so it is minted per run against the Host serving headscale rather than stored (ADR-0063).
-_Avoid_: Computed key, derived key, dynamic var
+_Avoid_: Computed key, derived key, dynamic var. Not a **Computed Var** — a Key is in the **Key Registry** and Config may name it, a Var is neither.
+
+**Computed Var**:
+An extra-var the CLI resolves and hands to a run that `Config` **cannot name**: absent from the **Key Registry**, so `auberge config set` will not offer it, `config init` will not scaffold it, and an entry of that name hand-written into `config.toml` reaches no role. Distinct from an **Injected Key**, which config _may_ state and the CLI overrides — a Computed Var has no authoring site at all, because its value is derived from one that does. `<app>_parent_domain` and `<app>_dns_api_token` are the first, both derived from the App's **Zone**: config naming either directly would be a third place to say which Zone an App is in, and a third place is a place that can disagree. Fenced against colliding with a registry key, which would hand a Computed Var an authoring site without anyone deciding to.
+_Avoid_: Injected key (that is the overridable kind), extra-var (ansible's name for the channel, not for this), fact, derived key
 
 **Config**:
 The merged user-supplied settings (`config.toml`) parsed against the Key Registry. There is no static `config.example.toml`; users run `auberge config init` to generate a starter file from the registry. Keys are fleet-wide; the reserved `[hosts.<name>]` table scopes overrides to one Host, and a blank override withdraws a fleet-wide answer for that Host — how a serving gate like `headscale_subdomain` answers differently per Host (ADR-0058).
@@ -71,6 +75,14 @@ _Avoid_: Private app, internal app, vpn-only app
 **Public App**:
 An App without `tailnet_only`. Caddy serves on the host's public address; DNS publication is a Cloudflare A record pointing at `ansible_host` (via the `dns_record` role).
 _Avoid_: External app, world-facing app
+
+**Zone**:
+The DNS zone an App's public name lives in, named by the prefix its two **Key Registry** entries share: `<zone>_domain` and `<zone>_cloudflare_dns_api_token`. The fleet's Zone is the unnamed one (`domain`, `cloudflare_dns_api_token`). A Zone is a **pair**, never a domain alone — a Cloudflare token is zone-scoped, so holding the name without the token is a vhost that can never complete an ACME challenge (ADR-0068).
+
+Which Zone an App is in has **two declaration sites, answering two different kinds of question**. A **Playbook Meta**'s `zone:` is the repo asserting that an App must be isolated, true for every operator — the agent tier, and nothing else. `<app>_zone` in `Config` is the operator placing an App in a Zone of their own; unanswered means the fleet's. A Meta pin **refuses** a Config override, so the repo's assertion cannot be unset by configuration.
+
+`<app>_zone` must be host-scoped, the first key of which that is true. A Host's Zone set is what its Caddy holds ACME tokens for, so a fleet-wide answer writes a Zone's token onto every Host — including the one ADR-0068 exists to keep it off. **Preflight** refuses a fleet-wide `<app>_zone`, and refuses an effective Zone whose pair does not resolve for the Host it is about to run against. No role resolves a Zone: the CLI does, once, and hands the answer down as a **Computed Var**, so publication and verification read one value rather than two expressions a test hopes are equal (ADR-0081).
+_Avoid_: Domain (the Zone's apex name, one half of the pair), parent domain (ADR-0071's phrasing, kept only in that record), `domain_key` (the superseded spelling), Cloudflare zone (the provider's name for the same thing)
 
 **Substrate App**:
 An App whose deploy state must be present and correct before another App's deploy can verify reachability — currently Caddy (HTTPS for every App), Headscale (login server for Tailscale on first deploy), and Blocky (DNS Publication for every Tailnet-only App). Substrate Apps are declared in `ansible/playbooks/infrastructure.yml` and run on every `auberge deploy`, regardless of `--tags` — Headscale excepted: its role is gated on `headscale_subdomain` being set, because the fleet can also run against Tailscale SaaS (ADR-0051). Orthogonal to the Public App / Tailnet-only App axis: a Substrate App may itself have a subdomain (e.g. `hs`, `blocky`) but is placed by its dependency role, not by `tailnet_only`. See ADR-0005.
