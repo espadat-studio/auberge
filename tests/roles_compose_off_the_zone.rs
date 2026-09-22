@@ -18,12 +18,12 @@
 //!
 //! ## Uniform, not minimal
 //!
-//! Only `forgejo` moves. Every role reads its Computed Var anyway, because one
-//! role that can change Zone and seventeen that cannot — with nothing in the
-//! tree saying which is which — is a distinction the next reader has to
-//! rediscover from the rollout notes. `aoe` is in the uniform set too: it
-//! composed off `{{ agents_domain }}`, which is the same defect spelled with
-//! the other zone's key.
+//! Only `forgejo` moves, and only `aoe` is already elsewhere. Every role reads
+//! its Computed Var anyway, because two roles that can change Zone and sixteen
+//! that cannot — with nothing in the tree saying which is which — is a
+//! distinction the next reader has to rediscover from the rollout notes. `aoe`
+//! is in the uniform set for its own reason: it composed off
+//! `{{ agents_domain }}`, the same defect spelled with the other zone's key.
 //!
 //! ## What this replaces
 //!
@@ -37,12 +37,23 @@
 //!
 //! ## Reach
 //!
-//! Two counts, both asserted, both drifting with the tree: the 18 roles that
-//! define an `<app>_domain`, and the 11 `dns_record` call sites. This fence
-//! walks the tree, so a walk that quietly stops reaching somewhere passes
-//! every assertion below over nothing at all.
+//! Three walks, each stated as a count or a written-out set, all drifting with
+//! the tree: the 18 roles that define an `<app>_domain`, the 11 `dns_record`
+//! call sites, and every remaining direct read of a Zone's registry pair. Each
+//! walks the tree, so a walk that quietly stops reaching somewhere passes its
+//! assertions over nothing at all.
+//!
+//! The third exists because the first two are shape-bound, and a role can
+//! spell the fleet's apex somewhere neither reaches: `yourls.caddyfile.j2`
+//! published `yourls.{fleet}` off its own site line, and blocky asked Lego for
+//! a certificate on `blocky_domain` with a token from a Zone it may not be in.
+//! Both are fixed here, and reverting either passed the first two walks. So
+//! the third is the complement, and a declared regime rather than a drift
+//! check: every surviving read is written down with its reason, and an
+//! undeclared one is refused.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
+use std::fs;
 
 use minijinja::value::{Kwargs, Value as JValue};
 use minijinja::{Environment, State, UndefinedBehavior};
@@ -52,10 +63,17 @@ mod common;
 
 use auberge::services::zone::{DNS_TOKEN_SUFFIX, PARENT_DOMAIN_SUFFIX};
 use common::apps::app_of;
-use common::{Task, all_roles, defaults, field, role_tasks, task_name};
+use common::{
+    Task, all_roles, defaults, field, registry_keys, role_dir, role_tasks, role_template_files,
+    role_yml_files, task_name,
+};
 
 /// The role every `dns_record` call site includes.
 const DNS_RECORD_ROLE: &str = "dns_record";
+
+/// The fact Blocky's accumulator builds. `blocky_tailnet_addresses.rs` names
+/// the same one, and both fences find the task by it.
+const ADDRESS_MAP: &str = "blocky_tailscale_domain_addresses";
 
 /// The two parameters that role takes for *where* to write, and the two
 /// Computed Vars that answer them.
@@ -281,9 +299,7 @@ fn accumulator() -> Task {
         .filter(|task| {
             field(&task.body, "ansible.builtin.set_fact")
                 .and_then(Value::as_mapping)
-                .is_some_and(|facts| {
-                    facts.contains_key(Value::from("blocky_tailscale_domain_addresses"))
-                })
+                .is_some_and(|facts| facts.contains_key(Value::from(ADDRESS_MAP)))
                 && field(&task.body, "loop").is_some()
         })
         .collect();
@@ -521,5 +537,162 @@ fn the_accumulator_looks_up_the_computed_var_the_crate_emits() {
         !expression.contains("domain_key"),
         "the accumulator must not resolve a Zone itself; the CLI resolved it already \
          and handed the answer down (ADR-0081)"
+    );
+}
+
+// ── What still reads a Zone's key directly ────────────────────────────────
+
+/// Every read of a Zone's Key Registry pair that survives under
+/// `ansible/roles/`, as `(role, file, why it is not an App's own name)`.
+///
+/// Written out rather than counted, because the reason is the point: a count
+/// says five and a reader still has to work out which five and why none of
+/// them follows an App that changes Zone. A read that appears is refused
+/// because nobody wrote down why; a row whose read is gone is refused because
+/// the row outlived it, which is what keeps this a regime and not a pile of
+/// excuses.
+const DECLARED_ZONE_KEY_READS: &[(&str, &str, &str)] = &[
+    (
+        "caddy",
+        "defaults/main.yml",
+        "the ACME indirection every vhost resolves through, so the agent tier's Host can be \
+         pointed at its own token (ADR-0068); caddy_acme_token.rs holds it, phase 4 moves it",
+    ),
+    (
+        "forgejo",
+        "defaults/main.yml",
+        "forgejo_admin_email is an address on the operator's mailbox, not a name this repo \
+         publishes a record for; the forge changing Zone does not move where its admin reads mail",
+    ),
+    ("grimmory", "defaults/main.yml", "as forgejo"),
+    (
+        "headscale",
+        "defaults/main.yml",
+        "headscale_base_domain is the MagicDNS suffix — the tailnet's name, not headscale's own",
+    ),
+    (
+        "headscale",
+        "templates/headscale-config.yaml.j2",
+        "the split-DNS entry maps the fleet apex, which no App changing Zone moves",
+    ),
+];
+
+/// Both halves of every Zone the registry declares: the names a role must not
+/// resolve for itself. Read off `keys.yml` rather than written out, so a Zone
+/// added to the registry is one this walk looks for without anyone
+/// remembering to add it.
+fn zone_pair_keys() -> BTreeSet<String> {
+    let token = &DNS_TOKEN_SUFFIX[1..];
+    let keys: BTreeSet<String> = registry_keys()
+        .into_iter()
+        .filter(|key| {
+            key == "domain"
+                || key == token
+                || key.ends_with("_domain")
+                || key.ends_with(&format!("_{token}"))
+        })
+        .collect();
+    assert!(
+        keys.len() >= 2,
+        "the registry must hold at least the fleet's pair: {keys:?}"
+    );
+    keys
+}
+
+/// Every identifier in a blob of text, so a name is matched whole. `domain`
+/// must not hit `headscale_base_domain` or `dns_record_domain`, and a
+/// substring search hits both.
+fn identifiers(text: &str) -> BTreeSet<String> {
+    let mut found = BTreeSet::new();
+    let mut current = String::new();
+    for ch in text.chars() {
+        if ch.is_alphanumeric() || ch == '_' {
+            current.push(ch);
+        } else if !current.is_empty() {
+            found.insert(std::mem::take(&mut current));
+        }
+    }
+    if !current.is_empty() {
+        found.insert(current);
+    }
+    found
+}
+
+/// The body of every `{{ … }}` and `{% … %}` in a file.
+///
+/// Reading only what is inside the delimiters keeps markup out structurally
+/// rather than by exemption — the shape `variable_answerability` settled on. A
+/// raw-text scan of this same tree reports blocky's task *name* ("tailnet-only
+/// domain derivation") and paperless' ImageMagick `<policy domain="coder" …>`
+/// as reads of the fleet's apex.
+fn jinja_bodies(text: &str) -> Vec<String> {
+    let mut bodies = Vec::new();
+    for (open, close) in [("{{", "}}"), ("{%", "%}")] {
+        let mut rest = text;
+        while let Some(start) = rest.find(open) {
+            let after = &rest[start + open.len()..];
+            let Some(end) = after.find(close) else { break };
+            bodies.push(after[..end].to_string());
+            rest = &after[end + close.len()..];
+        }
+    }
+    bodies
+}
+
+/// Every `(role, file)` under `ansible/roles/` naming a Zone's registry pair
+/// inside a Jinja expression. The playbooks are out of scope deliberately:
+/// `infrastructure.yml` picks caddy's token per Host, and that choice is
+/// `caddy_acme_token.rs`'s to hold.
+fn zone_key_reads() -> BTreeSet<(String, String)> {
+    let zone_keys = zone_pair_keys();
+    let mut found = BTreeSet::new();
+    for role in all_roles() {
+        let dir = role_dir(&role);
+        for path in role_yml_files(&role)
+            .into_iter()
+            .chain(role_template_files(&role))
+        {
+            let text = fs::read_to_string(&path).unwrap_or_default();
+            let names: BTreeSet<String> = jinja_bodies(&text)
+                .iter()
+                .flat_map(|body| identifiers(body))
+                .collect();
+            if names.intersection(&zone_keys).next().is_some() {
+                let relative = path
+                    .strip_prefix(&dir)
+                    .unwrap_or(&path)
+                    .to_string_lossy()
+                    .to_string();
+                found.insert((role.clone(), relative));
+            }
+        }
+    }
+    found
+}
+
+/// The complement of the two walks above. A role naming a Zone's key directly
+/// is a role resolving a Zone, and every one that survives had to be argued
+/// for in `DECLARED_ZONE_KEY_READS`.
+#[test]
+fn every_surviving_read_of_a_zone_key_is_declared() {
+    let declared: BTreeSet<(String, String)> = DECLARED_ZONE_KEY_READS
+        .iter()
+        .map(|(role, file, _)| ((*role).to_string(), (*file).to_string()))
+        .collect();
+    let found = zone_key_reads();
+
+    let undeclared: Vec<&(String, String)> = found.difference(&declared).collect();
+    assert!(
+        undeclared.is_empty(),
+        "these roles name a Zone's Key Registry entry directly, which is the CLI's job \
+         (ADR-0081). Read the App's `{PARENT_DOMAIN_SUFFIX}` / `{DNS_TOKEN_SUFFIX}` instead, \
+         or add a row to DECLARED_ZONE_KEY_READS saying why this one is not an App's own \
+         name: {undeclared:?}"
+    );
+
+    let stale: Vec<&(String, String)> = declared.difference(&found).collect();
+    assert!(
+        stale.is_empty(),
+        "DECLARED_ZONE_KEY_READS names reads that are gone; drop the rows: {stale:?}"
     );
 }

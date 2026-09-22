@@ -29,7 +29,9 @@ radio_max_sources: 8
 Paperless-ngx's webserver on this host layout.
 
 Required from the Key Registry: `radio_subdomain`, `radio_listener_password`,
-`admin_user_name`, `domain`, `cloudflare_dns_api_token`.
+`admin_user_name`. The apex the name sits under and the Cloudflare token that
+writes it arrive as Computed Vars, `radio_parent_domain` and
+`radio_dns_api_token`, resolved from the App's Zone (ADR-0081).
 
 ## Behaviour
 

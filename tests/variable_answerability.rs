@@ -617,10 +617,16 @@ fn universal_answers() -> BTreeSet<String> {
         // An App's Computed Vars exist only where the App publishes a name,
         // which `zone::publishes_a_name` reads as its Meta's `subdomain:` or
         // an answered `<app>_subdomain`. No config is readable from here, so
-        // the second half is taken as the Meta *demanding* that key — the one
-        // way a run is made to carry it. An App declaring neither gets no
-        // answer here, and a role of its composing `<app>_parent_domain` fails
-        // this fence, which is what the deploy would do.
+        // the second half is taken as the Meta *demanding* that key, which is
+        // the only site in the repo that can say an operator must answer it.
+        //
+        // That makes this reading the stricter of the two, never the looser.
+        // A config answering `<app>_subdomain` for an App whose Meta neither
+        // declares nor demands one does get Computed Vars from the CLI, and
+        // still fails here — correctly, because the repo cannot show the name
+        // is answerable on every Host the role runs on. An App declaring
+        // neither is named by this fence rather than by a play dying on an
+        // undefined variable mid-deploy.
         let publishes = meta
             .get("subdomain")
             .and_then(Value::as_str)

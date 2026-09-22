@@ -152,5 +152,5 @@ sudo systemctl restart gokapi
 ## Dependencies
 
 - Caddy reverse proxy (substrate)
-- Cloudflare DNS API token (`cloudflare_dns_api_token`)
+- Cloudflare DNS API token for the App's Zone, as the `gokapi_dns_api_token` Computed Var
 - UFW must allow 443/tcp on the public interface (default in `ufw` role)
