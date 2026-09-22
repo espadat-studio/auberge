@@ -25,6 +25,17 @@ pub struct PlaybookMeta {
     /// ignores publishes a name the other cannot find.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub domain_key: Option<String>,
+    /// The **Zone** prefix this App is pinned to — the repo asserting the App
+    /// must be isolated, true for every operator rather than a fact about one
+    /// deployment (ADR-0081). A pin refuses an operator's `<app>_zone`; an App
+    /// the repo has no business placing declares nothing here and is placed
+    /// from `Config`, or stays in the fleet's Zone.
+    ///
+    /// Read through `services::zone`, which also reads `domain_key:` — the
+    /// same pin under ADR-0071's spelling, live until the follow-up re-spells
+    /// the agent tier's.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub zone: Option<String>,
     #[serde(default, skip_serializing_if = "HashMap::is_empty")]
     pub memory: HashMap<String, MemoryBudget>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -283,14 +294,6 @@ impl PlaybookMeta {
         self.domain_key.as_deref().unwrap_or(DEFAULT_DOMAIN_KEY)
     }
 
-    /// The Zone this App's name lives in, named by the prefix its Key Registry
-    /// pair shares (ADR-0081). `None` is the fleet's Zone, the unnamed one:
-    /// `DEFAULT_DOMAIN_KEY` has no prefix to strip, so the fleet falls out of
-    /// the naming rule rather than being a case beside it.
-    pub fn zone(&self) -> Option<&str> {
-        self.parent_domain_key().strip_suffix("_domain")
-    }
-
     /// The units this App owns, as `systemctl` addresses them: names
     /// qualified, `{admin_user}` substituted, scope made explicit.
     pub fn owned_units(&self, admin_user: &str) -> Vec<OwnedUnit> {
@@ -475,18 +478,12 @@ mod tests {
     fn test_apps_meta_parses_without_error() {
         let meta = load_meta("apps");
         assert!(meta.required_keys.contains(&"admin_user_name".to_string()));
-        assert!(meta.required_keys.contains(&"domain".to_string()));
-        assert!(
-            meta.required_keys
-                .contains(&"cloudflare_dns_api_token".to_string())
-        );
     }
 
     #[test]
     fn test_hermes_meta_parses_without_error() {
         let meta = load_meta("hermes");
         assert!(meta.required_keys.contains(&"admin_user_name".to_string()));
-        assert!(meta.required_keys.contains(&"domain".to_string()));
         assert!(
             meta.required_keys
                 .contains(&"hermes_llm_provider".to_string())
@@ -505,7 +502,10 @@ mod tests {
     fn test_calibre_meta_parses_without_error() {
         let meta = load_meta("calibre");
         assert!(meta.required_keys.contains(&"admin_user_name".to_string()));
-        assert!(meta.required_keys.contains(&"domain".to_string()));
+        assert!(
+            meta.required_keys
+                .contains(&"calibre_subdomain".to_string())
+        );
         let backup = meta.backup.expect("calibre.meta.yml should declare backup");
         assert_eq!(backup.systemd_services, vec!["calibre"]);
         assert_eq!(
@@ -623,24 +623,6 @@ mod tests {
              (ADR-0081); a key spelled otherwise is silently read as the \
              fleet's Zone: {offenders:?}"
         );
-    }
-
-    /// A Zone is named by the prefix its Key Registry pair shares, so the name
-    /// is read off the key rather than declared a second time. The fleet's
-    /// Zone is the unnamed one: `domain` strips to nothing, and every consumer
-    /// that asks "is this App off the run's Zone" gets `None` for free.
-    #[test]
-    fn test_a_zone_is_the_prefix_its_domain_key_carries() {
-        let bare: PlaybookMeta =
-            serde_yaml::from_str("required_keys: []\n").expect("a Meta naming no key must parse");
-        assert_eq!(bare.zone(), None);
-
-        let named: PlaybookMeta =
-            serde_yaml::from_str("required_keys: []\ndomain_key: agents_domain\n")
-                .expect("a Meta naming a key must parse");
-        assert_eq!(named.zone(), Some("agents"));
-
-        assert_eq!(load_meta("aoe").zone(), Some("agents"));
     }
 
     /// The agent tier holds nothing irreplaceable by construction (ADR-0054):
@@ -944,6 +926,7 @@ version:
             tailnet_only: false,
             subdomain: None,
             domain_key: None,
+            zone: None,
             memory: HashMap::new(),
             units: Vec::new(),
         };

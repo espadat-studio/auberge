@@ -37,13 +37,27 @@ auberge ansible run --host my-vps --skip-tags navidrome -f               # CI/CD
 
 The CLI validates `config.toml` before running and exits with the missing keys.
 
-| Playbook             | Required keys                                           |
-| -------------------- | ------------------------------------------------------- |
-| `bootstrap.yml`      | `admin_user_name`, `ssh_port`                           |
-| `hardening.yml`      | —                                                       |
-| `infrastructure.yml` | `admin_user_name`, `domain`                             |
-| `apps.yml`           | `admin_user_name`, `domain`, `cloudflare_dns_api_token` |
-| other                | `admin_user_name`, `domain`                             |
+An `apps.yml` run against an ordinary host needs `admin_user_name`, `domain` and `cloudflare_dns_api_token`. Those come from two separate rules.
+
+The first is the playbook's own declaration:
+
+| Playbook             | Declared keys                 |
+| -------------------- | ----------------------------- |
+| `bootstrap.yml`      | `admin_user_name`, `ssh_port` |
+| `hardening.yml`      | none                          |
+| `infrastructure.yml` | `admin_user_name`, `domain`   |
+| `apps.yml`           | `admin_user_name`             |
+| other                | the app's own keys            |
+
+The second is the Zone. Preflight resolves the Zone of every App the run reaches and demands that Zone's key pair.
+
+A Zone is two config keys sharing a prefix: `<zone>_domain` and `<zone>_cloudflare_dns_api_token`. The fleet's Zone is the unnamed pair, `domain` and `cloudflare_dns_api_token`. Almost every App is in it, so an ordinary run asks for those two.
+
+Only an App that publishes a name has a Zone. `hermes`, `tgtg`, `memsearch`, `opencode` and `syncthing` publish none, so Preflight skips them. `aoe` sits in the agent tier's own Zone: it asks for `agents_domain` and `agents_cloudflare_dns_api_token`, not the fleet's pair.
+
+:::note
+The answer depends on the target host. `[hosts.<name>]` overrides a key for one host and a blank override withdraws it, so one command can pass against one host and fail against another.
+:::
 
 ## Common tags
 

@@ -1,6 +1,4 @@
 required_keys:
-  - cloudflare_dns_api_token
-  - domain
   - forgejo_admin_password
   - forgejo_admin_user
   - forgejo_subdomain
