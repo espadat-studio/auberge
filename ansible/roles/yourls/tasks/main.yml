@@ -182,7 +182,7 @@
     - name: Deploy YOURLS Caddyfile
       ansible.builtin.template:
         src: templates/yourls.caddyfile.j2
-        dest: "/etc/caddy/sites/{{ yourls_domain }}.caddyfile"
+        dest: /etc/caddy/sites/yourls.caddyfile
         owner: root
         group: root
         mode: "0644"

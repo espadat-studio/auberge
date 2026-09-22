@@ -178,7 +178,7 @@
     - name: Deploy Caddy site configuration for headscale
       ansible.builtin.template:
         src: headscale.caddyfile.j2
-        dest: "/etc/caddy/sites/{{ headscale_domain }}.caddyfile"
+        dest: /etc/caddy/sites/headscale.caddyfile
         owner: root
         group: root
         mode: "0644"

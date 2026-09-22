@@ -75,7 +75,7 @@
     - name: Deploy Immich Caddyfile
       ansible.builtin.template:
         src: Caddyfile.j2
-        dest: "/etc/caddy/sites/{{ immich_domain }}.caddyfile"
+        dest: /etc/caddy/sites/immich.caddyfile
         owner: root
         group: root
         mode: "0644"

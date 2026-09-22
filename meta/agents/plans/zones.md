@@ -223,12 +223,29 @@ Nothing in ansible reads them yet. Deployable, no-op.
 6. Check whether any Forgejo OAuth application's redirect URI names the forge itself rather than a client site; re-issue if so.
 7. Close the window: `rm /etc/caddy/sites/git.{fleet}.caddyfile`, reload caddy, `auberge dns delete --subdomain git`.
 
+### The vhost sweep (one time, after the cutover)
+
+Every vhost file is named after its App since #954, not after the App's FQDN. The rename does not remove what the old naming already wrote: a role cannot know which stale names were once its own, so clearing them is an operator step.
+
+Per Host, **after** a full-roster deploy:
+
+```
+ls /etc/caddy/sites                                     # every App-named file present?
+find /etc/caddy/sites -name '*.*.caddyfile' -delete
+systemctl reload caddy
+```
+
+No App name holds a dot, so the multi-dot basenames are exactly the stale set — `tests/vhost_file_identity.rs` is what keeps that true, and the sweep is unsafe the moment it stops being. Run it after step 7 and it clears the rename residue and the cutover's own `git.{fleet}.caddyfile` in one pass; run it before, and you pay two overlap windows for nothing.
+
+> [!WARNING]
+> The `ls` is not a formality. `find … -delete` deletes the **only** vhosts on the Host if the deploy that preceded it wrote FQDN-named files — which is what a stale binary does, because the embedded Ansible assets re-extract on a version bump and nothing else. Confirm an App-named file exists for every App the Host serves _before_ deleting anything. Absent one, the sweep takes the Host dark and the Ingress Gate will not have caught it: the Gate ran during a deploy that succeeded.
+
 ### Follow-up issues
 
 | Issue                                                    | Why deferred                                                                                                                                                                                                                                                                                |
 | -------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Re-spell `domain_key:` as `zone:`, supersede ADR-0071    | **Done, #953.** ADR-0071 superseded by ADR-0081; `zone:` is the only spelling of the pin                                                                                                                                                                                                    |
-| Name a vhost file after its App, not its FQDN (11 roles) | A rename mid-cutover means one reload where every site is new-and-old                                                                                                                                                                                                                       |
+| Name a vhost file after its App, not its FQDN (17 roles) | **Done, #954** — 17 roles, not the 11 this row first estimated, plus a fence and the sweep above. A rename mid-cutover means one reload where every site is new-and-old, so it lands after the cutover                                                                                      |
 | `dns` subcommands go multi-zone                          | One off-Zone App does not pay for the surgery                                                                                                                                                                                                                                               |
 | #960 — a guarded role's Zone is demanded nowhere         | **Decided, ADR-0083.** The guarded roster entry is flagged, not dropped; its Zone follows the config-answered `<app>_subdomain`, never the Meta's `subdomain:`. Widening to `publishes_a_name` was the trap — it refuses `deploy infrastructure` on every Host serving neither guarded role |
 

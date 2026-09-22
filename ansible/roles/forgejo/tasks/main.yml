@@ -244,7 +244,7 @@
     - name: Deploy the Forgejo Caddyfile
       ansible.builtin.template:
         src: templates/Caddyfile.j2
-        dest: "/etc/caddy/sites/{{ forgejo_domain }}.caddyfile"
+        dest: /etc/caddy/sites/forgejo.caddyfile
         owner: root
         group: root
         mode: "0644"

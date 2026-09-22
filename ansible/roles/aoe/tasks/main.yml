@@ -183,7 +183,7 @@
 - name: Deploy the aoe Caddy site configuration
   ansible.builtin.template:
     src: aoe.caddyfile.j2
-    dest: "/etc/caddy/sites/{{ aoe_domain }}.caddyfile"
+    dest: /etc/caddy/sites/aoe.caddyfile
     owner: root
     group: root
     mode: "0644"

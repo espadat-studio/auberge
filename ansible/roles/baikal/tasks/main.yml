@@ -153,7 +153,7 @@
     - name: Copy Baikal Caddyfile to sites directory
       ansible.builtin.template:
         src: templates/Caddyfile.j2
-        dest: "/etc/caddy/sites/{{ baikal_domain }}.caddyfile"
+        dest: /etc/caddy/sites/baikal.caddyfile
         owner: root
         group: root
         mode: "0644"

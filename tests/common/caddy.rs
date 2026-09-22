@@ -13,6 +13,12 @@
 //!
 //! Before that third fence the two halves sat in two files and never met,
 //! which is the shape where a walk narrowed to nothing keeps passing.
+//!
+//! A fourth file spells [`RESTART_HANDLER`] without reading it:
+//! `probe_after_restart.rs`'s `DEFERRED_HANDLERS` names the string to say this
+//! handler's flush stays at end of play, which is a claim about the handler
+//! rather than a question about the tree. Named here so its absence does not
+//! read as coverage.
 
 use std::collections::BTreeSet;
 use std::fs;
@@ -47,7 +53,10 @@ impl Vhost {
         format!("{}/{}", self.role, self.template)
     }
 
-    /// The template's own bytes. A file that cannot be read is a hard stop:
+    /// The template's own bytes, read on demand — the walk itself does not
+    /// touch them, so a fence reading only `dest` never opens a file.
+    ///
+    /// A file that cannot be read is a hard stop, for the caller that asks:
     /// the task names it, so a missing one means the tree moved under the
     /// fence.
     pub fn body(&self) -> String {
