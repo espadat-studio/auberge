@@ -1,4 +1,3 @@
-use std::collections::BTreeSet;
 use std::fs;
 use std::path::Path;
 
@@ -6,36 +5,11 @@ use serde_yaml::{Mapping, Value};
 
 mod common;
 
-use common::{all_roles, field, playbook_files, role_dir, role_tasks, yml_files};
+use common::caddy::{RESTART_HANDLER, roles_that_restart_caddy};
+use common::{field, playbook_files, role_dir, role_tasks};
 
 /// The role a play must run in `post_tasks` once any of its roles can restart caddy.
 const GATE_ROLE: &str = "ingress_gate";
-
-/// The handler name every vhost writer notifies.
-const RESTART_HANDLER: &str = "Restart caddy";
-
-/// Roles with a task that notifies `Restart caddy`. A restart is what makes a bad
-/// vhost fatal: `caddy reload` validates and keeps the running config, but a restart
-/// replaces it, so a vhost binding an address the host does not own takes every other
-/// vhost down with it.
-///
-/// Read as text rather than as parsed `notify:` lists on purpose. This is the
-/// discovery half of the fence, and it is allowed to over-report: a role that
-/// merely mentions the handler is gated too, which costs a `post_task` and
-/// nothing else. Under-reporting is what takes the fleet down, so the loose
-/// test is the safe direction — and
-/// `test_roles_that_restart_caddy_are_discovered` is what stops it from
-/// silently reporting nobody.
-fn roles_that_restart_caddy() -> BTreeSet<String> {
-    all_roles()
-        .into_iter()
-        .filter(|role| {
-            yml_files(&role_dir(role).join("tasks"))
-                .iter()
-                .any(|file| fs::read_to_string(file).unwrap().contains(RESTART_HANDLER))
-        })
-        .collect()
-}
 
 fn plays(path: &Path) -> Vec<Mapping> {
     let doc: Value = serde_yaml::from_str(&fs::read_to_string(path).unwrap())
