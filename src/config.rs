@@ -24,6 +24,23 @@ impl Preflight {
     pub fn flat_vars(&self) -> &HashMap<String, String> {
         &self.flat_vars
     }
+
+    /// Overlay a run's **Computed Vars** — values the CLI resolves rather than
+    /// reads, so `config.toml` has no say in them (ADR-0081).
+    ///
+    /// Applied *after* the config flatten, and that order is the rule. A
+    /// Computed Var is absent from the Key Registry, so `config set` will not
+    /// offer one and `config init` will not scaffold one — but
+    /// [`Config::flatten_for_ansible`] hands Ansible every top-level entry,
+    /// registry key or not. Overlaying last is what makes a hand-written entry
+    /// of one of these names reach no role, rather than quietly win.
+    pub fn with_computed_vars(
+        mut self,
+        computed: impl IntoIterator<Item = (String, String)>,
+    ) -> Self {
+        self.flat_vars.extend(computed);
+        self
+    }
 }
 
 /// Merged configuration — the single source of truth for user settings.
@@ -976,6 +993,46 @@ ssh_port = 22022
         let flat = preflight.flat_vars();
         assert_eq!(flat.get("domain").unwrap(), "example.com");
         assert_eq!(flat.get("ssh_port").unwrap(), "22022");
+    }
+
+    /// A Computed Var has no authoring site, and `config.toml` is the site it
+    /// most plausibly gets one at: `flatten_for_ansible` hands Ansible every
+    /// top-level entry, Key Registry or not. The overlay is what closes that.
+    #[test]
+    fn test_a_computed_var_overrides_a_hand_written_config_entry() {
+        let config = make_config(
+            r#"
+            domain = "example.com"
+            forgejo_parent_domain = "attacker.example"
+        "#,
+        );
+        let preflight = config
+            .preflight_with_keys(&[], None)
+            .unwrap()
+            .with_computed_vars([(
+                "forgejo_parent_domain".to_string(),
+                "studio.example".to_string(),
+            )]);
+        assert_eq!(
+            preflight.flat_vars().get("forgejo_parent_domain").unwrap(),
+            "studio.example",
+            "config.toml must not be able to answer a Computed Var"
+        );
+    }
+
+    /// Everything config answered that the overlay does not name is untouched
+    /// — the overlay replaces three names, not the variable set.
+    #[test]
+    fn test_a_computed_var_overlay_leaves_the_rest_of_config_alone() {
+        let config = make_config("domain = \"example.com\"\nssh_port = 22022\n");
+        let preflight = config
+            .preflight_with_keys(&[], None)
+            .unwrap()
+            .with_computed_vars([("host_zones".to_string(), "[]".to_string())]);
+        let flat = preflight.flat_vars();
+        assert_eq!(flat.get("domain").unwrap(), "example.com");
+        assert_eq!(flat.get("ssh_port").unwrap(), "22022");
+        assert_eq!(flat.get("host_zones").unwrap(), "[]");
     }
 
     #[test]

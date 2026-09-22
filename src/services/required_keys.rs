@@ -155,7 +155,39 @@ pub fn preflight_for(
     assert_host_overrides_known(config, &known)?;
     zone::assert_no_fleet_wide_zone(config)?;
     assert_zones_resolve(ansible_dir, config, playbook, tags, host)?;
-    config.preflight_with_keys(&required_keys_for(ansible_dir, playbook, tags)?, Some(host))
+    let computed =
+        zone::computed_vars(&all_metas(&ansible_dir.join(PLAYBOOKS_DIR))?, config, host)?;
+    Ok(config
+        .preflight_with_keys(&required_keys_for(ansible_dir, playbook, tags)?, Some(host))?
+        .with_computed_vars(computed))
+}
+
+/// Every App with a Playbook Meta, whatever this run deploys.
+///
+/// The Computed Vars cover all of them on purpose: blocky builds its
+/// `customDNS` map `run_once` over every Meta, so a map narrowed to the run's
+/// Apps is a name the tailnet stops resolving the next time one App is
+/// deployed alone (ADR-0081). A Meta that fails to parse is skipped rather
+/// than fatal — the run's own Metas are parsed strictly above, and a
+/// deploy of one App has no business failing on a sibling's syntax.
+fn all_metas(playbooks_dir: &Path) -> Result<Vec<(String, PlaybookMeta)>> {
+    let Ok(entries) = std::fs::read_dir(playbooks_dir) else {
+        return Ok(Vec::new());
+    };
+    let mut metas: Vec<(String, PlaybookMeta)> = entries
+        .flatten()
+        .filter_map(|entry| {
+            let path = entry.path();
+            let app = path
+                .file_name()?
+                .to_str()?
+                .strip_suffix(META_SUFFIX)?
+                .to_string();
+            Some((app, PlaybookMeta::load(&path).ok()?))
+        })
+        .collect();
+    metas.sort_by(|a, b| a.0.cmp(&b.0));
+    Ok(metas)
 }
 
 /// Every App this run deploys has its effective **Zone**'s pair answered for
