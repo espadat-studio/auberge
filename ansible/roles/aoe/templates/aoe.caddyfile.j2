@@ -1,7 +1,7 @@
 {{ aoe_domain }} {
 	bind {{ aoe_tailscale_ip }}
 	tls {
-		dns cloudflare {env.CLOUDFLARE_DNS_API_TOKEN}
+		dns cloudflare {env.{{ aoe_dns_api_token_env }}}
 	}
 	reverse_proxy {{ aoe_bind_host }}:{{ aoe_port }}
 

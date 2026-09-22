@@ -1,4 +1,7 @@
 {{ calibre_domain }} {
+	tls {
+		dns cloudflare {env.{{ calibre_dns_api_token_env }}}
+	}
 	reverse_proxy 127.0.0.1:{{ calibre_port }} {
 		header_up Host {host}
 		header_up X-Real-IP {remote_ip}

@@ -115,7 +115,9 @@
 
 mod common;
 
-use auberge::services::zone::{DNS_TOKEN_SUFFIX, PARENT_DOMAIN_SUFFIX};
+use auberge::services::zone::{
+    DNS_TOKEN_ENV_SUFFIX, DNS_TOKEN_SUFFIX, HOST_ZONES_VAR, PARENT_DOMAIN_SUFFIX,
+};
 use common::{
     all_roles, meta_files, parse_yaml, playbook_files, registry_keys, relative, repo,
     role_template_files, role_templates, role_yml_files, strings, templated_yml_files, yml_files,
@@ -597,6 +599,9 @@ fn runs() -> Vec<Run> {
 /// reading a name nothing can answer.
 fn universal_answers() -> BTreeSet<String> {
     let mut answers = registry_keys();
+    // The Host's Zone set is computed for every run, whatever it deploys, so
+    // unlike an App's Computed Vars it is answered unconditionally.
+    answers.insert(HOST_ZONES_VAR.to_string());
     for path in group_vars_files() {
         answers.extend(top_level_keys(&path));
     }
@@ -635,6 +640,7 @@ fn universal_answers() -> BTreeSet<String> {
         if publishes {
             answers.insert(format!("{app}{PARENT_DOMAIN_SUFFIX}"));
             answers.insert(format!("{app}{DNS_TOKEN_SUFFIX}"));
+            answers.insert(format!("{app}{DNS_TOKEN_ENV_SUFFIX}"));
         }
     }
     answers

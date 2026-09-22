@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted, 2026-09-22. Decided alongside [ADR-0081](./0081-an-apps-zone-is-a-named-pair-the-cli-resolves.md), which made an App's **Zone** a first-class thing. Revises [ADR-0072](./0072-the-agent-tiers-caddy-answers-for-its-own-zone.md), whose "one token per process, chosen per Host" holds only while a Host serves one Zone.
+Accepted, 2026-09-22. Amended 2026-09-22 — see the [Amendment](#amendment-2026-09-22-the-fleets-line-keeps-its-per-host-choice) below. Decided alongside [ADR-0081](./0081-an-apps-zone-is-a-named-pair-the-cli-resolves.md), which made an App's **Zone** a first-class thing. Revises [ADR-0072](./0072-the-agent-tiers-caddy-answers-for-its-own-zone.md), whose "one token per process, chosen per Host" holds only while a Host serves one Zone.
 
 ## Decision
 
@@ -19,6 +19,31 @@ ADR-0072 read the constraint as "caddy takes one token per process", and solved 
 Always emitting the `tls` block is the part that looks like overreach and is not. "Absent means inherit the process default" is a hole a fence cannot see through: the assertion "every vhost's token comes from its App's Zone" could then only be checked against the vhosts that opted in, which is exactly the set that was already right. Emitting it on all twenty makes the assertion total. Nineteen of them name the value they already inherit, so the behaviour change is nil and the deploy is covered by the Ingress Gate either way.
 
 A per-App systemd drop-in fragment was the tempting shape — no Host-to-Zone knowledge needed anywhere, since each role would write its own. It reproduces the stale-file bug this change already trips over: nothing removes a fragment when an App moves Zone or leaves, so a token outlives the App that justified it, on a box where the whole point was bounding which tokens live there.
+
+## Amendment (2026-09-22): the fleet's line keeps its per-Host choice
+
+**Two numbers above are wrong, and one claim with them.** There are **eighteen** vhosts, not twenty — seventeen roles, colporteur serving two. Seventeen gained the `tls` block; the eighteenth answers no challenge and is exempt.
+
+And "nineteen of them name the value they already inherit, so the behaviour change is nil" describes a global `acme_dns` this repo does not have. Only **five** vhosts carried a `tls` block before — the tailnet-bound ones, which cannot be reached over port 80. The other **twelve** were issuing over HTTP-01 and TLS-ALPN, and naming a DNS provider disables both: they move to DNS-01. For them the token stops being irrelevant and starts being the thing renewal depends on. That is a real behaviour change, and it is what makes the paragraph below about the fleet's name necessary rather than tidy.
+
+The decision above has the caddy role write one `Environment=` line per Zone the Host serves, from the derived set. Implementing it showed the fleet's Zone cannot be one of those lines.
+
+A Zone is in a Host's set when an App that publishes a name resolves to it and its pair answers there. Every App answers its own `<app>_subdomain` fleet-wide, so the fleet Zone is in **every** Host's set — the agent tier's included, and keeping the parent domain's token off that box is what ADR-0068 exists for. Deriving the fleet's line would have written it onto the one Host ADR-0054 assumes compromisable.
+
+So `caddy_dns_api_token` is not the default for a Host with nothing to say. It is the fleet Zone's line, chosen per Host by `infrastructure.yml` exactly as ADR-0072 has it. The Zone set supplies the **named** Zones only.
+
+That line is **withheld** on a Host whose per-Host choice fell on a Zone that Host serves — the agent tier's, which `infrastructure.yml` hands the agents token. Writing it under the fleet's name was harmless while twelve fleet vhosts answered over HTTP-01 and read nothing; now one of them on that Host would answer DNS-01 with a token scoped to another zone, go green, and fail at renewal weeks later. Absent instead, caddy refuses to start and the Ingress Gate reports it in the same run. A Host with genuinely nothing to say — no public App at all — still takes the fleet's line, which is the sentence above read as it was meant.
+
+A named Zone needs one thing more than resolving: config has to declare that the Host serves the App — the App's **serving gate** ([ADR-0083](./0083-a-guarded-roles-zone-follows-its-serving-gate.md)), or `<app>_zone` where the operator placed it. A Meta's `zone:` holds on every Host, so the pin alone put the agent tier's token on all three boxes, and no declaration of which Host runs which App exists anywhere else in the repo. Both halves read through `hosts::gate_answered`, the one spelling of that question: a second, stricter reading of the same keys — the Host's own table, ignoring a fleet-wide answer — was written first and dropped, because two expressions of one rule is the divergence ADR-0081 deletes rather than fences, and this gate already decides whether a guarded role runs and whether its Zone is demanded.
+
+The trade that buys: an operator answering `<app>_subdomain` fleet-wide puts that App's Zone's token on every Host, which is what answering it fleet-wide says. `<app>_zone` cannot widen that way — ADR-0081 refuses a fleet-wide one outright. And a Host serving an App config never declared for it writes no token, so that App's vhost names an undefined variable and the Ingress Gate reports it, which is the loud end of the same trade.
+
+Two spellings this decision left open, settled the same way — one rule, no literal:
+
+- **The variable's name is the Zone's token key, uppercased.** `CLOUDFLARE_DNS_API_TOKEN` for the fleet, which is what caddy has read since ADR-0072 and is already on every Host; `STUDIO_CLOUDFLARE_DNS_API_TOKEN` for a named Zone. Writing `<ZONE>_DNS_API_TOKEN` as its own spelling would have needed the fleet's name as a special case, and a special case is where the two sides drift apart.
+- **A vhost reads that name from its App's own Computed Var**, `<app>_dns_api_token_env`, not from a literal. An operator moves an App between Zones from `config.toml`, so a literal in a template could only ever name the Zone the repo guessed — the same argument ADR-0081 makes about the apex.
+
+One vhost of the eighteen carries no `tls` block: colporteur's second site is `http://localhost:<port>` over loopback, with no name and no certificate. It is a declared exemption in `tests/vhost_acme_token.rs`, refused if it ever grows a challenge.
 
 ## Trade-off
 

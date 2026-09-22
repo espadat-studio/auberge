@@ -1,4 +1,7 @@
 {{ freshrss_domain }} {
+	tls {
+		dns cloudflare {env.{{ freshrss_dns_api_token_env }}}
+	}
 	reverse_proxy 127.0.0.1:{{ freshrss_port }} {
 		header_up Host {host}
 		header_up X-Real-IP {remote_ip}

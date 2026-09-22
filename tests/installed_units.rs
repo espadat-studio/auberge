@@ -184,9 +184,15 @@ fn test_a_drop_in_is_its_own_file_and_names_the_unit_it_refines() {
     assert_eq!(unit.file(), "caddy.service");
 
     assert_eq!(
-        dropin.all_in("Service", "Environment").len(),
-        1,
-        "caddy's drop-in exists to carry the DNS API token into the unit"
+        dropin.all_in("Service", "Environment"),
+        vec![
+            "\"CLOUDFLARE_DNS_API_TOKEN={{ caddy_dns_api_token }}\"",
+            "\"{{ zone.env }}={{ zone.token }}\"",
+        ],
+        "caddy's drop-in exists to carry ACME tokens into the unit: the fleet's, \
+         under the name every vhost resolves to, and one line per named Zone this \
+         Host serves (ADR-0082). Read unresolved, as every unit body here is — \
+         `vhost_acme_token.rs` is what renders them"
     );
     assert!(
         unit.all_in("Service", "Environment").is_empty(),

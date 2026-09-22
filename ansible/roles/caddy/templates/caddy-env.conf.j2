@@ -1,2 +1,19 @@
 [Service]
+{% set named_tokens = host_zones | from_json | selectattr('prefix') | map(attribute='token') | list %}
+{% if caddy_dns_api_token not in named_tokens %}
+# The fleet's token is the one line not taken from the Zone set: every App
+# answers its own `<app>_subdomain` fleet-wide, so the fleet Zone is in every
+# Host's set, and the parent domain's token must not land on the Host serving
+# the agent tier (ADR-0068). `infrastructure.yml` chooses it per Host instead,
+# as it has since ADR-0072.
+#
+# Withheld where that choice fell on a Zone this Host actually serves: such a
+# Host answers for that Zone and holds only its token, so writing it under the
+# fleet's name would leave a fleet vhost here answering DNS-01 with the wrong
+# zone's credential — a deploy that goes green and fails at renewal. Absent,
+# caddy refuses to start and the Ingress Gate says so in the same run.
 Environment="CLOUDFLARE_DNS_API_TOKEN={{ caddy_dns_api_token }}"
+{% endif %}
+{% for zone in host_zones | from_json if zone.prefix %}
+Environment="{{ zone.env }}={{ zone.token }}"
+{% endfor %}

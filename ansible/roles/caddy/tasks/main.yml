@@ -127,6 +127,10 @@
         owner: root
         group: root
         mode: "0600"
+      # `host_zones` carries a Cloudflare token per Zone this Host serves, and
+      # its name matches none of the suffixes a value is redacted by, so a
+      # --diff run would print every one of them.
+      no_log: true
       notify: Restart caddy
 
     - name: Copy Caddyfile from local path to /etc/caddy/Caddyfile

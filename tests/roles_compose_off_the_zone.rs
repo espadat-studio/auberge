@@ -564,8 +564,10 @@ const DECLARED_ZONE_KEY_READS: &[(&str, &str, &str)] = &[
     (
         "caddy",
         "defaults/main.yml",
-        "the ACME indirection every vhost resolves through, so the agent tier's Host can be \
-         pointed at its own token (ADR-0068); caddy_acme_token.rs holds it, phase 4 moves it",
+        "the fleet Zone's ACME token, the one line caddy's drop-in does not take from the \
+         Host's Zone set: that set holds the fleet Zone on every Host, and the agent tier's \
+         must not hold the parent domain's token (ADR-0068, ADR-0082). caddy_acme_token.rs \
+         holds the per-Host choice",
     ),
     (
         "forgejo",

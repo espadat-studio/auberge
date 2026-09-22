@@ -1,4 +1,7 @@
 {{ radio_domain }} {
+	tls {
+		dns cloudflare {env.{{ radio_dns_api_token_env }}}
+	}
 	basic_auth {
 		{{ admin_user_name }} {{ radio_hashed_password }}
 	}

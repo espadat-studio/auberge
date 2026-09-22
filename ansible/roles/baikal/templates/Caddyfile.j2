@@ -1,4 +1,7 @@
 {{ baikal_domain }} {
+	tls {
+		dns cloudflare {env.{{ baikal_dns_api_token_env }}}
+	}
 	encode gzip
 
 	@busy path /busy.ics

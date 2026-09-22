@@ -42,6 +42,15 @@ pub const PARENT_DOMAIN_SUFFIX: &str = "_parent_domain";
 /// asks its App for a token, never a Zone for one.
 pub const DNS_TOKEN_SUFFIX: &str = "_dns_api_token";
 
+/// The Computed Var holding the name of the environment variable an App's
+/// vhost reads its Zone's token from: `<app>_dns_api_token_env`.
+///
+/// The name, not the token. `/etc/caddy/sites/*.caddyfile` is mode 0644, so a
+/// vhost states `{env.<name>}` and caddy resolves it out of a 0600 drop-in
+/// (ADR-0082). A literal in the template could only spell the Zone the repo
+/// guessed, which is the one thing an operator-placed App moves.
+pub const DNS_TOKEN_ENV_SUFFIX: &str = "_dns_api_token_env";
+
 /// The Computed Var holding every Zone one Host serves, as JSON: what its
 /// Caddy needs an ACME token for (ADR-0082).
 ///
@@ -99,6 +108,19 @@ impl Zone {
         self.prefixed(TOKEN_SUFFIX)
     }
 
+    /// The `Environment=` name this Zone's token lands under in caddy's
+    /// systemd drop-in, and the name every vhost in the Zone reads it back
+    /// with — `{env.<this>}` (ADR-0082).
+    ///
+    /// The Zone's token key, uppercased. One rule rather than a spelling of
+    /// its own, and it is what makes the fleet's name come out as
+    /// `CLOUDFLARE_DNS_API_TOKEN` — the name caddy has read since ADR-0072,
+    /// which is on every Host already and cannot move without every vhost
+    /// naming a variable no drop-in writes.
+    pub fn env_var(&self) -> String {
+        self.token_key().to_uppercase()
+    }
+
     fn prefixed(&self, suffix: &str) -> String {
         match &self.prefix {
             Some(p) => format!("{p}_{suffix}"),
@@ -130,6 +152,7 @@ pub struct HostZone {
     pub prefix: Option<String>,
     pub domain: String,
     pub token: String,
+    pub env: String,
 }
 
 /// The Zone `meta` pins its App to: its `zone:` prefix, or nothing.
@@ -330,9 +353,11 @@ fn placements<'a>(
 /// this run happens not to deploy is a name the tailnet stops resolving.
 ///
 /// The Host's Zone set is derived, not declared: a Zone is in it when some
-/// App that publishes a name resolves to it *and* its pair answers for this
-/// Host. A Host that withdrew a Zone's token contributes no such Zone, which
-/// is how the agent tier's box ends up holding one token rather than two.
+/// App that publishes a name resolves to it, its pair answers for this Host,
+/// and — for a *named* Zone — the Host's own table declares it serves that
+/// App ([`declared_on_host`]). A Host that withdrew a Zone's token
+/// contributes no such Zone either, which is how the agent tier's box ends up
+/// holding one token rather than two.
 pub fn computed_vars(
     metas: &[(String, PlaybookMeta)],
     config: &Config,
@@ -341,19 +366,24 @@ pub fn computed_vars(
     let placed = placements(config, host, metas)?;
 
     let mut vars = BTreeMap::new();
-    for (app, _, pair) in &placed {
+    for (app, zone, pair) in &placed {
         vars.insert(format!("{app}{PARENT_DOMAIN_SUFFIX}"), pair.domain.clone());
         vars.insert(format!("{app}{DNS_TOKEN_SUFFIX}"), pair.token.clone());
+        vars.insert(format!("{app}{DNS_TOKEN_ENV_SUFFIX}"), zone.env_var());
     }
 
-    let zones: BTreeMap<&Zone, &ZonePair> =
-        placed.iter().map(|(_, zone, pair)| (zone, pair)).collect();
+    let zones: BTreeMap<&Zone, &ZonePair> = placed
+        .iter()
+        .filter(|(app, zone, _)| zone.prefix().is_none() || declared_on_host(config, host, app))
+        .map(|(_, zone, pair)| (zone, pair))
+        .collect();
     let set: Vec<HostZone> = zones
         .into_iter()
         .map(|(zone, pair)| HostZone {
             prefix: zone.prefix().map(str::to_string),
             domain: pair.domain.clone(),
             token: pair.token.clone(),
+            env: zone.env_var(),
         })
         .collect();
     vars.insert(
@@ -387,6 +417,39 @@ pub fn assert_no_fleet_wide_zone(config: &Config) -> Result<()> {
          (ADR-0081)",
         offenders.join(", "),
     )
+}
+
+/// Whether `host` is declared to serve `app`, and so needs its Zone's token.
+///
+/// A named Zone's token is written onto a Host because an App of that Zone is
+/// served there, and config is the only place that says which Host that is:
+/// the App's **serving gate**, or `<app>_zone` where the operator placed it.
+/// Nothing here can ask "is this App deployed on that Host" — no such
+/// declaration exists.
+///
+/// Both halves read through [`crate::hosts::gate_answered`], the one spelling
+/// of "config answers this for this Host" (ADR-0051, ADR-0058, ADR-0083). A
+/// second, stricter reading is available — the Host's own table, ignoring a
+/// fleet-wide answer — and is deliberately not used: two expressions of one
+/// rule is the divergence ADR-0081 deletes rather than fences, and this gate
+/// already decides whether a guarded role runs and whether its Zone is
+/// demanded. The consequence is that an operator answering `<app>_subdomain`
+/// fleet-wide puts that App's Zone on every Host, which is what answering it
+/// fleet-wide says. `<app>_zone` cannot widen that way: Preflight refuses a
+/// fleet-wide one outright ([`assert_no_fleet_wide_zone`]).
+///
+/// A Host serving an App it never declared writes no token for it, so that
+/// App's vhost names an undefined variable, caddy refuses to start, and the
+/// Ingress Gate reports it in the same run.
+///
+/// The fleet's Zone is exempt, and cannot use this rule: every App answers
+/// its own `<app>_subdomain` fleet-wide, so the fleet Zone is in every Host's
+/// set whatever this says. Its token is chosen per Host by
+/// `infrastructure.yml` instead, which is what keeps the parent domain's off
+/// the agent tier's Host (ADR-0068, ADR-0072).
+fn declared_on_host(config: &Config, host: &str, app: &str) -> bool {
+    serving_gate_answered(config, app, Some(host))
+        || crate::hosts::gate_answered(config, &zone_key(app), Some(host))
 }
 
 fn zone_key(app: &str) -> String {
@@ -430,6 +493,26 @@ mod tests {
         let studio = Zone::named("studio");
         assert_eq!(studio.domain_key(), "studio_domain");
         assert_eq!(studio.token_key(), "studio_cloudflare_dns_api_token");
+    }
+
+    /// The fleet's spelling is fixed by what is already on every Host: caddy
+    /// has read `CLOUDFLARE_DNS_API_TOKEN` since ADR-0072, and a Zone that
+    /// renamed it would leave every vhost naming a variable no drop-in writes.
+    #[test]
+    fn test_the_fleet_zones_token_lands_under_the_cloudflare_env_var() {
+        assert_eq!(Zone::fleet().env_var(), "CLOUDFLARE_DNS_API_TOKEN");
+    }
+
+    #[test]
+    fn test_a_named_zones_env_var_carries_its_prefix() {
+        assert_eq!(
+            Zone::named("studio").env_var(),
+            "STUDIO_CLOUDFLARE_DNS_API_TOKEN"
+        );
+        assert_eq!(
+            Zone::named("agents").env_var(),
+            "AGENTS_CLOUDFLARE_DNS_API_TOKEN"
+        );
     }
 
     // ── effective zone ────────────────────────────────────────────────────────
@@ -516,6 +599,9 @@ mod tests {
 
     /// A Host that withdrew a Zone's token holds no such Zone — ADR-0068's
     /// isolation, arrived at from the derivation rather than declared.
+    ///
+    /// `[hosts.ruche]` declares the agent tier the way the live config does,
+    /// because that declaration is what puts a *named* Zone on a Host at all.
     #[test]
     fn test_a_host_withdrawing_a_pair_drops_that_zone_from_its_set() {
         let toml = r#"
@@ -526,6 +612,7 @@ mod tests {
 
             [hosts.ruche]
             cloudflare_dns_api_token = ""
+            aoe_subdomain = "essaim"
         "#;
         let metas = vec![
             (
@@ -678,13 +765,140 @@ mod tests {
                     prefix: None,
                     domain: "fleet.example".to_string(),
                     token: "fleet-token".to_string(),
+                    env: "CLOUDFLARE_DNS_API_TOKEN".to_string(),
                 },
                 HostZone {
                     prefix: Some("studio".to_string()),
                     domain: "studio.example".to_string(),
                     token: "studio-token".to_string(),
+                    env: "STUDIO_CLOUDFLARE_DNS_API_TOKEN".to_string(),
                 },
             ]
+        );
+    }
+
+    /// An App's vhost names an environment variable, never a token: the
+    /// Caddyfile is mode 0644 (ADR-0082). The name is the App's own Computed
+    /// Var so that an App the operator moved names its new Zone's variable
+    /// without a repo edit — a literal in the template could only ever spell
+    /// the Zone the repo guessed.
+    #[test]
+    fn test_an_app_is_handed_the_env_var_name_of_its_zone() {
+        let toml = format!("{ZONES_ANSWERED}\n[hosts.auberge]\nforgejo_zone = \"studio\"\n");
+        let metas = vec![
+            ("forgejo".to_string(), meta(BARE)),
+            (
+                "navidrome".to_string(),
+                meta("required_keys: []\nsubdomain: navidrome\n"),
+            ),
+        ];
+        let vars = computed(&toml, "auberge", &metas);
+        assert_eq!(
+            vars["forgejo_dns_api_token_env"],
+            "STUDIO_CLOUDFLARE_DNS_API_TOKEN"
+        );
+        assert_eq!(
+            vars["navidrome_dns_api_token_env"],
+            "CLOUDFLARE_DNS_API_TOKEN"
+        );
+    }
+
+    /// The two sides of one deploy: the name an App's vhost reads is the name
+    /// the Host's drop-in writes. They come off one derivation, and this is
+    /// the assertion that fails if a later edit spells either separately.
+    #[test]
+    fn test_every_apps_env_var_is_one_the_hosts_drop_in_writes() {
+        let toml = format!("{ZONES_ANSWERED}\n[hosts.auberge]\nforgejo_zone = \"studio\"\n");
+        let metas = vec![
+            ("forgejo".to_string(), meta(BARE)),
+            (
+                "navidrome".to_string(),
+                meta("required_keys: []\nsubdomain: navidrome\n"),
+            ),
+        ];
+        let vars = computed(&toml, "auberge", &metas);
+        let written: Vec<(String, String)> = zone_set(&vars)
+            .into_iter()
+            .map(|zone| (zone.env, zone.token))
+            .collect();
+        for app in ["forgejo", "navidrome"] {
+            let read = (
+                vars[&format!("{app}{DNS_TOKEN_ENV_SUFFIX}")].clone(),
+                vars[&format!("{app}{DNS_TOKEN_SUFFIX}")].clone(),
+            );
+            assert!(
+                written.contains(&read),
+                "{app} reads {read:?}, absent from {written:?}"
+            );
+        }
+    }
+
+    /// An App's own Computed Vars are *not* narrowed by the same declaration,
+    /// deliberately.
+    ///
+    /// They are computed over every Meta because blocky builds its `customDNS`
+    /// map `run_once` over all of them, so an App this Host does not serve
+    /// still gets its three vars — including the name of a variable this
+    /// Host's drop-in does not write. Deploying that App here therefore leaves
+    /// a vhost naming an undefined variable, caddy refuses to start, and the
+    /// Ingress Gate reports it in that run. That is the loud end of the trade
+    /// ADR-0082 records: narrowing the vars instead would break blocky's map,
+    /// which is the same cure being worse than the disease.
+    #[test]
+    fn test_an_apps_vars_survive_on_a_host_whose_set_lacks_its_zone() {
+        let toml = format!(
+            "{ZONES_ANSWERED}\nagents_domain = \"agents.example\"\n\
+             agents_cloudflare_dns_api_token = \"agents-token\"\n"
+        );
+        let metas = vec![(
+            "aoe".to_string(),
+            meta("required_keys: []\nsubdomain: essaim\nzone: agents\n"),
+        )];
+        let vars = computed(&toml, "auberge", &metas);
+
+        assert_eq!(
+            vars["aoe_dns_api_token_env"],
+            "AGENTS_CLOUDFLARE_DNS_API_TOKEN"
+        );
+        assert_eq!(zone_set(&vars), vec![], "{vars:?}");
+    }
+
+    /// A named Zone's token lands on the Host its App is declared on, and
+    /// nowhere else. aoe's Meta pins it to the agent tier's Zone on every
+    /// Host, so the pin alone would put that Zone's token on all of them —
+    /// and the operator's host table is the only place in the repo that says
+    /// which Host actually serves it (ADR-0058, ADR-0068).
+    #[test]
+    fn test_a_named_zones_token_lands_only_where_its_app_is_declared() {
+        let toml = format!(
+            "{ZONES_ANSWERED}\nagents_domain = \"agents.example\"\n\
+             agents_cloudflare_dns_api_token = \"agents-token\"\n\
+             navidrome_subdomain = \"navidrome\"\n\
+             [hosts.ruche]\naoe_subdomain = \"essaim\"\n"
+        );
+        let metas = vec![
+            (
+                "aoe".to_string(),
+                meta("required_keys: []\nsubdomain: essaim\nzone: agents\n"),
+            ),
+            ("navidrome".to_string(), meta(BARE)),
+        ];
+
+        assert_eq!(
+            zone_set(&computed(&toml, "ruche", &metas))
+                .into_iter()
+                .map(|z| z.prefix)
+                .collect::<Vec<_>>(),
+            vec![None, Some("agents".to_string())],
+            "the Host the agent tier is declared on holds its token"
+        );
+        assert_eq!(
+            zone_set(&computed(&toml, "auberge", &metas))
+                .into_iter()
+                .map(|z| z.prefix)
+                .collect::<Vec<_>>(),
+            vec![None],
+            "a Host that serves no App of a named Zone must not hold its token"
         );
     }
 
