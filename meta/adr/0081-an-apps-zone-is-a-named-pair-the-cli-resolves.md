@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted, 2026-09-22. Amends [ADR-0071](./0071-a-tailnet-only-apps-parent-domain-is-per-app.md), which made a Tailnet-only App's parent domain per App and left the Public App half unplumbed. Superseded in part by the follow-up that re-spells `domain_key:` as `zone:`; until that lands, both spellings are live.
+Accepted, 2026-09-22. Amends [ADR-0071](./0071-a-tailnet-only-apps-parent-domain-is-per-app.md), which made a Tailnet-only App's parent domain per App and left the Public App half unplumbed. Supersedes it as of 2026-09-22: `zone:` is the only spelling of the pin, and `domain_key:` is gone from the tree.
 
 ## Decision
 

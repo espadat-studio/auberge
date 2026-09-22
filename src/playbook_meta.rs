@@ -15,25 +15,15 @@ pub struct PlaybookMeta {
     pub tailnet_only: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub subdomain: Option<String>,
-    /// The Key Registry key holding the App's parent domain, where that is not
-    /// the fleet's `domain`. The agent tier holds its own Cloudflare zone
-    /// (ADR-0068), so `essaim` composes against `agents_domain` and not against
-    /// the parent domain every other App shares.
-    ///
-    /// Read by both DNS Publication consumers — Blocky's `customDNS` map and
-    /// the deploy-time resolution check — because a declaration one of them
-    /// ignores publishes a name the other cannot find.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub domain_key: Option<String>,
     /// The **Zone** prefix this App is pinned to — the repo asserting the App
     /// must be isolated, true for every operator rather than a fact about one
     /// deployment (ADR-0081). A pin refuses an operator's `<app>_zone`; an App
     /// the repo has no business placing declares nothing here and is placed
     /// from `Config`, or stays in the fleet's Zone.
     ///
-    /// Read through `services::zone`, which also reads `domain_key:` — the
-    /// same pin under ADR-0071's spelling, live until the follow-up re-spells
-    /// the agent tier's.
+    /// Read through `services::zone`, the one resolver: publication and
+    /// verification answer off one value rather than two expressions a test
+    /// hopes are equal (ADR-0081).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub zone: Option<String>,
     #[serde(default, skip_serializing_if = "HashMap::is_empty")]
@@ -284,16 +274,7 @@ impl BackupRecipe {
     }
 }
 
-/// The Key Registry key an App's FQDN composes against when its Meta names
-/// none of its own.
-pub const DEFAULT_DOMAIN_KEY: &str = "domain";
-
 impl PlaybookMeta {
-    /// The Key Registry key holding this App's parent domain.
-    pub fn parent_domain_key(&self) -> &str {
-        self.domain_key.as_deref().unwrap_or(DEFAULT_DOMAIN_KEY)
-    }
-
     /// The units this App owns, as `systemctl` addresses them: names
     /// qualified, `{admin_user}` substituted, scope made explicit.
     pub fn owned_units(&self, admin_user: &str) -> Vec<OwnedUnit> {
@@ -592,39 +573,6 @@ mod tests {
         );
     }
 
-    /// Every declared domain key is either the fleet's or `<zone>_domain`.
-    ///
-    /// `zone()` derives the Zone by stripping `_domain`, so a key spelled any
-    /// other way strips to `None` and reads as the fleet's Zone — an App in a
-    /// second Zone classified into the run's, which is the misreport #952
-    /// exists to prevent. The suffix is what makes the derivation total, and
-    /// registry membership does not imply it.
-    #[test]
-    fn test_every_declared_domain_key_carries_the_zone_suffix() {
-        let offenders: Vec<String> = std::fs::read_dir(playbooks_dir())
-            .unwrap()
-            .filter_map(|e| e.ok())
-            .map(|e| e.path())
-            .filter(|p| {
-                p.file_name()
-                    .and_then(|n| n.to_str())
-                    .is_some_and(|n| n.ends_with(".meta.yml"))
-            })
-            .filter_map(|path| {
-                let meta = PlaybookMeta::load(&path).ok()?;
-                let key = meta.parent_domain_key();
-                (key != DEFAULT_DOMAIN_KEY && !key.ends_with("_domain"))
-                    .then(|| format!("{}: {key}", path.display()))
-            })
-            .collect();
-        assert!(
-            offenders.is_empty(),
-            "a Zone is named by the prefix its `<zone>_domain` key carries \
-             (ADR-0081); a key spelled otherwise is silently read as the \
-             fleet's Zone: {offenders:?}"
-        );
-    }
-
     /// The agent tier holds nothing irreplaceable by construction (ADR-0054):
     /// transcripts leave the box by syncthing, the index rebuilds, and a
     /// rebuild is a re-auth and a re-clone. A Recipe here would put a nightly
@@ -635,7 +583,7 @@ mod tests {
         let meta = load_meta("aoe");
         assert!(meta.tailnet_only);
         assert_eq!(meta.subdomain.as_deref(), Some("essaim"));
-        assert_eq!(meta.parent_domain_key(), "agents_domain");
+        assert_eq!(meta.zone.as_deref(), Some("agents"));
         assert!(
             meta.backup.is_none(),
             "the agent Host is disposable by design; nothing on it is worth a \
@@ -925,7 +873,6 @@ version:
             backup: None,
             tailnet_only: false,
             subdomain: None,
-            domain_key: None,
             zone: None,
             memory: HashMap::new(),
             units: Vec::new(),

@@ -958,8 +958,8 @@ mod tests {
         assert!(err.contains("the fleet's zone"), "{err}");
     }
 
-    /// The agent tier still composes against its own pair, under ADR-0071's
-    /// `domain_key:` spelling. A resolver blind to it would demand the parent
+    /// The agent tier still composes against its own pair, off the `zone:`
+    /// its Meta pins. A resolver blind to the pin would demand the parent
     /// domain's token on the one Host that must never hold it.
     #[test]
     fn test_the_repo_agent_tier_demands_the_agents_pair_not_the_fleets() {

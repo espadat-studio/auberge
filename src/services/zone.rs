@@ -14,21 +14,15 @@
 //! operator placing an App in a Zone of their own. The repo's pin wins, by
 //! refusing the override rather than shadowing it: a silent precedence rule is
 //! how an operator discovers ADR-0068's isolation was unset for them.
-//!
-//! `domain_key:` is ADR-0071's spelling of the same pin, still live until the
-//! follow-up re-spells it. [`pinned`] reads both, because a resolver that saw
-//! only `zone:` would put the agent tier back in the fleet's Zone and demand
-//! the parent domain's token on the one Host ADR-0068 exists to keep it off.
 
 use crate::config::Config;
-use crate::playbook_meta::{DEFAULT_DOMAIN_KEY, PlaybookMeta};
+use crate::playbook_meta::PlaybookMeta;
 use eyre::{Result, WrapErr};
 use serde::Serialize;
 use std::collections::BTreeMap;
 
-/// The second half of a Zone's key pair, and the tail every `domain_key:`
-/// carries — `agents_domain` is the `agents` Zone said the old way.
-const DOMAIN_SUFFIX: &str = DEFAULT_DOMAIN_KEY;
+/// The second half of a Zone's key pair, unprefixed.
+const DOMAIN_SUFFIX: &str = "domain";
 
 /// The first half of a Zone's key pair, unprefixed.
 const TOKEN_SUFFIX: &str = "cloudflare_dns_api_token";
@@ -138,39 +132,16 @@ pub struct HostZone {
     pub token: String,
 }
 
-/// The Zone `meta` pins its App to, reading both live spellings: `zone:`, the
-/// prefix, and ADR-0071's `domain_key:`, the domain key itself.
+/// The Zone `meta` pins its App to: its `zone:` prefix, or nothing.
 ///
-/// A `domain_key:` naming anything but `<prefix>_domain` is refused rather
-/// than guessed at: the pair is the Zone, and a key with no derivable sibling
-/// names half of one.
-pub fn pinned(meta: &PlaybookMeta) -> Result<Option<Zone>> {
-    if let Some(prefix) = meta
-        .zone
+/// A prefix is a Zone's whole identity, so there is no malformed shape to
+/// reject and no way for this to fail.
+pub fn pinned(meta: &PlaybookMeta) -> Option<Zone> {
+    meta.zone
         .as_deref()
         .map(str::trim)
         .filter(|p| !p.is_empty())
-    {
-        return Ok(Some(Zone::named(prefix)));
-    }
-    let Some(key) = meta
-        .domain_key
-        .as_deref()
-        .map(str::trim)
-        .filter(|k| !k.is_empty())
-    else {
-        return Ok(None);
-    };
-    if key == DOMAIN_SUFFIX {
-        return Ok(Some(Zone::fleet()));
-    }
-    let Some(prefix) = key.strip_suffix(&format!("_{DOMAIN_SUFFIX}")) else {
-        eyre::bail!(
-            "domain_key '{key}' names no Zone: a Zone is the pair '<prefix>_{DOMAIN_SUFFIX}' and \
-             '<prefix>_{TOKEN_SUFFIX}', so a key outside that shape has no token to go with it"
-        );
-    };
-    Ok(Some(Zone::named(prefix)))
+        .map(Zone::named)
 }
 
 /// The Zone `app` is actually in on `host`: the Meta's pin, else the
@@ -191,7 +162,7 @@ pub fn effective_zone(
         .map(|v| v.trim().to_string())
         .filter(|v| !v.is_empty());
 
-    match (pinned(meta)?, declared) {
+    match (pinned(meta), declared) {
         (Some(pin), Some(override_)) => eyre::bail!(
             "{app} is pinned to {} by its playbook meta, so '{}' in config.toml (answering \
              '{override_}') cannot move it; the pin states an isolation the repo asserts for \
@@ -219,12 +190,12 @@ pub fn effective_zone(
 /// is the right classification while the operator is told at deploy time.
 /// `config` is optional because the callers walk the tree before a Config is
 /// guaranteed to load; without one only the Meta can place an App.
-pub fn publication_zone(config: Option<&Config>, app: &str, meta: &PlaybookMeta) -> Result<Zone> {
-    if let Some(pin) = pinned(meta)? {
-        return Ok(pin);
+pub fn publication_zone(config: Option<&Config>, app: &str, meta: &PlaybookMeta) -> Zone {
+    if let Some(pin) = pinned(meta) {
+        return pin;
     }
     let Some(config) = config else {
-        return Ok(Zone::fleet());
+        return Zone::fleet();
     };
     let key = zone_key(app);
     let scopes = std::iter::once(None).chain(config.host_override_names().into_iter().map(Some));
@@ -234,10 +205,10 @@ pub fn publication_zone(config: Option<&Config>, app: &str, meta: &PlaybookMeta)
             .map(|v| v.trim().to_string())
             .filter(|v| !v.is_empty())
         {
-            return Ok(Zone::named(prefix));
+            return Zone::named(prefix);
         }
     }
-    Ok(Zone::fleet())
+    Zone::fleet()
 }
 
 /// A Zone's two answers for one Host, or an error naming the half that is
@@ -486,28 +457,6 @@ mod tests {
         let pinned = meta("required_keys: []\nsubdomain: essaim\nzone: agents\n");
         let zone = effective_zone(&pinned, &config(ZONES_ANSWERED), "aoe", None).unwrap();
         assert_eq!(zone, Zone::named("agents"));
-    }
-
-    /// ADR-0071's spelling of the same pin, still live. A resolver blind to it
-    /// puts the agent tier back in the fleet's Zone.
-    #[test]
-    fn test_a_domain_key_pin_is_read_as_its_zone() {
-        let old = meta("required_keys: []\nsubdomain: essaim\ndomain_key: agents_domain\n");
-        assert_eq!(pinned(&old).unwrap(), Some(Zone::named("agents")));
-    }
-
-    #[test]
-    fn test_a_domain_key_naming_the_fleet_key_is_the_fleet_zone() {
-        let old = meta("required_keys: []\nsubdomain: git\ndomain_key: domain\n");
-        assert_eq!(pinned(&old).unwrap(), Some(Zone::fleet()));
-    }
-
-    #[test]
-    fn test_a_domain_key_outside_the_pair_shape_is_refused() {
-        let broken = meta("required_keys: []\nsubdomain: git\ndomain_key: studio_apex\n");
-        let err = pinned(&broken).unwrap_err().to_string();
-        assert!(err.contains("studio_apex"), "{err}");
-        assert!(err.contains("pair"), "{err}");
     }
 
     #[test]

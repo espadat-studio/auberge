@@ -12,14 +12,10 @@
 //! config they mean. What no unit test can see is whether the **repo's own**
 //! declarations are answerable at all, because a resolver is only ever asked
 //! about a Zone somebody wrote down. That is what this reads off the tree.
-//!
-//! Two spellings of the pin are live at once: `zone:`, the prefix, and
-//! ADR-0071's `domain_key:`, the domain key. Both are read, and a Meta holding
-//! both is refused here rather than given a precedence rule nobody decided on.
 
 mod common;
 
-use common::{meta_files, parse_yaml, registry_keys, relative, repo};
+use common::{meta_files, parse_yaml, registry_keys, repo};
 use serde_yaml::Value;
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -62,34 +58,20 @@ fn registry_zones() -> BTreeMap<String, (bool, bool)> {
     zones
 }
 
-/// Every Meta that pins its App to a Zone, as `(app, prefix, spelling)`. The
-/// fleet's Zone is the empty prefix, as in the registry.
-fn declared_pins() -> Vec<(String, String, &'static str)> {
-    let mut pins = Vec::new();
-    for (app, path) in meta_files() {
-        let meta = parse_yaml(&path);
-        if let Some(prefix) = meta.get("zone").and_then(Value::as_str) {
-            pins.push((app.clone(), prefix.trim().to_string(), "zone"));
-        }
-        if let Some(key) = meta.get("domain_key").and_then(Value::as_str) {
-            let prefix = if key.trim() == DOMAIN_SUFFIX {
-                String::new()
-            } else {
-                key.trim()
-                    .strip_suffix(&format!("_{DOMAIN_SUFFIX}"))
-                    .unwrap_or_else(|| {
-                        panic!(
-                            "{}: domain_key '{key}' is not '<prefix>_{DOMAIN_SUFFIX}', so it names \
-                             half a pair and no Zone",
-                            relative(&path)
-                        )
-                    })
-                    .to_string()
-            };
-            pins.push((app, prefix, "domain_key"));
-        }
-    }
-    pins
+/// Every Meta that pins its App to a Zone, as `(app, prefix)`. The fleet's
+/// Zone is the empty prefix, as in the registry.
+fn declared_pins() -> Vec<(String, String)> {
+    meta_files()
+        .into_iter()
+        .filter_map(|(app, path)| {
+            let prefix = parse_yaml(&path)
+                .get("zone")
+                .and_then(Value::as_str)?
+                .trim()
+                .to_string();
+            Some((app, prefix))
+        })
+        .collect()
 }
 
 /// The domain this fence reads, dumped as counts so a narrowed scan cannot
@@ -110,7 +92,7 @@ fn the_tree_declares_zones_pins_and_a_placement_key() {
     let pins = declared_pins();
     assert!(
         pins.iter()
-            .any(|(app, prefix, _)| app == "aoe" && prefix == "agents"),
+            .any(|(app, prefix)| app == "aoe" && prefix == "agents"),
         "the agent tier is the one App the repo pins, so a scan finding no pin found nothing: \
          {pins:?}"
     );
@@ -157,38 +139,13 @@ fn every_meta_pin_names_a_zone_the_registry_holds() {
     let zones = registry_zones();
     let dangling: Vec<String> = declared_pins()
         .into_iter()
-        .filter(|(_, prefix, _)| !zones.contains_key(prefix))
-        .map(|(app, prefix, spelling)| format!("{app} ({spelling}: '{prefix}')"))
+        .filter(|(_, prefix)| !zones.contains_key(prefix))
+        .map(|(app, prefix)| format!("{app} (zone: '{prefix}')"))
         .collect();
     assert!(
         dangling.is_empty(),
         "playbook metas pin Zones the Key Registry does not declare: {}",
         dangling.join(", ")
-    );
-}
-
-/// `zone:` and `domain_key:` are two spellings of one claim, live together
-/// until the follow-up retires the older one. A Meta holding both can say two
-/// different things, and whichever the resolver happens to read first becomes
-/// the rule — decided by ordering rather than by anyone.
-#[test]
-fn no_meta_spells_its_pin_twice() {
-    let mut by_app: BTreeMap<String, Vec<String>> = BTreeMap::new();
-    for (app, prefix, spelling) in declared_pins() {
-        by_app
-            .entry(app)
-            .or_default()
-            .push(format!("{spelling}: '{prefix}'"));
-    }
-    let doubled: Vec<String> = by_app
-        .into_iter()
-        .filter(|(_, spellings)| spellings.len() > 1)
-        .map(|(app, spellings)| format!("{app} ({})", spellings.join(" and ")))
-        .collect();
-    assert!(
-        doubled.is_empty(),
-        "a playbook meta declares its Zone twice; keep one spelling: {}",
-        doubled.join(", ")
     );
 }
 
@@ -218,7 +175,7 @@ fn every_zone_placement_key_names_an_app_with_a_meta() {
 fn every_pinned_app_publishes_a_name() {
     let nameless: Vec<String> = declared_pins()
         .into_iter()
-        .filter(|(app, _, _)| {
+        .filter(|(app, _)| {
             let path = repo()
                 .join("ansible")
                 .join("playbooks")
@@ -229,7 +186,7 @@ fn every_pinned_app_publishes_a_name() {
                 .map(|s| s.trim().is_empty())
                 .unwrap_or(true)
         })
-        .map(|(app, prefix, _)| format!("{app} (zone '{prefix}')"))
+        .map(|(app, prefix)| format!("{app} (zone '{prefix}')"))
         .collect();
     assert!(
         nameless.is_empty(),

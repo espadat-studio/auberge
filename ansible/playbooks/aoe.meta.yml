@@ -6,7 +6,7 @@ required_keys:
   - aoe_subdomain
   - aoe_tailscale_ip
 subdomain: essaim
-domain_key: agents_domain
+zone: agents
 tailnet_only: true
 version:
   value: "1.16.1"
