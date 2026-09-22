@@ -536,7 +536,16 @@ fn the_accumulator_looks_up_the_computed_var_the_crate_emits() {
     assert!(
         !expression.contains("domain_key"),
         "the accumulator must not resolve a Zone itself; the CLI resolved it already \
-         and handed the answer down (ADR-0081)"
+         and handed the answer down (ADR-0081). `domain_key:` is gone from the crate, but \
+         `PlaybookMeta` takes unknown keys silently, so a Meta can still carry one — this \
+         refuses the Ansible half of that resurrection (ADR-0071's founding failure)"
+    );
+    assert!(
+        !expression.contains("zone"),
+        "nor the live spelling. The assertion above forbids only the dead one, and a \
+         resurrection would be written in this one. The needle is the bare word, so it also \
+         refuses `host_zones` — the Host's token set is caddy's to read, and this task maps \
+         one FQDN per App"
     );
 }
 

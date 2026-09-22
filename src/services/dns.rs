@@ -237,14 +237,13 @@ fn discover_all_subdomains_in(
             continue;
         };
 
-        // Not `meta.zone()`: an operator places an App with `<app>_zone`, and
-        // a walk reading only the Meta puts that App back in `public`, where
-        // `plan_set_all` writes `<sub>.<fleet domain>` and calls it a success
-        // (#952). `services::zone` is the one resolver (ADR-0081).
+        // Not `meta.zone` alone: an operator places an App with `<app>_zone`,
+        // and a walk reading only the Meta puts that App back in `public`,
+        // where `plan_set_all` writes `<sub>.<fleet domain>` and calls it a
+        // success (#952). `services::zone` is the one resolver (ADR-0081).
         let placed = crate::services::zone::publication_zone(config, app, &meta);
         if !meta.tailnet_only
-            && let Ok(zone) = &placed
-            && let Some(prefix) = zone.prefix()
+            && let Some(prefix) = placed.prefix()
         {
             off_zone.push(OffZoneApp {
                 app: app.to_string(),
@@ -287,7 +286,7 @@ fn discover_all_subdomains_in(
 /// Publication through this function: a role publishing `git.espadat.com`
 /// while this resolved `git.{domain}` reports success for a name nothing
 /// serves, and `git.{domain}` resolves to the Host anyway, so the check would
-/// not even have to be lucky. Reading `domain_key:` alone was exactly that
+/// not even have to be lucky. Reading the Meta's pin alone was exactly that
 /// bug for an App placed by `<app>_zone`.
 ///
 /// Empty means "nothing to verify", and the Zone's *pair* decides it. A
@@ -855,13 +854,13 @@ mod tests {
         );
     }
 
-    /// A Meta naming one composes against that Zone, so the check verifies the
-    /// name Blocky publishes rather than the one the fleet's domain would make.
+    /// A Meta pinning one composes against that Zone, so the check verifies
+    /// the name Blocky publishes rather than the one the fleet's domain makes.
     #[test]
-    fn app_parent_domain_reads_the_key_the_meta_names() {
+    fn app_parent_domain_reads_the_zone_the_meta_pins() {
         let dir = meta_dir(
             "aoe",
-            "required_keys: []\nsubdomain: essaim\ndomain_key: agents_domain\ntailnet_only: true\n",
+            "required_keys: []\nsubdomain: essaim\nzone: agents\ntailnet_only: true\n",
         );
         let config = Config::from_toml_str(ZONES).unwrap();
 
@@ -872,9 +871,9 @@ mod tests {
     }
 
     /// The bug ADR-0081 exists to delete. An App the operator placed in a Zone
-    /// of their own publishes there, and a verification reading only
-    /// `domain_key:` would check `git.example.com` — which resolves to the
-    /// same Host, so the check would pass on a name nothing serves.
+    /// of their own publishes there, and a verification reading only the
+    /// Meta's pin would check `git.example.com` — which resolves to the same
+    /// Host, so the check would pass on a name nothing serves.
     #[test]
     fn app_parent_domain_follows_an_operators_app_zone() {
         let dir = meta_dir("forgejo", "required_keys: []\nsubdomain: git\n");
@@ -903,7 +902,7 @@ mod tests {
     fn app_parent_domain_is_empty_when_its_key_is_unanswered() {
         let dir = meta_dir(
             "aoe",
-            "required_keys: []\nsubdomain: essaim\ndomain_key: agents_domain\ntailnet_only: true\n",
+            "required_keys: []\nsubdomain: essaim\nzone: agents\ntailnet_only: true\n",
         );
         let config = Config::from_toml_str("domain = \"example.com\"\n").unwrap();
 
@@ -952,7 +951,7 @@ mod tests {
     fn app_parent_domain_answers_per_host() {
         let dir = meta_dir(
             "aoe",
-            "required_keys: []\nsubdomain: essaim\ndomain_key: agents_domain\ntailnet_only: true\n",
+            "required_keys: []\nsubdomain: essaim\nzone: agents\ntailnet_only: true\n",
         );
         let config = Config::from_toml_str(&format!(
             "{ZONES}\n[hosts.ruche]\nagents_domain = \"swarm-example.com\"\n"
@@ -1040,12 +1039,12 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         std::fs::write(
             dir.path().join("forgejo.meta.yml"),
-            "required_keys: []\nsubdomain: git\ndomain_key: studio_domain\n",
+            "required_keys: []\nsubdomain: git\nzone: studio\n",
         )
         .unwrap();
         std::fs::write(
             dir.path().join("colporteur.meta.yml"),
-            "required_keys: []\nsubdomain: blog\ndomain_key: studio_domain\n",
+            "required_keys: []\nsubdomain: blog\nzone: studio\n",
         )
         .unwrap();
         std::fs::write(
@@ -1113,7 +1112,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         std::fs::write(
             dir.path().join("aoe.meta.yml"),
-            "required_keys: []\nsubdomain: essaim\ndomain_key: agents_domain\ntailnet_only: true\n",
+            "required_keys: []\nsubdomain: essaim\nzone: agents\ntailnet_only: true\n",
         )
         .unwrap();
 

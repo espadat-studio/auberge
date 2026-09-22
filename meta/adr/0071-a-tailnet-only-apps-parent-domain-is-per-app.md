@@ -4,6 +4,8 @@
 
 Accepted, 2026-09-01. Decided in #740, preparing `essaim.{agents_domain}`. Completes [ADR-0059](./0059-a-tailnet-only-apps-address-is-per-app.md), which made the _address_ per App and left the _domain_ implicit; the mechanism it needs is [ADR-0068](./0068-the-agent-tier-holds-its-own-dns-zone.md)'s second zone.
 
+Superseded by [ADR-0081](./0081-an-apps-zone-is-a-named-pair-the-cli-resolves.md) on 2026-09-22, which replaces `domain_key:` — a key naming the domain half — with `zone:`, the prefix naming the pair. The decision this ADR records is kept and widened: an App's parent domain is still per App, it is now per App for Public Apps too, and the Cloudflare half this ADR left unplumbed is plumbed. The **"an App whose key is unanswered publishes nothing"** rule is generalised rather than dropped: `zone::placements()` skips an App whose Zone does not resolve for the Host, so it still publishes no entry, and `Preflight` now refuses the run outright when that App is one the run deploys — which is the layer this ADR had none of.
+
 ## Decision
 
 **A Playbook Meta may name the Key Registry key holding its App's parent domain, as `domain_key:`.** DNS Publication composes the App's FQDN as `<effective subdomain>.<that key's answer>`; a Meta naming none composes against `domain`, which is every App in the fleet but one. `aoe.meta.yml` names `agents_domain`.
