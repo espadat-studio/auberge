@@ -1,6 +1,4 @@
 required_keys:
-  - cloudflare_dns_api_token
-  - domain
   - gokapi_admin_password
   - gokapi_admin_user
   - gokapi_subdomain

@@ -478,18 +478,12 @@ mod tests {
     fn test_apps_meta_parses_without_error() {
         let meta = load_meta("apps");
         assert!(meta.required_keys.contains(&"admin_user_name".to_string()));
-        assert!(meta.required_keys.contains(&"domain".to_string()));
-        assert!(
-            meta.required_keys
-                .contains(&"cloudflare_dns_api_token".to_string())
-        );
     }
 
     #[test]
     fn test_hermes_meta_parses_without_error() {
         let meta = load_meta("hermes");
         assert!(meta.required_keys.contains(&"admin_user_name".to_string()));
-        assert!(meta.required_keys.contains(&"domain".to_string()));
         assert!(
             meta.required_keys
                 .contains(&"hermes_llm_provider".to_string())
@@ -508,7 +502,10 @@ mod tests {
     fn test_calibre_meta_parses_without_error() {
         let meta = load_meta("calibre");
         assert!(meta.required_keys.contains(&"admin_user_name".to_string()));
-        assert!(meta.required_keys.contains(&"domain".to_string()));
+        assert!(
+            meta.required_keys
+                .contains(&"calibre_subdomain".to_string())
+        );
         let backup = meta.backup.expect("calibre.meta.yml should declare backup");
         assert_eq!(backup.systemd_services, vec!["calibre"]);
         assert_eq!(

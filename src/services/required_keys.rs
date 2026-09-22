@@ -2,6 +2,7 @@ use crate::config::{Config, Preflight};
 use crate::key_registry::KeyRegistry;
 use crate::playbook_meta::PlaybookMeta;
 use crate::services::dependency_resolver::parse_roster;
+use crate::services::zone;
 use eyre::Result;
 use std::path::{Path, PathBuf};
 
@@ -69,6 +70,19 @@ fn roster_path(playbooks_dir: &Path, stem: &str) -> PathBuf {
     playbooks_dir.join(format!("{stem}.yaml"))
 }
 
+/// Everything a run reads a Playbook Meta off: the Playbook itself, plus the
+/// roster roles its tags select. The one list `required_keys_for` unions keys
+/// over and `preflight_for` demands Zones over, so the two cannot disagree
+/// about what the run is made of.
+fn run_sources(playbooks_dir: &Path, stem: &str, tags: Option<&[String]>) -> Result<Vec<String>> {
+    let mut sources = vec![stem.to_string()];
+    sources.extend(selected_roles(
+        &roster_path(playbooks_dir, stem),
+        tags.unwrap_or_default(),
+    )?);
+    Ok(sources)
+}
+
 /// The effective required config keys for one Playbook run: the Playbook's own
 /// Meta declarations unioned with the Metas of the roles the selected tags
 /// resolve to.
@@ -85,14 +99,8 @@ pub fn required_keys_for(
     let registry = KeyRegistry::load(&ansible_dir.join(REGISTRY_FILE))?;
     let stem = playbook_stem(playbook);
 
-    let mut sources = vec![stem.to_string()];
-    sources.extend(selected_roles(
-        &roster_path(&playbooks_dir, stem),
-        tags.unwrap_or_default(),
-    )?);
-
     let mut keys: Vec<String> = Vec::new();
-    for source in sources {
+    for source in run_sources(&playbooks_dir, stem, tags)? {
         for key in declared_keys(&playbooks_dir, &source, &registry)? {
             if !keys.contains(&key) {
                 keys.push(key);
@@ -145,7 +153,49 @@ pub fn preflight_for(
         .map(|h| h.name)
         .collect();
     assert_host_overrides_known(config, &known)?;
+    zone::assert_no_fleet_wide_zone(config)?;
+    assert_zones_resolve(ansible_dir, config, playbook, tags, host)?;
     config.preflight_with_keys(&required_keys_for(ansible_dir, playbook, tags)?, Some(host))
+}
+
+/// Every App this run deploys has its effective **Zone**'s pair answered for
+/// the Host it is about to run against (ADR-0081).
+///
+/// This is what the App Metas declaring `domain` and
+/// `cloudflare_dns_api_token` used to say, generalised: an App in a Zone of
+/// its own demands *that* Zone's pair, and the fleet's Apps go on demanding
+/// the fleet's. It lives here rather than in [`required_keys_for`] on
+/// purpose — the answer depends on `Config` and on the target Host, and
+/// `required_keys_for` is a pure function of `(playbook, tags)` that the
+/// `Preflight` type's guarantee rests on.
+///
+/// Only an App that **publishes a name** is asked. A bot, a runtime or a
+/// Composition serves no vhost and writes no record, so demanding a Zone of
+/// one would put a Zone's token on a Host that needs none — which is the
+/// outcome ADR-0068 exists to prevent, arrived at from the other side.
+pub(crate) fn assert_zones_resolve(
+    ansible_dir: &Path,
+    config: &Config,
+    playbook: &str,
+    tags: Option<&[String]>,
+    host: &str,
+) -> Result<()> {
+    let playbooks_dir = ansible_dir.join(PLAYBOOKS_DIR);
+    let stem = playbook_stem(playbook);
+    for app in run_sources(&playbooks_dir, stem, tags)? {
+        let path = playbooks_dir.join(format!("{app}{META_SUFFIX}"));
+        if !path.is_file() {
+            continue;
+        }
+        let meta = PlaybookMeta::load(&path)?;
+        if !zone::publishes_a_name(&meta, config, &app, Some(host)) {
+            continue;
+        }
+        let zone = zone::effective_zone(&meta, config, &app, Some(host))?;
+        zone::resolve(&zone, config, Some(host))
+            .map_err(|e| eyre::eyre!("{app} cannot be deployed: {e}"))?;
+    }
+    Ok(())
 }
 
 /// Every `[hosts.<name>]` table must name a Host the roster knows: a typoed
@@ -372,8 +422,21 @@ mod tests {
         let keys = required_keys_for(&repo_ansible_dir(), "apps.yml", None).unwrap();
         let set: HashSet<&str> = keys.iter().map(String::as_str).collect();
         assert!(set.contains("admin_user_name"), "{keys:?}");
-        assert!(set.contains("domain"), "{keys:?}");
-        assert!(set.contains("cloudflare_dns_api_token"), "{keys:?}");
+    }
+
+    /// `domain` and `cloudflare_dns_api_token` left `apps.meta.yml` with
+    /// ADR-0081 and are demanded as the fleet **Zone**'s pair instead. Here so
+    /// the move reads as a move: this function is the pure half, and dropping
+    /// the pair from it without the Zone half would be a silent withdrawal.
+    #[test]
+    fn test_the_base_domain_keys_are_no_longer_a_declared_requirement() {
+        let keys = required_keys_for(&repo_ansible_dir(), "apps.yml", None).unwrap();
+        for key in ["domain", "cloudflare_dns_api_token"] {
+            assert!(
+                !keys.iter().any(|k| k == key),
+                "{key} is the fleet Zone's, demanded by assert_zones_resolve: {keys:?}"
+            );
+        }
     }
 
     /// The run enters every unguarded App, so it demands their keys too — this
@@ -563,8 +626,6 @@ mod tests {
         let keys = required_keys_for(&repo_ansible_dir(), "apps.yml", Some(&tags)).unwrap();
         let set: HashSet<&str> = keys.iter().map(String::as_str).collect();
         assert!(set.contains("admin_user_name"), "{keys:?}");
-        assert!(set.contains("domain"), "{keys:?}");
-        assert!(set.contains("cloudflare_dns_api_token"), "{keys:?}");
     }
 
     #[test]
@@ -586,14 +647,18 @@ mod tests {
     }
 
     /// An App that is also a standalone playbook cannot lean on
-    /// `apps.meta.yml` for the shared base, so its own Meta carries them.
+    /// `apps.meta.yml` for the shared base, and since ADR-0081 neither can
+    /// lean on it for the domain pair — the Zone demand reaches it through
+    /// its own Meta's name either way.
     #[test]
     fn test_standalone_app_playbook_resolves_its_own_base_keys() {
         for app in ["gokapi", "immich"] {
             let keys = required_keys_for(&repo_ansible_dir(), &format!("{app}.yml"), None).unwrap();
             let set: HashSet<&str> = keys.iter().map(String::as_str).collect();
-            assert!(set.contains("domain"), "{app}: {keys:?}");
-            assert!(set.contains("cloudflare_dns_api_token"), "{app}: {keys:?}");
+            assert!(
+                set.contains(&*format!("{app}_subdomain")),
+                "{app}: {keys:?}"
+            );
         }
     }
 
@@ -624,6 +689,129 @@ mod tests {
         )
         .unwrap();
         assert!(assert_host_overrides_known(&config, &known).is_ok());
+    }
+
+    // ── the zone demand ───────────────────────────────────────────────────────
+
+    /// An ansible dir whose `apps.yml` roster holds one App per `(name, meta)`
+    /// pair, each selectable by its own name as a tag.
+    fn zone_fixture(apps: &[(&str, &str)]) -> tempfile::TempDir {
+        let mut roster = String::from("---\n- hosts: all\n  roles:\n");
+        let mut files = vec![("apps.meta.yml", "required_keys: []\n".to_string())];
+        for (name, meta) in apps {
+            roster.push_str(&format!("    - role: {name}\n      tags: [apps, {name}]\n"));
+            files.push((
+                Box::leak(format!("{name}.meta.yml").into_boxed_str()) as &str,
+                (*meta).to_string(),
+            ));
+        }
+        files.push(("apps.yml", roster));
+        let borrowed: Vec<(&str, &str)> = files.iter().map(|(n, b)| (*n, b.as_str())).collect();
+        fixture_ansible_dir(&[], &borrowed)
+    }
+
+    const FLEET_ANSWERED: &str = r#"
+        domain = "fleet.example"
+        cloudflare_dns_api_token = "fleet-token"
+    "#;
+
+    /// The demand `domain` and `cloudflare_dns_api_token` left the Metas for:
+    /// a name-publishing App with no Zone of its own needs the fleet's pair.
+    #[test]
+    fn test_a_published_app_demands_the_fleet_pair_when_it_names_no_zone() {
+        let dir = zone_fixture(&[("navidrome", "required_keys: []\nsubdomain: navidrome\n")]);
+        let config = Config::from_toml_str(FLEET_ANSWERED).unwrap();
+        assert!(assert_zones_resolve(dir.path(), &config, "apps.yml", None, "auberge").is_ok());
+
+        let bare = Config::from_toml_str("domain = \"fleet.example\"\n").unwrap();
+        let err = assert_zones_resolve(dir.path(), &bare, "apps.yml", None, "auberge")
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("navidrome"), "names the app: {err}");
+        assert!(err.contains("cloudflare_dns_api_token"), "{err}");
+    }
+
+    /// An App the operator moved demands *its* Zone's pair, and stops
+    /// demanding the fleet's — the whole point of the pair being named.
+    #[test]
+    fn test_an_off_zone_app_demands_its_own_pair_and_not_the_fleets() {
+        let dir = zone_fixture(&[("forgejo", "required_keys: []\nsubdomain: git\n")]);
+        let config = Config::from_toml_str(
+            r#"
+            studio_domain = "studio.example"
+            studio_cloudflare_dns_api_token = "studio-token"
+
+            [hosts.auberge]
+            forgejo_zone = "studio"
+        "#,
+        )
+        .unwrap();
+        assert!(assert_zones_resolve(dir.path(), &config, "apps.yml", None, "auberge").is_ok());
+
+        // …and the fleet's pair is still what the same App needs elsewhere.
+        let err = assert_zones_resolve(dir.path(), &config, "apps.yml", None, "lechuck")
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("domain"), "{err}");
+    }
+
+    /// An App with no name has no vhost and no record. Demanding a Zone of one
+    /// would put a Zone's token on a Host that serves nothing — ADR-0068's
+    /// outcome, reached from the other side.
+    #[test]
+    fn test_an_app_publishing_no_name_demands_no_zone() {
+        let dir = zone_fixture(&[("tgtg", "required_keys: []\n")]);
+        let empty = Config::from_toml_str("").unwrap();
+        assert!(assert_zones_resolve(dir.path(), &empty, "apps.yml", None, "auberge").is_ok());
+    }
+
+    /// A Composition and a bootstrap have Metas but deploy no name, so the
+    /// demand must not reach them — a virgin Host has no zone answered yet.
+    #[test]
+    fn test_the_repo_bootstrap_run_demands_no_zone() {
+        let empty = Config::from_toml_str("").unwrap();
+        for playbook in ["bootstrap.yml", "hardening.yml", "ruche.yml"] {
+            assert!(
+                assert_zones_resolve(&repo_ansible_dir(), &empty, playbook, None, "auberge")
+                    .is_ok(),
+                "{playbook} must demand no zone"
+            );
+        }
+    }
+
+    /// The repo's own Apps, through the real Metas: an untagged apps run needs
+    /// the fleet pair, and a Host that answers neither is told so.
+    #[test]
+    fn test_the_repo_untagged_apps_run_demands_the_fleet_pair() {
+        let answered = Config::from_toml_str(FLEET_ANSWERED).unwrap();
+        assert!(
+            assert_zones_resolve(&repo_ansible_dir(), &answered, "apps.yml", None, "auberge")
+                .is_ok()
+        );
+
+        let empty = Config::from_toml_str("").unwrap();
+        let err = assert_zones_resolve(&repo_ansible_dir(), &empty, "apps.yml", None, "auberge")
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("the fleet's zone"), "{err}");
+    }
+
+    /// The agent tier still composes against its own pair, under ADR-0071's
+    /// `domain_key:` spelling. A resolver blind to it would demand the parent
+    /// domain's token on the one Host that must never hold it.
+    #[test]
+    fn test_the_repo_agent_tier_demands_the_agents_pair_not_the_fleets() {
+        let config = Config::from_toml_str(
+            r#"
+            agents_domain = "agents.example"
+            agents_cloudflare_dns_api_token = "agents-token"
+        "#,
+        )
+        .unwrap();
+        assert!(
+            assert_zones_resolve(&repo_ansible_dir(), &config, "aoe.yml", None, "ruche").is_ok(),
+            "aoe must resolve on agents_* alone"
+        );
     }
 
     // ── role selection, asked directly ────────────────────────────────────────
