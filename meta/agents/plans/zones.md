@@ -143,7 +143,7 @@ Dump its assertion domain, then dump the replacement's. A quietly smaller fence 
 > - **Only an App that publishes a name is asked for a Zone** (`zone::publishes_a_name`). Demanding the fleet's pair of every Meta breaks `deploy ruche` and `bootstrap`. Recorded in `CONTEXT.md` under **Zone**.
 > - **`Zone::env_var` was cut.** It had no caller and its spelling contradicted ADR-0082's `<ZONE>_DNS_API_TOKEN`. **Phase 4 decides the name** with the drop-in in front of it; the fleet's must stay `CLOUDFLARE_DNS_API_TOKEN`.
 >
-> `effective_zone` reads `zone:` **and** `domain_key:`, because ADR-0081 keeps both live. Phase 5 (#952, PR #958) shipped first and added a second resolver, `PlaybookMeta::zone()`, which reads `domain_key:` only. **Phase 2 must delete it** rather than leave `dns` and Preflight disagreeing about which Zone an App is in.
+> `effective_zone` reads `zone:` **and** `domain_key:`, because ADR-0081 keeps both live. Phase 5 (#952, PR #958) shipped first and added a second resolver, `PlaybookMeta::zone()`, reading `domain_key:` only; its own tripwire fired the moment `<app>_zone` entered the registry, so phase 1 absorbed the convergence. `discover_all_subdomains_in` now calls `zone::publication_zone` and `PlaybookMeta::zone()` is gone. **`publication_zone` is the Host-free question**: `dns` holds one Zone per run and targets no Host, so an App placed under any `[hosts.<name>]` counts as off-Zone.
 
 ### Phase 2 — Injection (Rust)
 

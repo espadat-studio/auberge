@@ -294,14 +294,6 @@ impl PlaybookMeta {
         self.domain_key.as_deref().unwrap_or(DEFAULT_DOMAIN_KEY)
     }
 
-    /// The Zone this App's name lives in, named by the prefix its Key Registry
-    /// pair shares (ADR-0081). `None` is the fleet's Zone, the unnamed one:
-    /// `DEFAULT_DOMAIN_KEY` has no prefix to strip, so the fleet falls out of
-    /// the naming rule rather than being a case beside it.
-    pub fn zone(&self) -> Option<&str> {
-        self.parent_domain_key().strip_suffix("_domain")
-    }
-
     /// The units this App owns, as `systemctl` addresses them: names
     /// qualified, `{admin_user}` substituted, scope made explicit.
     pub fn owned_units(&self, admin_user: &str) -> Vec<OwnedUnit> {
@@ -631,24 +623,6 @@ mod tests {
              (ADR-0081); a key spelled otherwise is silently read as the \
              fleet's Zone: {offenders:?}"
         );
-    }
-
-    /// A Zone is named by the prefix its Key Registry pair shares, so the name
-    /// is read off the key rather than declared a second time. The fleet's
-    /// Zone is the unnamed one: `domain` strips to nothing, and every consumer
-    /// that asks "is this App off the run's Zone" gets `None` for free.
-    #[test]
-    fn test_a_zone_is_the_prefix_its_domain_key_carries() {
-        let bare: PlaybookMeta =
-            serde_yaml::from_str("required_keys: []\n").expect("a Meta naming no key must parse");
-        assert_eq!(bare.zone(), None);
-
-        let named: PlaybookMeta =
-            serde_yaml::from_str("required_keys: []\ndomain_key: agents_domain\n")
-                .expect("a Meta naming a key must parse");
-        assert_eq!(named.zone(), Some("agents"));
-
-        assert_eq!(load_meta("aoe").zone(), Some("agents"));
     }
 
     /// The agent tier holds nothing irreplaceable by construction (ADR-0054):

@@ -54,6 +54,13 @@ impl Zone {
         }
     }
 
+    /// The prefix its key pair shares, `None` for the fleet's Zone. The same
+    /// shape `<app>_zone` is answered in, so a caller can hand it straight
+    /// back to an operator.
+    pub fn prefix(&self) -> Option<&str> {
+        self.prefix.as_deref()
+    }
+
     /// How an error message spells this Zone. The fleet's has no prefix to
     /// name, and "the `` zone" reads as a bug rather than as the default.
     pub fn label(&self) -> String {
@@ -153,6 +160,41 @@ pub fn effective_zone(
         (None, Some(prefix)) => Ok(Zone::named(prefix)),
         (None, None) => Ok(Zone::fleet()),
     }
+}
+
+/// The Zone `app`'s published record lives in, asked without a Host.
+///
+/// [`effective_zone`] answers "which Zone on host X". `dns` cannot ask that:
+/// it holds one Zone per run and targets no Host, while `<app>_zone` is
+/// host-scoped. So it asks the question it can act on — is this App's record
+/// outside the Zone this run holds, anywhere — and a placement under any
+/// `[hosts.<name>]` answers yes. A record in another Zone is out of a
+/// fleet-Zone run's reach whichever Host serves it.
+///
+/// A Meta pin wins, as it does everywhere. The pin-plus-override refusal
+/// lives in Preflight, not here: this is a read, and classifying by the pin
+/// is the right classification while the operator is told at deploy time.
+/// `config` is optional because the callers walk the tree before a Config is
+/// guaranteed to load; without one only the Meta can place an App.
+pub fn publication_zone(config: Option<&Config>, app: &str, meta: &PlaybookMeta) -> Result<Zone> {
+    if let Some(pin) = pinned(meta)? {
+        return Ok(pin);
+    }
+    let Some(config) = config else {
+        return Ok(Zone::fleet());
+    };
+    let key = zone_key(app);
+    let scopes = std::iter::once(None).chain(config.host_override_names().into_iter().map(Some));
+    for scope in scopes {
+        if let Some(prefix) = config
+            .get_for_host(&key, scope.as_deref())
+            .map(|v| v.trim().to_string())
+            .filter(|v| !v.is_empty())
+        {
+            return Ok(Zone::named(prefix));
+        }
+    }
+    Ok(Zone::fleet())
 }
 
 /// A Zone's two answers for one Host, or an error naming the half that is
