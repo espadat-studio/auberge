@@ -353,9 +353,11 @@ fn placements<'a>(
 /// this run happens not to deploy is a name the tailnet stops resolving.
 ///
 /// The Host's Zone set is derived, not declared: a Zone is in it when some
-/// App that publishes a name resolves to it *and* its pair answers for this
-/// Host. A Host that withdrew a Zone's token contributes no such Zone, which
-/// is how the agent tier's box ends up holding one token rather than two.
+/// App that publishes a name resolves to it, its pair answers for this Host,
+/// and — for a *named* Zone — the Host's own table declares it serves that
+/// App ([`declared_on_host`]). A Host that withdrew a Zone's token
+/// contributes no such Zone either, which is how the agent tier's box ends up
+/// holding one token rather than two.
 pub fn computed_vars(
     metas: &[(String, PlaybookMeta)],
     config: &Config,
@@ -370,8 +372,11 @@ pub fn computed_vars(
         vars.insert(format!("{app}{DNS_TOKEN_ENV_SUFFIX}"), zone.env_var());
     }
 
-    let zones: BTreeMap<&Zone, &ZonePair> =
-        placed.iter().map(|(_, zone, pair)| (zone, pair)).collect();
+    let zones: BTreeMap<&Zone, &ZonePair> = placed
+        .iter()
+        .filter(|(app, zone, _)| zone.prefix().is_none() || declared_on_host(config, host, app))
+        .map(|(_, zone, pair)| (zone, pair))
+        .collect();
     let set: Vec<HostZone> = zones
         .into_iter()
         .map(|(zone, pair)| HostZone {
@@ -414,8 +419,45 @@ pub fn assert_no_fleet_wide_zone(config: &Config) -> Result<()> {
     )
 }
 
+/// Whether `host` is declared to serve `app`, and so needs its Zone's token.
+///
+/// A named Zone's token is written onto a Host because an App of that Zone is
+/// served there, and config is the only place that says which Host that is:
+/// the App's **serving gate**, or `<app>_zone` where the operator placed it.
+/// Nothing here can ask "is this App deployed on that Host" — no such
+/// declaration exists.
+///
+/// Both halves read through [`crate::hosts::gate_answered`], the one spelling
+/// of "config answers this for this Host" (ADR-0051, ADR-0058, ADR-0083). A
+/// second, stricter reading is available — the Host's own table, ignoring a
+/// fleet-wide answer — and is deliberately not used: two expressions of one
+/// rule is the divergence ADR-0081 deletes rather than fences, and this gate
+/// already decides whether a guarded role runs and whether its Zone is
+/// demanded. The consequence is that an operator answering `<app>_subdomain`
+/// fleet-wide puts that App's Zone on every Host, which is what answering it
+/// fleet-wide says. `<app>_zone` cannot widen that way: Preflight refuses a
+/// fleet-wide one outright ([`assert_no_fleet_wide_zone`]).
+///
+/// A Host serving an App it never declared writes no token for it, so that
+/// App's vhost names an undefined variable, caddy refuses to start, and the
+/// Ingress Gate reports it in the same run.
+///
+/// The fleet's Zone is exempt, and cannot use this rule: every App answers
+/// its own `<app>_subdomain` fleet-wide, so the fleet Zone is in every Host's
+/// set whatever this says. Its token is chosen per Host by
+/// `infrastructure.yml` instead, which is what keeps the parent domain's off
+/// the agent tier's Host (ADR-0068, ADR-0072).
+fn declared_on_host(config: &Config, host: &str, app: &str) -> bool {
+    serving_gate_answered(config, app, Some(host))
+        || crate::hosts::gate_answered(config, &zone_key(app), Some(host))
+}
+
 fn zone_key(app: &str) -> String {
     format!("{app}{ZONE_SUFFIX}")
+}
+
+fn subdomain_key(app: &str) -> String {
+    format!("{app}_subdomain")
 }
 
 #[cfg(test)]
@@ -561,6 +603,9 @@ mod tests {
 
     /// A Host that withdrew a Zone's token holds no such Zone — ADR-0068's
     /// isolation, arrived at from the derivation rather than declared.
+    ///
+    /// `[hosts.ruche]` declares the agent tier the way the live config does,
+    /// because that declaration is what puts a *named* Zone on a Host at all.
     #[test]
     fn test_a_host_withdrawing_a_pair_drops_that_zone_from_its_set() {
         let toml = r#"
@@ -571,6 +616,7 @@ mod tests {
 
             [hosts.ruche]
             cloudflare_dns_api_token = ""
+            aoe_subdomain = "essaim"
         "#;
         let metas = vec![
             (
@@ -789,6 +835,45 @@ mod tests {
                 "{app} reads {read:?}, absent from {written:?}"
             );
         }
+    }
+
+    /// A named Zone's token lands on the Host its App is declared on, and
+    /// nowhere else. aoe's Meta pins it to the agent tier's Zone on every
+    /// Host, so the pin alone would put that Zone's token on all of them —
+    /// and the operator's host table is the only place in the repo that says
+    /// which Host actually serves it (ADR-0058, ADR-0068).
+    #[test]
+    fn test_a_named_zones_token_lands_only_where_its_app_is_declared() {
+        let toml = format!(
+            "{ZONES_ANSWERED}\nagents_domain = \"agents.example\"\n\
+             agents_cloudflare_dns_api_token = \"agents-token\"\n\
+             navidrome_subdomain = \"navidrome\"\n\
+             [hosts.ruche]\naoe_subdomain = \"essaim\"\n"
+        );
+        let metas = vec![
+            (
+                "aoe".to_string(),
+                meta("required_keys: []\nsubdomain: essaim\nzone: agents\n"),
+            ),
+            ("navidrome".to_string(), meta(BARE)),
+        ];
+
+        assert_eq!(
+            zone_set(&computed(&toml, "ruche", &metas))
+                .into_iter()
+                .map(|z| z.prefix)
+                .collect::<Vec<_>>(),
+            vec![None, Some("agents".to_string())],
+            "the Host the agent tier is declared on holds its token"
+        );
+        assert_eq!(
+            zone_set(&computed(&toml, "auberge", &metas))
+                .into_iter()
+                .map(|z| z.prefix)
+                .collect::<Vec<_>>(),
+            vec![None],
+            "a Host that serves no App of a named Zone must not hold its token"
+        );
     }
 
     /// A Host serving one Zone holds one token. The derivation that widens a
