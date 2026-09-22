@@ -42,6 +42,15 @@ pub const PARENT_DOMAIN_SUFFIX: &str = "_parent_domain";
 /// asks its App for a token, never a Zone for one.
 pub const DNS_TOKEN_SUFFIX: &str = "_dns_api_token";
 
+/// The Computed Var holding the name of the environment variable an App's
+/// vhost reads its Zone's token from: `<app>_dns_api_token_env`.
+///
+/// The name, not the token. `/etc/caddy/sites/*.caddyfile` is mode 0644, so a
+/// vhost states `{env.<name>}` and caddy resolves it out of a 0600 drop-in
+/// (ADR-0082). A literal in the template could only spell the Zone the repo
+/// guessed, which is the one thing an operator-placed App moves.
+pub const DNS_TOKEN_ENV_SUFFIX: &str = "_dns_api_token_env";
+
 /// The Computed Var holding every Zone one Host serves, as JSON: what its
 /// Caddy needs an ACME token for (ADR-0082).
 ///
@@ -99,6 +108,19 @@ impl Zone {
         self.prefixed(TOKEN_SUFFIX)
     }
 
+    /// The `Environment=` name this Zone's token lands under in caddy's
+    /// systemd drop-in, and the name every vhost in the Zone reads it back
+    /// with — `{env.<this>}` (ADR-0082).
+    ///
+    /// The Zone's token key, uppercased. One rule rather than a spelling of
+    /// its own, and it is what makes the fleet's name come out as
+    /// `CLOUDFLARE_DNS_API_TOKEN` — the name caddy has read since ADR-0072,
+    /// which is on every Host already and cannot move without every vhost
+    /// naming a variable no drop-in writes.
+    pub fn env_var(&self) -> String {
+        self.token_key().to_uppercase()
+    }
+
     fn prefixed(&self, suffix: &str) -> String {
         match &self.prefix {
             Some(p) => format!("{p}_{suffix}"),
@@ -130,6 +152,7 @@ pub struct HostZone {
     pub prefix: Option<String>,
     pub domain: String,
     pub token: String,
+    pub env: String,
 }
 
 /// The Zone `meta` pins its App to: its `zone:` prefix, or nothing.
@@ -341,9 +364,10 @@ pub fn computed_vars(
     let placed = placements(config, host, metas)?;
 
     let mut vars = BTreeMap::new();
-    for (app, _, pair) in &placed {
+    for (app, zone, pair) in &placed {
         vars.insert(format!("{app}{PARENT_DOMAIN_SUFFIX}"), pair.domain.clone());
         vars.insert(format!("{app}{DNS_TOKEN_SUFFIX}"), pair.token.clone());
+        vars.insert(format!("{app}{DNS_TOKEN_ENV_SUFFIX}"), zone.env_var());
     }
 
     let zones: BTreeMap<&Zone, &ZonePair> =
@@ -354,6 +378,7 @@ pub fn computed_vars(
             prefix: zone.prefix().map(str::to_string),
             domain: pair.domain.clone(),
             token: pair.token.clone(),
+            env: zone.env_var(),
         })
         .collect();
     vars.insert(
@@ -430,6 +455,26 @@ mod tests {
         let studio = Zone::named("studio");
         assert_eq!(studio.domain_key(), "studio_domain");
         assert_eq!(studio.token_key(), "studio_cloudflare_dns_api_token");
+    }
+
+    /// The fleet's spelling is fixed by what is already on every Host: caddy
+    /// has read `CLOUDFLARE_DNS_API_TOKEN` since ADR-0072, and a Zone that
+    /// renamed it would leave every vhost naming a variable no drop-in writes.
+    #[test]
+    fn test_the_fleet_zones_token_lands_under_the_cloudflare_env_var() {
+        assert_eq!(Zone::fleet().env_var(), "CLOUDFLARE_DNS_API_TOKEN");
+    }
+
+    #[test]
+    fn test_a_named_zones_env_var_carries_its_prefix() {
+        assert_eq!(
+            Zone::named("studio").env_var(),
+            "STUDIO_CLOUDFLARE_DNS_API_TOKEN"
+        );
+        assert_eq!(
+            Zone::named("agents").env_var(),
+            "AGENTS_CLOUDFLARE_DNS_API_TOKEN"
+        );
     }
 
     // ── effective zone ────────────────────────────────────────────────────────
@@ -678,14 +723,72 @@ mod tests {
                     prefix: None,
                     domain: "fleet.example".to_string(),
                     token: "fleet-token".to_string(),
+                    env: "CLOUDFLARE_DNS_API_TOKEN".to_string(),
                 },
                 HostZone {
                     prefix: Some("studio".to_string()),
                     domain: "studio.example".to_string(),
                     token: "studio-token".to_string(),
+                    env: "STUDIO_CLOUDFLARE_DNS_API_TOKEN".to_string(),
                 },
             ]
         );
+    }
+
+    /// An App's vhost names an environment variable, never a token: the
+    /// Caddyfile is mode 0644 (ADR-0082). The name is the App's own Computed
+    /// Var so that an App the operator moved names its new Zone's variable
+    /// without a repo edit — a literal in the template could only ever spell
+    /// the Zone the repo guessed.
+    #[test]
+    fn test_an_app_is_handed_the_env_var_name_of_its_zone() {
+        let toml = format!("{ZONES_ANSWERED}\n[hosts.auberge]\nforgejo_zone = \"studio\"\n");
+        let metas = vec![
+            ("forgejo".to_string(), meta(BARE)),
+            (
+                "navidrome".to_string(),
+                meta("required_keys: []\nsubdomain: navidrome\n"),
+            ),
+        ];
+        let vars = computed(&toml, "auberge", &metas);
+        assert_eq!(
+            vars["forgejo_dns_api_token_env"],
+            "STUDIO_CLOUDFLARE_DNS_API_TOKEN"
+        );
+        assert_eq!(
+            vars["navidrome_dns_api_token_env"],
+            "CLOUDFLARE_DNS_API_TOKEN"
+        );
+    }
+
+    /// The two sides of one deploy: the name an App's vhost reads is the name
+    /// the Host's drop-in writes. They come off one derivation, and this is
+    /// the assertion that fails if a later edit spells either separately.
+    #[test]
+    fn test_every_apps_env_var_is_one_the_hosts_drop_in_writes() {
+        let toml = format!("{ZONES_ANSWERED}\n[hosts.auberge]\nforgejo_zone = \"studio\"\n");
+        let metas = vec![
+            ("forgejo".to_string(), meta(BARE)),
+            (
+                "navidrome".to_string(),
+                meta("required_keys: []\nsubdomain: navidrome\n"),
+            ),
+        ];
+        let vars = computed(&toml, "auberge", &metas);
+        let written: Vec<(String, String)> = zone_set(&vars)
+            .into_iter()
+            .map(|zone| (zone.env, zone.token))
+            .collect();
+        for app in ["forgejo", "navidrome"] {
+            let read = (
+                vars[&format!("{app}{DNS_TOKEN_ENV_SUFFIX}")].clone(),
+                vars[&format!("{app}{DNS_TOKEN_SUFFIX}")].clone(),
+            );
+            assert!(
+                written.contains(&read),
+                "{app} reads {read:?}, absent from {written:?}"
+            );
+        }
     }
 
     /// A Host serving one Zone holds one token. The derivation that widens a

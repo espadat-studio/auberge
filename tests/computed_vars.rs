@@ -21,11 +21,13 @@
 
 mod common;
 
-use auberge::services::zone::{DNS_TOKEN_SUFFIX, HOST_ZONES_VAR, PARENT_DOMAIN_SUFFIX};
+use auberge::services::zone::{
+    DNS_TOKEN_ENV_SUFFIX, DNS_TOKEN_SUFFIX, HOST_ZONES_VAR, PARENT_DOMAIN_SUFFIX,
+};
 use common::{meta_files, registry_keys};
 use std::collections::BTreeSet;
 
-/// Every Computed Var name a run can produce: two per App with a Meta, plus
+/// Every Computed Var name a run can produce: three per App with a Meta, plus
 /// the Host's zone set.
 ///
 /// Built from the same suffixes `services::zone` composes them from
@@ -36,6 +38,7 @@ fn computed_var_names() -> BTreeSet<String> {
     for (app, _) in meta_files() {
         names.insert(format!("{app}{PARENT_DOMAIN_SUFFIX}"));
         names.insert(format!("{app}{DNS_TOKEN_SUFFIX}"));
+        names.insert(format!("{app}{DNS_TOKEN_ENV_SUFFIX}"));
     }
     names
 }
@@ -59,9 +62,9 @@ fn the_fence_reads_every_apps_computed_vars() {
     );
     assert_eq!(
         names.len(),
-        apps * 2 + 1,
-        "every App contributes {PARENT_DOMAIN_SUFFIX} and {DNS_TOKEN_SUFFIX}, and the \
-         Host's zone set is one more: {names:?}"
+        apps * 3 + 1,
+        "every App contributes {PARENT_DOMAIN_SUFFIX}, {DNS_TOKEN_SUFFIX} and \
+         {DNS_TOKEN_ENV_SUFFIX}, and the Host's zone set is one more: {names:?}"
     );
 }
 
