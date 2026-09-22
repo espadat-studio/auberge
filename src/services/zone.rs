@@ -833,6 +833,36 @@ mod tests {
         }
     }
 
+    /// An App's own Computed Vars are *not* narrowed by the same declaration,
+    /// deliberately.
+    ///
+    /// They are computed over every Meta because blocky builds its `customDNS`
+    /// map `run_once` over all of them, so an App this Host does not serve
+    /// still gets its three vars — including the name of a variable this
+    /// Host's drop-in does not write. Deploying that App here therefore leaves
+    /// a vhost naming an undefined variable, caddy refuses to start, and the
+    /// Ingress Gate reports it in that run. That is the loud end of the trade
+    /// ADR-0082 records: narrowing the vars instead would break blocky's map,
+    /// which is the same cure being worse than the disease.
+    #[test]
+    fn test_an_apps_vars_survive_on_a_host_whose_set_lacks_its_zone() {
+        let toml = format!(
+            "{ZONES_ANSWERED}\nagents_domain = \"agents.example\"\n\
+             agents_cloudflare_dns_api_token = \"agents-token\"\n"
+        );
+        let metas = vec![(
+            "aoe".to_string(),
+            meta("required_keys: []\nsubdomain: essaim\nzone: agents\n"),
+        )];
+        let vars = computed(&toml, "auberge", &metas);
+
+        assert_eq!(
+            vars["aoe_dns_api_token_env"],
+            "AGENTS_CLOUDFLARE_DNS_API_TOKEN"
+        );
+        assert_eq!(zone_set(&vars), vec![], "{vars:?}");
+    }
+
     /// A named Zone's token lands on the Host its App is declared on, and
     /// nowhere else. aoe's Meta pins it to the agent tier's Zone on every
     /// Host, so the pin alone would put that Zone's token on all of them —

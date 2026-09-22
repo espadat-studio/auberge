@@ -99,6 +99,11 @@ fn vhosts() -> Vec<(String, String, String)> {
 /// Every whole identifier inside a `{{ … }}` on `line`. Whole, because
 /// `<app>_dns_api_token_env` contains `<app>_dns_api_token`, and the
 /// difference between them is a name and a secret.
+///
+/// Line-scoped, which is why it is not `roles_compose_off_the_zone.rs`'s
+/// file-scoped walk of the same shape: the assertion here is about what one
+/// directive names, and a file-wide set would let a vhost pass on a variable
+/// mentioned in a log block three lines down.
 fn expression_identifiers(line: &str) -> BTreeSet<String> {
     let mut found = BTreeSet::new();
     let mut rest = line;
