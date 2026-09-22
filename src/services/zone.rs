@@ -73,14 +73,6 @@ impl Zone {
         self.prefixed(TOKEN_SUFFIX)
     }
 
-    /// The `Environment=` name caddy reads this Zone's token under. Derived
-    /// from [`Zone::token_key`] rather than spelled separately, so the fleet's
-    /// keeps the `CLOUDFLARE_DNS_API_TOKEN` the drop-in already writes and a
-    /// new Zone cannot be given a name that agrees with nothing (ADR-0082).
-    pub fn env_var(&self) -> String {
-        self.token_key().to_uppercase()
-    }
-
     fn prefixed(&self, suffix: &str) -> String {
         match &self.prefix {
             Some(p) => format!("{p}_{suffix}"),
@@ -195,7 +187,11 @@ pub fn resolve(zone: &Zone, config: &Config, host: Option<&str>) -> Result<ZoneP
 ///
 /// The same question [`crate::services::dns::discover_all_subdomains`] asks
 /// per App: the Meta's `subdomain:` default, or the operator's
-/// `<app>_subdomain`. An App with no name — a bot, a runtime, a Composition —
+/// `<app>_subdomain`. Two expressions of one rule, which is the divergence
+/// class ADR-0081 exists to delete — they converge when `services::dns`
+/// delegates here, and until then a name this says is published and that one
+/// does not is a Zone demanded for a record nothing writes.
+/// An App with no name — a bot, a runtime, a Composition —
 /// serves no vhost and publishes no record, so demanding a Zone of it would
 /// put a Zone's token on a Host that needs none.
 pub fn publishes_a_name(
@@ -293,7 +289,6 @@ mod tests {
         let fleet = Zone::fleet();
         assert_eq!(fleet.domain_key(), "domain");
         assert_eq!(fleet.token_key(), "cloudflare_dns_api_token");
-        assert_eq!(fleet.env_var(), "CLOUDFLARE_DNS_API_TOKEN");
     }
 
     #[test]
@@ -301,7 +296,6 @@ mod tests {
         let studio = Zone::named("studio");
         assert_eq!(studio.domain_key(), "studio_domain");
         assert_eq!(studio.token_key(), "studio_cloudflare_dns_api_token");
-        assert_eq!(studio.env_var(), "STUDIO_CLOUDFLARE_DNS_API_TOKEN");
     }
 
     // ── effective zone ────────────────────────────────────────────────────────

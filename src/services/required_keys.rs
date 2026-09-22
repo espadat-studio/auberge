@@ -173,7 +173,7 @@ pub fn preflight_for(
 /// Composition serves no vhost and writes no record, so demanding a Zone of
 /// one would put a Zone's token on a Host that needs none — which is the
 /// outcome ADR-0068 exists to prevent, arrived at from the other side.
-pub(crate) fn assert_zones_resolve(
+fn assert_zones_resolve(
     ansible_dir: &Path,
     config: &Config,
     playbook: &str,
