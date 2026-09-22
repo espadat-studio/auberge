@@ -30,27 +30,51 @@ fn declared_keys(playbooks_dir: &Path, stem: &str, registry: &KeyRegistry) -> Re
     Ok(keys)
 }
 
-/// The roster roles a run enters.
+/// One Playbook Meta a run reads, and whether the run reaches it only from
+/// behind a `when:` guard.
+struct RunSource {
+    name: String,
+    /// True only when an untagged run reached this role through the roster and
+    /// it carries a `when:`. The Playbook's own Meta is never behind a guard,
+    /// and neither is a role a tag named — naming a role is the operator
+    /// asserting it runs.
+    behind_a_guard: bool,
+}
+
+/// The roster roles a run enters, each carrying whether a `when:` guard stands
+/// between the run and it.
 ///
 /// A tagged run selects a role when one of its declared tags was named, or when
 /// the tag is the role's own name. An untagged run enters the whole roster, so
-/// it selects every entry that is not `when:`-guarded — a guard turns on Host
-/// facts no caller can evaluate before the play runs, and demanding its keys
-/// would fail Hosts the role never touches.
-fn selected_roles(playbook_path: &Path, tags: &[String]) -> Result<Vec<String>> {
+/// it returns every entry — the guarded ones flagged rather than dropped,
+/// because a guard is not one question. "Which keys does this run read" cannot
+/// look behind one; "which Zone does this App need" can, for the guards that
+/// gate on config (ADR-0083). Dropping the entry here answered both at once,
+/// and only the first correctly.
+fn selected_roles(playbook_path: &Path, tags: &[String]) -> Result<Vec<RunSource>> {
     if !playbook_path.is_file() {
         return Ok(Vec::new());
     }
-    Ok(parse_roster(playbook_path)?
-        .into_iter()
-        .filter(|role| match tags {
-            [] => !role.guarded,
-            tags => tags
-                .iter()
-                .any(|tag| *tag == role.name || role.tags.contains(tag)),
-        })
-        .map(|role| role.name)
-        .collect())
+    let mut selected = Vec::new();
+    for role in parse_roster(playbook_path)? {
+        let behind_a_guard = match tags {
+            [] => role.guarded,
+            tags => {
+                if !tags
+                    .iter()
+                    .any(|tag| *tag == role.name || role.tags.contains(tag))
+                {
+                    continue;
+                }
+                false
+            }
+        };
+        selected.push(RunSource {
+            name: role.name,
+            behind_a_guard,
+        });
+    }
+    Ok(selected)
 }
 
 /// A Playbook name with its extension trimmed, however it was spelled.
@@ -71,11 +95,21 @@ fn roster_path(playbooks_dir: &Path, stem: &str) -> PathBuf {
 }
 
 /// Everything a run reads a Playbook Meta off: the Playbook itself, plus the
-/// roster roles its tags select. The one list `required_keys_for` unions keys
-/// over and `preflight_for` demands Zones over, so the two cannot disagree
-/// about what the run is made of.
-fn run_sources(playbooks_dir: &Path, stem: &str, tags: Option<&[String]>) -> Result<Vec<String>> {
-    let mut sources = vec![stem.to_string()];
+/// roster roles its tags select.
+///
+/// The one walk `required_keys_for` unions keys over and `preflight_for`
+/// demands Zones over, so the two cannot disagree about what the run is made
+/// of. They are allowed to disagree about what a **guarded** entry means, and
+/// each says so by reading [`RunSource::behind_a_guard`] itself.
+fn run_sources(
+    playbooks_dir: &Path,
+    stem: &str,
+    tags: Option<&[String]>,
+) -> Result<Vec<RunSource>> {
+    let mut sources = vec![RunSource {
+        name: stem.to_string(),
+        behind_a_guard: false,
+    }];
     sources.extend(selected_roles(
         &roster_path(playbooks_dir, stem),
         tags.unwrap_or_default(),
@@ -101,7 +135,10 @@ pub fn required_keys_for(
 
     let mut keys: Vec<String> = Vec::new();
     for source in run_sources(&playbooks_dir, stem, tags)? {
-        for key in declared_keys(&playbooks_dir, &source, &registry)? {
+        if source.behind_a_guard {
+            continue;
+        }
+        for key in declared_keys(&playbooks_dir, &source.name, &registry)? {
             if !keys.contains(&key) {
                 keys.push(key);
             }
@@ -130,7 +167,7 @@ pub fn run_enters_role(
     Ok(
         selected_roles(&roster_path(&playbooks_dir, stem), tags.unwrap_or_default())?
             .iter()
-            .any(|selected| selected == role),
+            .any(|selected| !selected.behind_a_guard && selected.name == role),
     )
 }
 
@@ -182,6 +219,14 @@ pub fn preflight_for(
 /// Composition serves no vhost and writes no record, so demanding a Zone of
 /// one would put a Zone's token on a Host that needs none — which is the
 /// outcome ADR-0068 exists to prevent, arrived at from the other side.
+///
+/// A role the run reaches only from behind a `when:` guard is asked the
+/// narrower question: did the operator answer its **serving gate**. The Meta
+/// half of "publishes a name" is a repo fact true on every Host, so it cannot
+/// tell a Host that serves the App from one the guard skips — and asking it
+/// of a guarded role refuses `deploy infrastructure` on every Host that does
+/// not serve blocky. The config half is the operator turning the App on here,
+/// which is what the guard itself reads (ADR-0083).
 fn assert_zones_resolve(
     ansible_dir: &Path,
     config: &Config,
@@ -191,13 +236,19 @@ fn assert_zones_resolve(
 ) -> Result<()> {
     let playbooks_dir = ansible_dir.join(PLAYBOOKS_DIR);
     let stem = playbook_stem(playbook);
-    for app in run_sources(&playbooks_dir, stem, tags)? {
+    for source in run_sources(&playbooks_dir, stem, tags)? {
+        let app = source.name;
         let path = playbooks_dir.join(format!("{app}{META_SUFFIX}"));
         if !path.is_file() {
             continue;
         }
         let meta = PlaybookMeta::load(&path)?;
-        if !zone::publishes_a_name(&meta, config, &app, Some(host)) {
+        let serves_a_name = if source.behind_a_guard {
+            zone::serving_gate_answered(config, &app, Some(host))
+        } else {
+            zone::publishes_a_name(&meta, config, &app, Some(host))
+        };
+        if !serves_a_name {
             continue;
         }
         let zone = zone::effective_zone(&meta, config, &app, Some(host))?;
@@ -925,6 +976,149 @@ mod tests {
         );
     }
 
+    // ── a guarded role's zone ─────────────────────────────────────────────────
+
+    /// An ansible dir whose `infra.yml` roster gates `blocky` behind the
+    /// serving-gate `when:` the repo's `infrastructure.yml` writes. The Meta
+    /// names a subdomain, so `publishes_a_name` is true on every Host and only
+    /// the gate can tell the Hosts apart.
+    fn guard_fixture() -> tempfile::TempDir {
+        fixture_ansible_dir(
+            &[],
+            &[
+                ("infra.meta.yml", "required_keys: []\n"),
+                ("blocky.meta.yml", "required_keys: []\nsubdomain: blocky\n"),
+                (
+                    "infra.yml",
+                    "---\n- hosts: all\n  roles:\n    - role: blocky\n      tags: [infra, blocky]\n      when: blocky_subdomain is defined and blocky_subdomain | length > 0\n",
+                ),
+            ],
+        )
+    }
+
+    /// The direction a naive fix breaks. `blocky.meta.yml` declares
+    /// `subdomain: blocky`, so [`zone::publishes_a_name`] is true on *every*
+    /// Host regardless of config — widening the demand to the whole roster
+    /// refuses an untagged run on a Host that never serves blocky.
+    #[test]
+    fn test_a_guarded_role_demands_no_zone_until_its_gate_is_answered() {
+        let dir = guard_fixture();
+        assert!(
+            dir.path().join(PLAYBOOKS_DIR).join("infra.yml").is_file(),
+            "the roster has to exist, or the assertion below passes over nothing"
+        );
+        let empty = Config::from_toml_str("").unwrap();
+        assert!(
+            assert_zones_resolve(dir.path(), &empty, "infra.yml", None, "ruche").is_ok(),
+            "a Host answering no gate serves no guarded role, so it needs no Zone"
+        );
+    }
+
+    /// The trap: the operator answered blocky's gate, so the role runs and
+    /// composes against `blocky_parent_domain` — a Computed Var
+    /// [`zone::computed_vars`] emits only when the Zone's *pair* resolves.
+    /// Withholding the token used to pass Preflight and die mid-play.
+    #[test]
+    fn test_a_guarded_role_demands_its_zone_once_its_gate_is_answered() {
+        let dir = guard_fixture();
+        let config = Config::from_toml_str(
+            "domain = \"fleet.example\"\n\n[hosts.auberge]\nblocky_subdomain = \"blocky\"\n",
+        )
+        .unwrap();
+        let err = assert_zones_resolve(dir.path(), &config, "infra.yml", None, "auberge")
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("blocky"), "names the app: {err}");
+        assert!(
+            err.contains("cloudflare_dns_api_token"),
+            "names the key: {err}"
+        );
+        assert!(err.contains("the fleet's zone"), "names the zone: {err}");
+    }
+
+    /// Naming the role's tag is the operator asserting it runs, so the Meta's
+    /// own `subdomain:` decides again — the same rule
+    /// `test_naming_a_guarded_roles_tag_still_demands_its_keys` states for
+    /// keys, held for Zones.
+    #[test]
+    fn test_a_tag_naming_a_guarded_role_demands_its_zone_with_no_gate_answered() {
+        let dir = guard_fixture();
+        let config = Config::from_toml_str("domain = \"fleet.example\"\n").unwrap();
+        let err = assert_zones_resolve(
+            dir.path(),
+            &config,
+            "infra.yml",
+            Some(&["blocky".into()]),
+            "auberge",
+        )
+        .unwrap_err()
+        .to_string();
+        assert!(err.contains("blocky"), "names the app: {err}");
+        assert!(
+            err.contains("cloudflare_dns_api_token"),
+            "names the key: {err}"
+        );
+    }
+
+    /// The repo's own `infrastructure.yml`, both directions. `blocky` and
+    /// `headscale` are the two roster roles that publish a name behind a
+    /// guard, and a `deploy infrastructure` run is the one that reaches them.
+    #[test]
+    fn test_the_repo_infrastructure_run_follows_the_gates_it_is_given() {
+        let empty = Config::from_toml_str("").unwrap();
+        assert!(
+            assert_zones_resolve(
+                &repo_ansible_dir(),
+                &empty,
+                "infrastructure.yml",
+                None,
+                "ruche"
+            )
+            .is_ok(),
+            "a Host answering neither gate must still deploy infrastructure"
+        );
+
+        let gated = Config::from_toml_str(
+            "domain = \"fleet.example\"\n\n[hosts.auberge]\nblocky_subdomain = \"blocky\"\n",
+        )
+        .unwrap();
+        let err = assert_zones_resolve(
+            &repo_ansible_dir(),
+            &gated,
+            "infrastructure.yml",
+            None,
+            "auberge",
+        )
+        .unwrap_err()
+        .to_string();
+        assert!(err.contains("blocky"), "names the app: {err}");
+        assert!(
+            err.contains("cloudflare_dns_api_token"),
+            "names the key: {err}"
+        );
+    }
+
+    /// The agent tier's App publishes a name behind a `group_names` guard —
+    /// the class no config answer can evaluate. Its gate is still the
+    /// config-answered half, so a Host serving it while withholding its
+    /// Zone's token is refused by name here too.
+    #[test]
+    fn test_a_group_gated_app_demands_its_own_zone_where_its_gate_is_answered() {
+        let config = Config::from_toml_str(
+            "domain = \"fleet.example\"\ncloudflare_dns_api_token = \"fleet-token\"\n\n\
+             [hosts.ruche]\naoe_subdomain = \"essaim\"\n",
+        )
+        .unwrap();
+        let err = assert_zones_resolve(&repo_ansible_dir(), &config, "ruche.yml", None, "ruche")
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("aoe"), "names the app: {err}");
+        assert!(
+            err.contains("agents_domain"),
+            "names the agent tier's key: {err}"
+        );
+    }
+
     // ── role selection, asked directly ────────────────────────────────────────
 
     #[test]
@@ -938,6 +1132,30 @@ mod tests {
         );
         assert!(run_enters_role(dir.path(), "apps.yml", None, "tailscale").unwrap());
         assert!(!run_enters_role(dir.path(), "apps.yml", None, "caddy").unwrap());
+    }
+
+    /// An untagged run does not *enter* a `when:`-guarded role, and naming its
+    /// tag does. The same answer [`required_keys_for`] gives about the same
+    /// role, which is the agreement this function's doc promises: a caller
+    /// gating an SSH round trip on "does this run reach X" and the Preflight
+    /// demanding X's keys read one walk. Asking the Zone demand a narrower
+    /// question about the same entry must not widen this one.
+    #[test]
+    fn test_an_untagged_run_does_not_enter_a_guarded_roster_role() {
+        let dir = fixture_ansible_dir(
+            &[],
+            &[(
+                "apps.yml",
+                "---\n- hosts: all\n  roles:\n    - role: tailscale\n      tags: [network]\n      when: \"'x' in group_names\"\n",
+            )],
+        );
+        assert!(!run_enters_role(dir.path(), "apps.yml", None, "tailscale").unwrap());
+
+        let network = ["network".to_string()];
+        assert!(
+            run_enters_role(dir.path(), "apps.yml", Some(&network), "tailscale").unwrap(),
+            "naming the tag is the operator asserting the role runs"
+        );
     }
 
     #[test]

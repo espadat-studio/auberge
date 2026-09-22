@@ -36,6 +36,9 @@ const TOKEN_SUFFIX: &str = "cloudflare_dns_api_token";
 /// The Config key placing an App in a Zone: `<app>_zone`.
 const ZONE_SUFFIX: &str = "_zone";
 
+/// The Config key answering an App's serving gate: `<app>_subdomain`.
+const SUBDOMAIN_SUFFIX: &str = "_subdomain";
+
 /// The Computed Var holding an App's resolved apex: `<app>_parent_domain`.
 pub const PARENT_DOMAIN_SUFFIX: &str = "_parent_domain";
 
@@ -282,9 +285,29 @@ pub fn publishes_a_name(
     app: &str,
     host: Option<&str>,
 ) -> bool {
-    let answered = |v: Option<String>| v.map(|s| !s.trim().is_empty()).unwrap_or(false);
-    answered(meta.subdomain.clone())
-        || answered(config.get_for_host(&format!("{app}_subdomain"), host))
+    let named = meta
+        .subdomain
+        .as_deref()
+        .map(|s| !s.trim().is_empty())
+        .unwrap_or(false);
+    named || serving_gate_answered(config, app, host)
+}
+
+/// Whether the operator answered `app`'s **serving gate** — `<app>_subdomain`
+/// — for `host`.
+///
+/// The config half of [`publishes_a_name`], asked alone, and the only half a
+/// caller can use to decide whether a `when:`-guarded role *runs* here.
+///
+/// The two halves answer different questions. A Meta's `subdomain:` is the
+/// name an App publishes **once it runs** — true of every Host, since it is a
+/// repo fact. The Config answer is the operator turning the App on for one
+/// Host: config alone answers it and a blank value is no answer (ADR-0051),
+/// scoped under `[hosts.<name>]` like every other one (ADR-0058). A guarded
+/// role's Zone therefore follows this half and never the Meta's, which is
+/// exactly the half that cannot tell the two apart (ADR-0083).
+pub fn serving_gate_answered(config: &Config, app: &str, host: Option<&str>) -> bool {
+    crate::hosts::gate_answered(config, &format!("{app}{SUBDOMAIN_SUFFIX}"), host)
 }
 
 /// Every App that publishes a name on `host`, the Zone it lands in and that
