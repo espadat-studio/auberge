@@ -311,10 +311,10 @@ fn test_a_host_serving_only_the_fleet_writes_one_line() {
     );
 }
 
-/// A Host with nothing to say still gets the fleet's default: the caddy role
-/// runs on every Host, including one publishing no name at all.
+/// A Host with nothing to say still gets the fleet's line: the caddy role runs
+/// on every Host, including one publishing no name at all.
 #[test]
-fn test_a_host_with_an_empty_zone_set_keeps_the_default() {
+fn test_a_host_with_an_empty_zone_set_still_gets_the_fleets_line() {
     assert_eq!(
         environment(&render(FLEET_TOKEN, &[])),
         vec![(Zone::fleet().env_var(), FLEET_TOKEN.to_string())]
@@ -344,9 +344,7 @@ fn test_a_host_serving_a_second_zone_writes_both_tokens() {
 /// The agent tier's Host resolves the fleet Zone like every other — its Apps
 /// answer their subdomains fleet-wide — so the Zone set hands the drop-in the
 /// parent domain's token. Taking the fleet's line from that set would write
-/// it onto the one box ADR-0054 assumes compromisable. It comes from
-/// `infrastructure.yml`'s per-Host choice instead, and `ruche` is handed the
-/// agent tier's token there.
+/// it onto the one box ADR-0054 assumes compromisable.
 #[test]
 fn test_the_parent_domains_token_never_reaches_the_agent_tiers_host() {
     let rendered = render(
@@ -359,12 +357,26 @@ fn test_the_parent_domains_token_never_reaches_the_agent_tiers_host() {
          tier (ADR-0068); the fleet's line takes `{FLEET_INDIRECTION}`, never the Zone \
          set's own token:\n{rendered}"
     );
+}
+
+/// And the fleet's *name* does not survive there either.
+///
+/// `infrastructure.yml` hands that Host the agent tier's token, so writing it
+/// under the fleet's name leaves a name that lies: a fleet-Zone vhost on that
+/// Host would answer DNS-01 with a token scoped to another zone, deploy
+/// green, and fail weeks later at renewal. Twelve vhosts answered over
+/// HTTP-01 before this change and did not care which token was there; they do
+/// now. Absent, caddy refuses to start and the Ingress Gate reports it in the
+/// same run.
+#[test]
+fn test_a_host_answering_for_a_named_zone_holds_that_zones_token_alone() {
+    let rendered = render(
+        AGENT_TOKEN,
+        &[(None, FLEET_TOKEN), (Some("agents"), AGENT_TOKEN)],
+    );
     assert_eq!(
         environment(&rendered),
-        vec![
-            (Zone::fleet().env_var(), AGENT_TOKEN.to_string()),
-            (Zone::named("agents").env_var(), AGENT_TOKEN.to_string()),
-        ],
+        vec![(Zone::named("agents").env_var(), AGENT_TOKEN.to_string())],
         "{rendered}"
     );
 }

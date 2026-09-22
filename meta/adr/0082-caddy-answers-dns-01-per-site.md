@@ -28,7 +28,7 @@ A Zone is in a Host's set when an App that publishes a name resolves to it and i
 
 So `caddy_dns_api_token` is not the default for a Host with nothing to say. It is the fleet Zone's line, on every Host, chosen per Host by `infrastructure.yml` exactly as ADR-0072 has it. The Zone set supplies the **named** Zones only.
 
-A named Zone needs one thing more than resolving: the Host's own table has to declare that Host serves the App — `<app>_zone` for one the operator placed, `<app>_subdomain` for one the repo pinned. A Meta's `zone:` holds on every Host, so the pin alone put the agent tier's token on all three boxes, and no declaration of which Host runs which App exists anywhere else in the repo. A Host serving an App its table never mentions writes no token for it and fails the Ingress Gate, which is the loud end of that trade.
+A named Zone needs one thing more than resolving: the Host's own table has to declare that Host serves the App — `<app>_zone` for one the operator placed, `<app>_subdomain` for one the repo pinned. A Meta's `zone:` holds on every Host, so the pin alone put the agent tier's token on all three boxes, and no declaration of which Host runs which App exists anywhere else in the repo. It is stricter than ADR-0072's gate, which reads the merged value and is satisfied by a fleet-wide answer: a fleet-wide `<app>_subdomain` places a pinned App's Zone nowhere, and that App's vhost then names a variable no drop-in writes. A Host serving an App its table never mentions writes no token for it and fails the Ingress Gate, which is the loud end of that trade.
 
 Two spellings this decision left open, settled the same way — one rule, no literal:
 

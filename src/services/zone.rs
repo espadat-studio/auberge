@@ -456,10 +456,6 @@ fn zone_key(app: &str) -> String {
     format!("{app}{ZONE_SUFFIX}")
 }
 
-fn subdomain_key(app: &str) -> String {
-    format!("{app}_subdomain")
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
