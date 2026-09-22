@@ -25,6 +25,17 @@ pub struct PlaybookMeta {
     /// ignores publishes a name the other cannot find.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub domain_key: Option<String>,
+    /// The **Zone** prefix this App is pinned to — the repo asserting the App
+    /// must be isolated, true for every operator rather than a fact about one
+    /// deployment (ADR-0081). A pin refuses an operator's `<app>_zone`; an App
+    /// the repo has no business placing declares nothing here and is placed
+    /// from `Config`, or stays in the fleet's Zone.
+    ///
+    /// Read through `services::zone`, which also reads `domain_key:` — the
+    /// same pin under ADR-0071's spelling, live until the follow-up re-spells
+    /// the agent tier's.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub zone: Option<String>,
     #[serde(default, skip_serializing_if = "HashMap::is_empty")]
     pub memory: HashMap<String, MemoryBudget>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -885,6 +896,7 @@ version:
             tailnet_only: false,
             subdomain: None,
             domain_key: None,
+            zone: None,
             memory: HashMap::new(),
             units: Vec::new(),
         };

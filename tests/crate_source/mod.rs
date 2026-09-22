@@ -131,6 +131,7 @@ pub const CRATE_MODULES: &[&str] = &[
     "src/services/ssh/transport.rs",
     "src/services/ssh_include.rs",
     "src/services/unit_state.rs",
+    "src/services/zone.rs",
     "src/signal.rs",
     "src/ssh_config.rs",
     "src/tool_versions.rs",
