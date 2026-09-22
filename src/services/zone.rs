@@ -134,8 +134,11 @@ pub struct HostZone {
 
 /// The Zone `meta` pins its App to: its `zone:` prefix, or nothing.
 ///
-/// A prefix is a Zone's whole identity, so there is no malformed shape to
-/// reject and no way for this to fail.
+/// A prefix is a Zone's whole identity, so there is no shape to reject here
+/// and no way for this to fail. A prefix naming no Zone is still possible and
+/// is caught where the answer is: `tests/zone_declaration.rs` refuses a pin
+/// whose pair the Key Registry does not hold, and [`resolve`] refuses one the
+/// operator has not answered for the Host.
 pub fn pinned(meta: &PlaybookMeta) -> Option<Zone> {
     meta.zone
         .as_deref()
