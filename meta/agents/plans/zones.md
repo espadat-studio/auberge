@@ -191,7 +191,7 @@ Nothing in ansible reads them yet. Deployable, no-op.
 | `docs(adr): record per-site acme`                | ADR-0082; `adr.md`                                      | `check-adr-numbering.sh` |
 
 > [!IMPORTANT]
-> **Phase 4 landed as PR #<this>, with nine deviations from the rows above.**
+> **Phase 4 landed as PR #964, with eleven deviations from the rows above.**
 >
 > - **The fleet's line is not taken from the Zone set, and ADR-0082 is amended for it.** A Zone is in a Host's set when an App that publishes a name resolves to it — and every App answers its `<app>_subdomain` fleet-wide, so the fleet Zone is in _every_ Host's set, the agent tier's included. Deriving that line writes the parent domain's token onto the one Host ADR-0068 exists to keep it off. `caddy_dns_api_token` stays the fleet Zone's line on every Host, chosen by `infrastructure.yml`; the set supplies the **named** Zones only.
 > - **A named Zone also needs the Host's table to declare it serves the App**, so this phase changed `zone.rs` where the plan had it Ansible-only. A Meta's `zone:` holds on every Host, so the pin alone put the agent tier's token on all three boxes. `declared_on_host` reads `<app>_zone` or `<app>_subdomain` under `[hosts.<name>]` — the same declaration ADR-0072's gate already reads, and the only fact in the repo that says where an App runs.
