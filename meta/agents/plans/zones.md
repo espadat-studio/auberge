@@ -155,7 +155,7 @@ Dump its assertion domain, then dump the replacement's. A quietly smaller fence 
 Nothing in ansible reads them yet. Deployable, no-op.
 
 > [!IMPORTANT]
-> **Phase 2 landed as PR #TBD, with five deviations from the rows above.**
+> **Phase 2 landed as PR #959, with five deviations from the rows above.**
 >
 > - **The injection point is `Preflight`, not `ansible_runner.rs`.** `run_playbook`'s `extra_vars` is a per-call `-e` list; `Preflight::flat_vars` is the `@vars` file every run already writes. `preflight_for` overlays the Computed Vars there, _after_ the config flatten — `flatten_for_ansible` hands Ansible every top-level `config.toml` entry, Key Registry or not, so overlaying last is what makes a hand-written entry of one of these names reach no role rather than quietly win. `ansible_runner.rs` is untouched.
 > - **`host_zone_set` is deleted.** Phase 1 added it; it never gained a production caller, and once `computed_vars` derived the same set it was a second derivation of one fact. Both questions now read one private walk, `placements()`, which returns each App with its Zone _and_ that Zone's pair. Its four unit cases moved onto `computed_vars`; one was fully covered by the new cases and dropped.
@@ -173,7 +173,7 @@ Nothing in ansible reads them yet. Deployable, no-op.
 | `refactor(ansible): roles compose off their app's zone` | 17 defaults; 11 `dns_record` sites; blocky | `roles_compose_off_the_zone.rs`; replaces `tailnet_only_parent_domain.rs` |
 
 > [!IMPORTANT]
-> **Phase 3 landed as PR #TBD, with seven deviations from the row above.**
+> **Phase 3 landed as PR #961, with seven deviations from the row above.**
 >
 > - **18 defaults, not 17.** `aoe` composed off `{{ agents_domain }}` — the same defect spelled with the other Zone's key. Left alone it would have been the one role in the tree still resolving a Zone itself, which is the asymmetry this row's own rationale rejects. `aoe_parent_domain` resolves through the Meta's `domain_key:` to the same answer, so nothing moves.
 > - **`infrastructure.meta.yml` keeps `domain`.** Phase 1 expected phase 3 to drop it. It cannot: headscale still reads `{{ domain }}` for `headscale_base_domain`, the MagicDNS suffix, and for the split-DNS entry in `headscale-config.yaml.j2`. Both are fleet-wide facts, not headscale's own name, and neither follows an App that changes Zone.
