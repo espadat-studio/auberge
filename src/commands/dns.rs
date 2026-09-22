@@ -3,8 +3,9 @@ use crate::output::{OutputArg, OutputFormat};
 use crate::prompt::{Choice, select_item};
 use crate::services::cloudflare_dns::CloudflareDns;
 use crate::services::dns::{
-    AppliedRecord, DiscoveredSubdomains, DnsRecords, MigrationOutcome, PlannedRecord,
-    SetAllOutcome, SetAllPlan, WRITE_PACE, apply_set_all, discover_all_subdomains, plan_set_all,
+    AppliedRecord, DiscoveredSubdomains, DnsRecords, MigrationOutcome, OffZoneApp, PlannedRecord,
+    SetAllOutcome, SetAllPlan, SkipReason, SkippedApp, WRITE_PACE, apply_set_all,
+    discover_all_subdomains, plan_set_all,
 };
 use clap::Subcommand;
 use eyre::Result;
@@ -123,18 +124,21 @@ pub enum DnsCommands {
         about = "Batch create A records for all app subdomains",
         long_about = "Interactively or automatically create DNS A records for all configured \
                       app subdomains pointing to a selected host's IP address.\n\n\
-                      Tailnet-only apps (playbook meta `tailnet_only: true`) are handled \
-                      automatically per ADR-0003:\n\n\
-                      • Implicit discovery (no --subdomains): tailnet-only apps are skipped \
-                        automatically; a grouped info line is emitted to stderr.\n\
-                      • Explicit target (--subdomains names a tailnet-only app): hard-error \
-                        before any record is written; use `auberge deploy <app>` instead.\n\n\
+                      Two kinds of app are never written, and both are named rather than \
+                      left out of the count — tailnet-only apps (playbook meta \
+                      `tailnet_only: true`, ADR-0003), and apps in a DNS zone this run does \
+                      not hold (ADR-0081; one zone per run).\n\n\
+                      • Implicit discovery (no --subdomains): both are skipped, each listed \
+                        to stderr with its own reason.\n\
+                      • Explicit target (--subdomains names one of them): hard-error before \
+                        any record is written. For a tailnet-only app use \
+                        `auberge deploy <app>`; for an off-zone app, run against its zone.\n\n\
                       EXAMPLES:\n  \
-                      # Publish all Public Apps; tailnet-only apps are skipped automatically\n  \
+                      # Publish all Public Apps in this zone; the rest are named and skipped\n  \
                       auberge dns set-all --host auberge\n\n  \
                       # Dry-run preview\n  \
                       auberge dns set-all --host auberge --dry-run\n\n  \
-                      # Only specific apps (all must be public)\n  \
+                      # Only specific apps (all must be public and in this run's zone)\n  \
                       auberge dns set-all --host auberge --subdomains freshrss,baikal"
     )]
     SetAll {
@@ -184,9 +188,92 @@ fn print_mode_banner() {
     output::info("CLOUDFLARE DNS");
 }
 
+/// One off-Zone App as a JSON body spells it.
+#[derive(Serialize)]
+struct OffZoneRow {
+    app: String,
+    subdomain: String,
+    zone: String,
+}
+
+fn off_zone_rows(off_zone: &[OffZoneApp]) -> Vec<OffZoneRow> {
+    off_zone
+        .iter()
+        .map(|o| OffZoneRow {
+            app: o.app.clone(),
+            subdomain: o.subdomain.clone(),
+            zone: o.zone.clone(),
+        })
+        .collect()
+}
+
+/// The Apps a roster-wide report could not have reached, in the shape the
+/// reason vocabulary is already written for. `set-all` gets these rows from
+/// its plan; the commands that read the zone rather than a plan build them
+/// here, so all four name the exclusion in one wording instead of four.
+fn off_zone_as_skipped(off_zone: &[OffZoneApp], run_domain: &str) -> Vec<SkippedApp> {
+    off_zone
+        .iter()
+        .map(|o| SkippedApp {
+            app: o.app.clone(),
+            subdomain: o.subdomain.clone(),
+            reason: SkipReason::OffZone {
+                zone: o.zone.clone(),
+                run_domain: run_domain.to_string(),
+            },
+        })
+        .collect()
+}
+
+/// Every App a report leaves out, each naming its own reason. `None` when
+/// there is nothing to name, so no caller can print a heading over an empty
+/// list.
+///
+/// One list rather than a group per reason: the reasons are not
+/// interchangeable — tailnet-only is a record that must never exist,
+/// off-Zone is one this run cannot reach — and a grouped header has to be
+/// right about which group the reader is looking at, where a per-row reason
+/// cannot be wrong.
+///
+/// Returns the text instead of printing it because "the exclusion is named"
+/// is the claim this change exists to make. Printed straight to stderr it
+/// would be the one claim no test could read.
+fn skipped_report(header: &str, skipped: &[SkippedApp]) -> Option<String> {
+    if skipped.is_empty() {
+        return None;
+    }
+    let mut text = format!("\n{header}");
+    for app in skipped {
+        text.push_str(&format!(
+            "\n  • {} (subdomain: {}) — {}",
+            app.app,
+            app.subdomain,
+            app.reason.describe()
+        ));
+    }
+    Some(text)
+}
+
+fn print_skipped(header: &str, skipped: &[SkippedApp]) {
+    if let Some(text) = skipped_report(header, skipped) {
+        eprintln!("{text}");
+    }
+}
+
+/// The heading the commands that read the zone put over their off-Zone list.
+/// `set-all` uses its own: it had the Apps in hand and chose not to write
+/// them, where these three could never have seen them.
+const OFF_ZONE_HEADER: &str = "In another DNS zone, outside this run:";
+
+/// The off-Zone note is the one exclusion that reaches `list` only as stderr
+/// chrome, on both formats. ADR-0004 fixes this command's body as a bare array
+/// of the zone's records, and an off-Zone App is not a record of this zone —
+/// it is an App whose record is in another one. Wrapping the array to carry it
+/// would break every consumer to report something the array is not about.
 pub async fn run_dns_list(subdomain: Option<String>, output: OutputFormat) -> Result<()> {
     let dns = CloudflareDns::connect().await?;
     let records = dns.list_records().await?;
+    let off_zone = discover_all_subdomains().off_zone;
 
     let filtered: Vec<_> = match &subdomain {
         Some(name) => records.iter().filter(|r| r.name == *name).collect(),
@@ -205,11 +292,19 @@ pub async fn run_dns_list(subdomain: Option<String>, output: OutputFormat) -> Re
                 })
                 .collect();
             println!("{}", serde_json::to_string_pretty(&rows)?);
+            print_skipped(
+                OFF_ZONE_HEADER,
+                &off_zone_as_skipped(&off_zone, dns.domain()),
+            );
         }
         OutputFormat::Human => {
             print_mode_banner();
             if filtered.is_empty() {
                 output::info("No DNS records found");
+                print_skipped(
+                    OFF_ZONE_HEADER,
+                    &off_zone_as_skipped(&off_zone, dns.domain()),
+                );
                 return Ok(());
             }
             eprintln!(
@@ -230,6 +325,10 @@ pub async fn run_dns_list(subdomain: Option<String>, output: OutputFormat) -> Re
                     record.ttl
                 );
             }
+            print_skipped(
+                OFF_ZONE_HEADER,
+                &off_zone_as_skipped(&off_zone, dns.domain()),
+            );
         }
     }
 
@@ -242,28 +341,44 @@ struct StatusARecord {
     ip: String,
 }
 
+/// `missing_subdomains` is `status`'s load-bearing field, and it answers only
+/// for the run's zone: an off-Zone App is in neither `configured_subdomains`
+/// nor `missing_subdomains`, so an empty `missing_subdomains` reads as a
+/// fleet-wide all-clear when it is a statement about one zone. `off_zone`
+/// names what the answer does not cover.
 #[derive(Serialize)]
 struct DnsStatusJson {
     domain: String,
     configured_subdomains: Vec<String>,
     active_a_records: Vec<StatusARecord>,
     missing_subdomains: Vec<String>,
+    off_zone: Vec<OffZoneRow>,
 }
 
-/// The subdomains `dns status` expects to find published, sorted so the report
-/// does not inherit `HashMap` iteration order.
-fn configured_subdomains() -> Vec<String> {
-    let mut names: Vec<String> = crate::services::dns::discover_subdomains()
-        .into_values()
-        .map(|e| e.subdomain)
+/// The subdomains a command expects to find published, sorted so the report
+/// does not inherit `HashMap` iteration order. Takes the walk rather than
+/// making one, so `status` can read the off-Zone half of the same discovery
+/// instead of walking the playbooks tree twice.
+fn subdomain_names(discovered: &DiscoveredSubdomains) -> Vec<String> {
+    let mut names: Vec<String> = discovered
+        .public
+        .values()
+        .map(|e| e.subdomain.clone())
         .collect();
     names.sort();
     names
 }
 
+fn configured_subdomains() -> Vec<String> {
+    subdomain_names(&discover_all_subdomains())
+}
+
 pub async fn run_dns_status(output: OutputFormat) -> Result<()> {
     let dns = CloudflareDns::connect().await?;
-    let status = crate::services::dns::status(&dns, configured_subdomains()).await?;
+    let discovered = discover_all_subdomains();
+    let configured = subdomain_names(&discovered);
+    let status = crate::services::dns::status(&dns, configured).await?;
+    let off_zone = discovered.off_zone;
 
     let a_records: Vec<(&str, String)> = status
         .active_records
@@ -284,6 +399,7 @@ pub async fn run_dns_status(output: OutputFormat) -> Result<()> {
                     })
                     .collect(),
                 missing_subdomains: status.missing_subdomains.clone(),
+                off_zone: off_zone_rows(&off_zone),
             };
             println!("{}", serde_json::to_string_pretty(&json_status)?);
         }
@@ -307,6 +423,10 @@ pub async fn run_dns_status(output: OutputFormat) -> Result<()> {
             } else {
                 eprintln!("\nAll configured subdomains have A records");
             }
+            print_skipped(
+                OFF_ZONE_HEADER,
+                &off_zone_as_skipped(&off_zone, &status.domain),
+            );
         }
     }
 
@@ -466,15 +586,20 @@ struct MigrationSkippedRow {
     reason: String,
 }
 
-/// The ADR-0004 body, mirroring `MigrationOutcome`.
+/// The ADR-0004 body, mirroring `MigrationOutcome` plus the reach limit the
+/// outcome cannot hold: `migrated` and `skipped` partition the records the run
+/// *saw*, and `off_zone` names the Apps whose records were in another zone and
+/// so were never candidates.
 #[derive(Serialize)]
 struct MigrationOutput {
     migrated: Vec<MigrationRow>,
     skipped: Vec<MigrationSkippedRow>,
+    off_zone: Vec<OffZoneRow>,
 }
 
-fn migration_json(outcome: &MigrationOutcome) -> MigrationOutput {
+fn migration_json(outcome: &MigrationOutcome, off_zone: &[OffZoneApp]) -> MigrationOutput {
     MigrationOutput {
+        off_zone: off_zone_rows(off_zone),
         migrated: outcome
             .migrated
             .iter()
@@ -497,7 +622,15 @@ fn migration_json(outcome: &MigrationOutcome) -> MigrationOutput {
     }
 }
 
-fn print_migration(outcome: &MigrationOutcome, target_ip: &str, dry_run: bool) {
+/// `off_zone` arrives already carrying the run's domain inside each row's
+/// reason, so the run's Zone is not a fifth parameter travelling beside the
+/// list it belongs to.
+fn print_migration(
+    outcome: &MigrationOutcome,
+    off_zone: &[SkippedApp],
+    target_ip: &str,
+    dry_run: bool,
+) {
     print_mode_banner();
     if dry_run {
         eprintln!("[DRY RUN] DNS Migration Preview");
@@ -523,6 +656,8 @@ fn print_migration(outcome: &MigrationOutcome, target_ip: &str, dry_run: bool) {
             eprintln!("  • {} ({})", skipped.subdomain, skipped.ip);
         }
     }
+
+    print_skipped(OFF_ZONE_HEADER, off_zone);
 
     let skipped = tailnet_only_suffix(outcome.skipped.len());
     if dry_run {
@@ -570,23 +705,55 @@ pub async fn run_dns_migrate(
     let target_ip = resolve_migrate_target(target, crate::prompt::is_interactive())?;
     let dns = CloudflareDns::connect().await?;
     let outcome = crate::services::dns::migrate_all(&dns, &target_ip, dry_run).await?;
+    let off_zone = discover_all_subdomains().off_zone;
 
     match output {
         OutputFormat::Json => println!(
             "{}",
-            serde_json::to_string_pretty(&migration_json(&outcome))?
+            serde_json::to_string_pretty(&migration_json(&outcome, &off_zone))?
         ),
-        OutputFormat::Human => print_migration(&outcome, &target_ip, dry_run),
+        OutputFormat::Human => print_migration(
+            &outcome,
+            &off_zone_as_skipped(&off_zone, dns.domain()),
+            &target_ip,
+            dry_run,
+        ),
     }
 
     Ok(())
 }
 
+/// One `SkippedApp` as the JSON body spells it. `zone` and `run_domain` are
+/// the off-Zone reason's two names, absent on the tailnet-only reason rather
+/// than null: a consumer reads them off `reason`, and a record kept out of
+/// Cloudflare on principle has no zone to name.
 #[derive(Serialize, Debug)]
 struct SkippedRow {
     app: String,
     subdomain: String,
     reason: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    zone: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    run_domain: Option<String>,
+}
+
+impl SkippedRow {
+    fn from(skipped: &SkippedApp) -> Self {
+        let (zone, run_domain) = match &skipped.reason {
+            SkipReason::TailnetOnly => (None, None),
+            SkipReason::OffZone { zone, run_domain } => {
+                (Some(zone.clone()), Some(run_domain.clone()))
+            }
+        };
+        Self {
+            app: skipped.app.clone(),
+            subdomain: skipped.subdomain.clone(),
+            reason: skipped.reason.as_str().to_string(),
+            zone,
+            run_domain,
+        }
+    }
 }
 
 /// What the run did with its plan. The one field an ADR-0004 consumer can
@@ -695,15 +862,7 @@ fn set_all_json(plan: &SetAllPlan, applied: &SetAllOutcome, run: RunOutcome) -> 
         outcome: run,
         planned: plan.to_create.iter().map(PlannedRow::from).collect(),
         created: applied.created.iter().map(SetAllRow::from).collect(),
-        skipped: plan
-            .skipped
-            .iter()
-            .map(|s| SkippedRow {
-                app: s.app.clone(),
-                subdomain: s.subdomain.clone(),
-                reason: s.reason.as_str().to_string(),
-            })
-            .collect(),
+        skipped: plan.skipped.iter().map(SkippedRow::from).collect(),
         failed: applied
             .failed
             .iter()
@@ -723,7 +882,7 @@ fn print_plan(plan: &SetAllPlan, dry_run: bool) {
         output::info(&format!("{} {} A record(s):", verb, plan.to_create.len()));
     } else {
         output::info(&format!(
-            "{} {} A record(s), skipping {} (tailnet-only):",
+            "{} {} A record(s), skipping {}:",
             verb,
             plan.to_create.len(),
             plan.skipped.len()
@@ -735,16 +894,12 @@ fn print_plan(plan: &SetAllPlan, dry_run: bool) {
         eprintln!("  • {} → {}", record.fqdn, record.ip);
     }
 
-    if !plan.skipped.is_empty() {
-        let names: Vec<&str> = plan.skipped.iter().map(|s| s.app.as_str()).collect();
-        eprintln!(
-            "\nSkipping (tailnet-only — published via Blocky):\n  • {}",
-            names.join(", ")
-        );
-    }
+    print_skipped("Skipping:", &plan.skipped);
 }
 
-/// The tail both closing lines carry, empty when nothing was skipped.
+/// The tail `migrate`'s closing line carries, empty when nothing was skipped.
+/// Every record `migrate` skips holds a tailnet address, so the count names
+/// one reason; `set-all` skips for two and states each per row instead.
 fn tailnet_only_suffix(count: usize) -> String {
     if count == 0 {
         String::new()
@@ -757,7 +912,11 @@ fn tailnet_only_suffix(count: usize) -> String {
 /// says how many records it abandoned rather than implying it tried them: the
 /// denominator is the plan, and only `created` is a claim about what landed.
 fn print_summary(plan: &SetAllPlan, outcome: &SetAllOutcome, target_ip: &str) {
-    let skipped = tailnet_only_suffix(plan.skipped.len());
+    let skipped = if plan.skipped.is_empty() {
+        String::new()
+    } else {
+        format!(" (skipped {})", plan.skipped.len())
+    };
 
     if outcome.failed.is_empty() {
         output::success(&format!(
@@ -905,11 +1064,12 @@ async fn set_all<D: DnsRecords>(
 
     if plan.to_create.is_empty() {
         if human {
-            output::info(if plan.skipped.is_empty() {
-                "No subdomains to process"
+            if plan.skipped.is_empty() {
+                output::info("No subdomains to process");
             } else {
-                "All discovered apps are tailnet-only; nothing to create."
-            });
+                output::info("Nothing to create — every discovered app was skipped:");
+                print_skipped("Skipping:", &plan.skipped);
+            }
         } else {
             print_set_all_body(
                 &plan,
@@ -1047,10 +1207,22 @@ mod tests {
                 ip: "192.168.1.10".to_string(),
             }],
             missing_subdomains: vec![],
+            off_zone: off_zone_rows(&[OffZoneApp {
+                app: "forgejo".to_string(),
+                subdomain: "git".to_string(),
+                zone: "studio".to_string(),
+            }]),
         };
         let json = serde_json::to_string(&status).unwrap();
         assert!(json.contains("\"missing_subdomains\":[]"));
         assert!(json.contains("\"active_a_records\":[{\"name\":\"freshrss.example.com\""));
+        assert!(
+            json.contains(
+                "\"off_zone\":[{\"app\":\"forgejo\",\"subdomain\":\"git\",\"zone\":\"studio\"}]"
+            ),
+            "an empty missing_subdomains must not read as an all-clear for a zone \
+             this run never saw: {json}"
+        );
     }
 
     #[test]
@@ -1090,7 +1262,7 @@ mod tests {
             migrated: vec![migrated("rss")],
             skipped: vec![skipped_record("bichon", "100.64.0.9")],
         };
-        let json = serde_json::to_string(&migration_json(&outcome)).unwrap();
+        let json = serde_json::to_string(&migration_json(&outcome, &[])).unwrap();
         assert!(json.contains("\"migrated\":[{"));
         assert!(json.contains("\"skipped\":[{"));
         assert!(json.contains("\"subdomain\":\"bichon\""));
@@ -1109,9 +1281,9 @@ mod tests {
                 skipped_record("cockpit", "100.101.255.46"),
             ],
         };
-        let json = serde_json::to_string(&migration_json(&outcome)).unwrap();
+        let json = serde_json::to_string(&migration_json(&outcome, &[])).unwrap();
         assert!(json.contains("\"migrated\":[]"));
-        assert_eq!(migration_json(&outcome).skipped.len(), 2);
+        assert_eq!(migration_json(&outcome, &[]).skipped.len(), 2);
     }
 
     #[test]
@@ -1333,15 +1505,102 @@ mod tests {
 
     #[test]
     fn skipped_row_serialises_with_app_subdomain_reason() {
-        let row = SkippedRow {
+        let json = serde_json::to_string(&SkippedRow::from(&SkippedApp {
             app: "cockpit".to_string(),
             subdomain: "cockpit".to_string(),
-            reason: SkipReason::TailnetOnly.as_str().to_string(),
-        };
-        let json = serde_json::to_string(&row).unwrap();
+            reason: SkipReason::TailnetOnly,
+        }))
+        .unwrap();
         assert!(json.contains("\"app\":\"cockpit\""));
         assert!(json.contains("\"subdomain\":\"cockpit\""));
         assert!(json.contains("\"reason\":\"tailnet_only\""));
+        assert!(
+            !json.contains("zone"),
+            "a record kept off Cloudflare on principle has no zone to name: {json}"
+        );
+    }
+
+    /// The claim this change exists to make, asserted on the text a human
+    /// actually reads. A plan holding the row proves nothing about whether
+    /// the row is printed, and #952 is about the printing.
+    #[test]
+    fn the_report_names_every_excluded_app_and_its_reason() {
+        let rows = vec![
+            SkippedApp {
+                app: "bichon".to_string(),
+                subdomain: "bichon".to_string(),
+                reason: SkipReason::TailnetOnly,
+            },
+            SkippedApp {
+                app: "forgejo".to_string(),
+                subdomain: "git".to_string(),
+                reason: SkipReason::OffZone {
+                    zone: "studio".to_string(),
+                    run_domain: "example.com".to_string(),
+                },
+            },
+        ];
+
+        let text = skipped_report("Skipping:", &rows).expect("rows must produce a report");
+
+        assert!(text.contains("Skipping:"), "{text}");
+        assert!(text.contains("bichon"), "{text}");
+        assert!(text.contains("Blocky"), "the tailnet-only reason: {text}");
+        assert!(text.contains("forgejo"), "{text}");
+        assert!(text.contains("subdomain: git"), "{text}");
+        assert!(
+            text.contains("studio"),
+            "the off-Zone reason must name the App's Zone: {text}"
+        );
+        assert!(
+            text.contains("example.com"),
+            "the off-Zone reason must name the run's: {text}"
+        );
+    }
+
+    /// No heading over an empty list: a report that says "Skipping:" and then
+    /// nothing reads as output that was cut off.
+    #[test]
+    fn the_report_is_absent_rather_than_empty() {
+        assert_eq!(skipped_report("Skipping:", &[]), None);
+    }
+
+    /// The three commands that read the zone rather than a plan report the
+    /// exclusion in the same wording `set-all` uses, off the same reason.
+    #[test]
+    fn a_zone_reading_command_reports_off_zone_apps_in_the_shared_wording() {
+        let off_zone = [OffZoneApp {
+            app: "forgejo".to_string(),
+            subdomain: "git".to_string(),
+            zone: "studio".to_string(),
+        }];
+
+        let rows = off_zone_as_skipped(&off_zone, "example.com");
+        assert_eq!(rows[0].reason.as_str(), "off_zone");
+
+        let text = skipped_report(OFF_ZONE_HEADER, &rows).expect("one row must produce a report");
+        assert!(text.contains("forgejo"), "{text}");
+        assert!(text.contains("studio"), "{text}");
+        assert!(text.contains("example.com"), "{text}");
+    }
+
+    /// An off-Zone skip is the one a consumer can act on — the record exists,
+    /// somewhere this run could not reach — so the row carries both names
+    /// rather than leaving `off_zone` as a token to look up elsewhere.
+    #[test]
+    fn skipped_row_names_both_zones_on_an_off_zone_skip() {
+        let json = serde_json::to_string(&SkippedRow::from(&SkippedApp {
+            app: "forgejo".to_string(),
+            subdomain: "git".to_string(),
+            reason: SkipReason::OffZone {
+                zone: "studio".to_string(),
+                run_domain: "example.com".to_string(),
+            },
+        }))
+        .unwrap();
+        assert!(json.contains("\"reason\":\"off_zone\""));
+        assert!(json.contains("\"zone\":\"studio\""));
+        assert!(json.contains("\"run_domain\":\"example.com\""));
     }
 
     // The Backup Verdict convention, matching `versions_exit_code`: 0 every
@@ -1386,6 +1645,7 @@ mod tests {
                 )]
                 .into_iter()
                 .collect(),
+                off_zone: vec![],
             },
             vec!["paperless".to_string()],
             &Default::default(),

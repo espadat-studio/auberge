@@ -347,8 +347,12 @@ fn test_every_declared_domain_key_is_a_registry_key() {
 
 /// The field's reach is the Tailnet-only channel. Cloudflare publication still
 /// composes one zone per run — `plan_set_all` takes a single `domain` — so a
-/// Public App in a second zone would publish an A record in the wrong zone
-/// rather than fail. It fails here instead.
+/// Public App in a second zone cannot be published by this repo's ansible: its
+/// `dns_record` call site and its vhost both still compose off `domain`, which
+/// is a record and a certificate in the wrong zone. `auberge dns` no longer
+/// contributes to that (#952: it names an off-Zone App and refuses to write
+/// it), but the roles do, so the combination fails here until they compose off
+/// the App's Zone.
 #[test]
 fn test_only_a_tailnet_only_app_declares_a_domain_key() {
     let public: Vec<String> = declared_domain_keys()
