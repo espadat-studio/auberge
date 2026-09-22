@@ -52,6 +52,7 @@ auberge dns migrate --ip 10.0.0.5              # address outside the inventory
 - Updates **only existing** A records. Doesn't create new ones.
 - Skips records whose current IP is in CGNAT range `100.64.0.0/10` — a tailnet address is not a Host address, so repointing one would take a tailnet-only subdomain off the tailnet (ADR-0003). Each skip is reported: named under `Skipping (holds a tailnet address, not a Host address)` on `human`, and as a row in the `skipped` array on `json`.
 - Only A records under the domain are candidates. The apex, records in other domains, and every non-A type (CNAME, AAAA, TXT, MX, NS, SRV) appear in neither array. `www` is not special-cased — it is untouched only when it is a CNAME, as it usually is.
+- An app in another DNS zone has its records there, not here, so `migrate` never sees them. `dns` resolves one zone per run (ADR-0081), so those apps are named in the `off_zone` array and on stderr — a report short of the roster would otherwise read as a completed migration. Migrating them is a second run, scoped to their zone.
 
 ## VPS migration workflow
 
@@ -66,7 +67,7 @@ dig +short cal.example.com    # verify
 
 ## JSON output
 
-`migrated` and `skipped` partition the records the run took as candidates, so a caller diffing against the zone can tell a record left behind on purpose from one the run never saw. `migrated` carries every in-scope record with the outcome of its write, failures included — read `success`, not membership.
+`migrated` and `skipped` partition the records the run took as candidates, so a caller diffing against the zone can tell a record left behind on purpose from one the run never saw. `migrated` carries every in-scope record with the outcome of its write, failures included — read `success`, not membership. `off_zone` is neither: it names apps whose records are in a zone this run does not hold, so they were never candidates and no `old_ip` exists to report.
 
 ```json
 {
@@ -80,7 +81,8 @@ dig +short cal.example.com    # verify
   ],
   "skipped": [
     { "subdomain": "bichon", "ip": "100.64.0.9", "reason": "tailnet_only" }
-  ]
+  ],
+  "off_zone": [{ "app": "forgejo", "subdomain": "git", "zone": "studio" }]
 }
 ```
 
@@ -93,8 +95,11 @@ dig +short cal.example.com    # verify
 | `skipped`  | `subdomain` | string  | Subdomain label of the untouched record  |
 | `skipped`  | `ip`        | string  | CGNAT address the record keeps           |
 | `skipped`  | `reason`    | string  | Always `tailnet_only` (ADR-0003)         |
+| `off_zone` | `app`       | string  | App whose Zone this run does not hold    |
+| `off_zone` | `subdomain` | string  | Its effective subdomain                  |
+| `off_zone` | `zone`      | string  | The Zone its record lives in             |
 
-Rows appear in the order Cloudflare listed the zone; neither array is sorted.
+`migrated` and `skipped` rows appear in the order Cloudflare listed the zone; neither is sorted. `off_zone` is sorted by app, because it comes from the roster rather than the zone.
 
 :::caution
 `--dry-run` reports the same `skipped` rows as a real run, but every `migrated` row carries `success: true` without a write. `set-all` avoids this by discriminating on a top-level `outcome` and holding its untouched candidates in `planned` (ADR-0044); `migrate` has no such field yet, so on a dry run treat `migrated` as the plan, not the result.

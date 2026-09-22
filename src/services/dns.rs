@@ -996,6 +996,40 @@ mod tests {
         assert_eq!(discovered.public["freshrss"].subdomain, "rss");
     }
 
+    /// The tripwire this partition needs, because it is unreachable in-tree.
+    ///
+    /// Today the only Zone declaration is a Meta's `domain_key:`, and
+    /// `tests/tailnet_only_parent_domain.rs` still forbids a Public App from
+    /// carrying one — so `off_zone` is empty for any tree that passes the
+    /// suite, and emptying the partition's branch would break nothing but the
+    /// tests above. Reachability arrives with `<app>_zone` (ADR-0081), the
+    /// operator's declaration site, which the walk below does not read.
+    ///
+    /// This fails the moment that key enters the registry. Wiring it in is the
+    /// same edit as answering it: a run that resolves an App into a second
+    /// Zone while this walk still reads only the Meta puts it back in
+    /// `public`, and `plan_set_all` writes `git.<fleet domain>` and reports a
+    /// success — the exact defect #952 closed.
+    #[test]
+    fn the_operator_zone_key_is_not_yet_a_declaration_this_walk_can_miss() {
+        let keys = std::fs::read_to_string(
+            std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+                .join("ansible")
+                .join("keys.yml"),
+        )
+        .expect("the Key Registry must be readable");
+
+        assert!(
+            !keys.contains("_zone:"),
+            "`<app>_zone` is now answerable, so an App's effective Zone is no \
+             longer a Meta-only fact. `discover_all_subdomains_in` must resolve \
+             it the way ADR-0081's `effective_zone` does — Meta pin, else \
+             `<app>_zone` for the Host, else the fleet's — or an operator-placed \
+             App falls back into `public` and is published into the wrong zone \
+             without a word. Delete this test once the walk reads the key."
+        );
+    }
+
     /// The agent tier is Tailnet-only *and* in its own Zone, and ADR-0003 is
     /// the stronger claim: it has no Cloudflare record in any zone, so
     /// "look in the other zone" is advice that leads nowhere.

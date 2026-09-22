@@ -592,6 +592,39 @@ mod tests {
         );
     }
 
+    /// Every declared domain key is either the fleet's or `<zone>_domain`.
+    ///
+    /// `zone()` derives the Zone by stripping `_domain`, so a key spelled any
+    /// other way strips to `None` and reads as the fleet's Zone — an App in a
+    /// second Zone classified into the run's, which is the misreport #952
+    /// exists to prevent. The suffix is what makes the derivation total, and
+    /// registry membership does not imply it.
+    #[test]
+    fn test_every_declared_domain_key_carries_the_zone_suffix() {
+        let offenders: Vec<String> = std::fs::read_dir(playbooks_dir())
+            .unwrap()
+            .filter_map(|e| e.ok())
+            .map(|e| e.path())
+            .filter(|p| {
+                p.file_name()
+                    .and_then(|n| n.to_str())
+                    .is_some_and(|n| n.ends_with(".meta.yml"))
+            })
+            .filter_map(|path| {
+                let meta = PlaybookMeta::load(&path).ok()?;
+                let key = meta.parent_domain_key();
+                (key != DEFAULT_DOMAIN_KEY && !key.ends_with("_domain"))
+                    .then(|| format!("{}: {key}", path.display()))
+            })
+            .collect();
+        assert!(
+            offenders.is_empty(),
+            "a Zone is named by the prefix its `<zone>_domain` key carries \
+             (ADR-0081); a key spelled otherwise is silently read as the \
+             fleet's Zone: {offenders:?}"
+        );
+    }
+
     /// A Zone is named by the prefix its Key Registry pair shares, so the name
     /// is read off the key rather than declared a second time. The fleet's
     /// Zone is the unnamed one: `domain` strips to nothing, and every consumer
