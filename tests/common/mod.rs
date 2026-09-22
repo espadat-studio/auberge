@@ -73,6 +73,10 @@ use serde_yaml::{Mapping, Sequence, Value};
 /// Ownership each App declares. Two fences read it since #720 folded it out
 /// of `unit_ownership.rs`.
 pub mod apps;
+/// The caddy layer over this walk: which roles can restart it, and which
+/// vhosts they deploy. Three fences read one half or the other, and the two
+/// halves had to meet before either could say its domain was complete (#954).
+pub mod caddy;
 /// The systemd units this walk's tasks install, one layer over it. Five fences
 /// re-derived that layer from these primitives before #668 folded it.
 pub mod units;

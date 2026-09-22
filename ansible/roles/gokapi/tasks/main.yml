@@ -319,7 +319,7 @@
     - name: Deploy Gokapi Caddyfile
       ansible.builtin.template:
         src: templates/Caddyfile.j2
-        dest: "/etc/caddy/sites/{{ gokapi_domain }}.caddyfile"
+        dest: /etc/caddy/sites/gokapi.caddyfile
         owner: root
         group: root
         mode: "0644"

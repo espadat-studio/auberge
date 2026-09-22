@@ -29,21 +29,15 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
-use std::path::PathBuf;
 
 use auberge::services::zone::{DNS_TOKEN_ENV_SUFFIX, HOST_ZONES_VAR, Zone};
 use minijinja::value::Value as JValue;
 use minijinja::{Environment, UndefinedBehavior};
-use serde_yaml::Value;
 
 mod common;
 
-use common::{all_roles, field, relative, role_dir, role_tasks};
-
-/// The directory caddy imports its sites from, and so what makes a template a
-/// vhost: the fence finds them by where they land, not by what they are
-/// called. Half the tree spells one `Caddyfile.j2` and half `<app>.caddyfile.j2`.
-const SITES_DIR: &str = "/etc/caddy/sites/";
+use common::caddy::{Vhost, vhosts};
+use common::role_dir;
 
 /// The role variable holding the token for the fleet's Zone, chosen per Host.
 const FLEET_INDIRECTION: &str = "caddy_dns_api_token";
@@ -65,36 +59,6 @@ const DECLARED_NO_CHALLENGE: &[(&str, &str, &str)] = &[(
     "an `http://localhost:<port>` site, serving the feed files FreshRSS polls over \
      loopback: no public name, no certificate, and so no challenge to answer",
 )];
-
-/// Every vhost in the tree, as `(role, template file name, body)`.
-///
-/// Found through the task that deploys it, so a role that stops writing a
-/// site drops out and a new one is picked up with no list to update.
-fn vhosts() -> Vec<(String, String, String)> {
-    let mut found = Vec::new();
-    for role in all_roles() {
-        for task in role_tasks(&role) {
-            let Some(args) =
-                field(&task.body, "ansible.builtin.template").and_then(Value::as_mapping)
-            else {
-                continue;
-            };
-            let dest = field(args, "dest").and_then(Value::as_str).unwrap_or("");
-            if !dest.contains(SITES_DIR) {
-                continue;
-            }
-            let src = field(args, "src")
-                .and_then(Value::as_str)
-                .unwrap_or_else(|| panic!("{role}: a vhost task must name a src"));
-            let name = src.trim_start_matches("templates/").to_string();
-            let path: PathBuf = role_dir(&role).join("templates").join(&name);
-            let body =
-                fs::read_to_string(&path).unwrap_or_else(|e| panic!("{}: {e}", relative(&path)));
-            found.push((role.clone(), name, body));
-        }
-    }
-    found
-}
 
 /// Every whole identifier inside a `{{ … }}` on `line`. Whole, because
 /// `<app>_dns_api_token_env` contains `<app>_dns_api_token`, and the
@@ -139,7 +103,7 @@ fn challenge_line(body: &str) -> Option<&str> {
 #[test]
 fn test_the_fence_reads_every_vhost_in_the_tree() {
     let found = vhosts();
-    let roles: BTreeSet<&str> = found.iter().map(|(role, _, _)| role.as_str()).collect();
+    let roles: BTreeSet<&str> = found.iter().map(|vhost| vhost.role.as_str()).collect();
 
     assert_eq!(
         found.len(),
@@ -147,10 +111,7 @@ fn test_the_fence_reads_every_vhost_in_the_tree() {
         "the tree deploys a different number of caddy sites than this fence was \
          written against; check the new one's `tls` block, then update this count: \
          {:?}",
-        found
-            .iter()
-            .map(|(role, name, _)| format!("{role}/{name}"))
-            .collect::<Vec<_>>()
+        found.iter().map(Vhost::id).collect::<Vec<_>>()
     );
     assert_eq!(
         roles.len(),
@@ -168,10 +129,12 @@ fn test_every_vhost_answers_dns_01_with_its_own_apps_variable() {
         .map(|(role, file, _)| (*role, *file))
         .collect();
 
-    for (role, name, body) in vhosts() {
+    for vhost in vhosts() {
+        let (role, name) = (&vhost.role, &vhost.template);
         if exempt.contains(&(role.as_str(), name.as_str())) {
             continue;
         }
+        let body = vhost.body();
         let line = challenge_line(&body).unwrap_or_else(|| {
             panic!(
                 "{role}/{name} answers no DNS-01 challenge of its own: add \
@@ -201,16 +164,16 @@ fn test_every_vhost_answers_dns_01_with_its_own_apps_variable() {
 fn test_every_declared_exemption_is_still_a_site_that_answers_nothing() {
     let found = vhosts();
     for (role, file, why) in DECLARED_NO_CHALLENGE {
-        let (_, _, body) = found
+        let site = found
             .iter()
-            .find(|(r, name, _)| r == role && name == file)
+            .find(|vhost| vhost.role == *role && vhost.template == *file)
             .unwrap_or_else(|| {
                 panic!(
                     "DECLARED_NO_CHALLENGE names {role}/{file}, which deploys no site; drop the row"
                 )
             });
         assert!(
-            challenge_line(body).is_none(),
+            challenge_line(&site.body()).is_none(),
             "{role}/{file} answers a challenge now, so its exemption is stale — drop \
              the row: {why}"
         );
@@ -225,8 +188,10 @@ fn test_no_vhost_reads_the_token_itself() {
     let value_var = DNS_TOKEN_ENV_SUFFIX
         .strip_suffix("_env")
         .expect("the name var is the value var plus `_env`");
-    for (role, name, body) in vhosts() {
-        let leaked: Vec<String> = body
+    for vhost in vhosts() {
+        let (role, name) = (&vhost.role, &vhost.template);
+        let leaked: Vec<String> = vhost
+            .body()
             .lines()
             .flat_map(expression_identifiers)
             .filter(|id| id.ends_with(value_var) || id == "cloudflare_dns_api_token")

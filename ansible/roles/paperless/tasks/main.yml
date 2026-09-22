@@ -304,7 +304,7 @@
     - name: Deploy Caddy site configuration
       ansible.builtin.template:
         src: paperless.caddyfile.j2
-        dest: "/etc/caddy/sites/{{ paperless_domain }}.caddyfile"
+        dest: /etc/caddy/sites/paperless.caddyfile
         owner: root
         group: root
         mode: "0644"

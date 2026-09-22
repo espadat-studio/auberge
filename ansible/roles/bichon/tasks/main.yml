@@ -192,7 +192,7 @@
     - name: Deploy Caddy site configuration
       ansible.builtin.template:
         src: bichon.caddyfile.j2
-        dest: "/etc/caddy/sites/{{ bichon_domain }}.caddyfile"
+        dest: /etc/caddy/sites/bichon.caddyfile
         owner: root
         group: root
         mode: "0644"

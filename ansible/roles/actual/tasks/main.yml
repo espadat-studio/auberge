@@ -125,7 +125,7 @@
     - name: Deploy Actual Caddyfile
       ansible.builtin.template:
         src: templates/actual.caddyfile.j2
-        dest: "/etc/caddy/sites/{{ actual_domain }}.caddyfile"
+        dest: /etc/caddy/sites/actual.caddyfile
         owner: root
         group: root
         mode: "0644"
