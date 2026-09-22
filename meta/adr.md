@@ -90,6 +90,7 @@ One number, one file. Every file in `meta/adr/` is listed here; a number that ap
 | 0080 | [A declared datasource is one the CLI can resolve](./adr/0080-a-declared-datasource-is-one-the-cli-can-resolve.md)                                              |
 | 0081 | [An App's Zone is a named pair, and only the CLI resolves it](./adr/0081-an-apps-zone-is-a-named-pair-the-cli-resolves.md)                                      |
 | 0082 | [Caddy answers DNS-01 per site, not per process](./adr/0082-caddy-answers-dns-01-per-site.md)                                                                   |
+| 0083 | [A guarded role's Zone follows its serving gate](./adr/0083-a-guarded-roles-zone-follows-its-serving-gate.md)                                                   |
 
 ## Native systemd by default
 
