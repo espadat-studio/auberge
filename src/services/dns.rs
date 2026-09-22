@@ -965,6 +965,9 @@ mod tests {
         );
     }
 
+    // The ADR-0003 partition read off the live playbook tree, not a fixture:
+    // a meta that loses `tailnet_only` would otherwise only surface as a
+    // Cloudflare A record published for an App that must not have one.
     #[test]
     fn discover_all_subdomains_partitions_tailnet_only() {
         // discover_all_subdomains -> Config::load() reads XDG_CONFIG_HOME, which

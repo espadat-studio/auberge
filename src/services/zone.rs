@@ -47,6 +47,14 @@ pub const DNS_TOKEN_SUFFIX: &str = "_dns_api_token";
 
 /// The Computed Var holding every Zone one Host serves, as JSON: what its
 /// Caddy needs an ACME token for (ADR-0082).
+///
+/// **Its value embeds Cloudflare tokens under a name that `config.rs`'s
+/// `SENSITIVE_SUFFIXES` test does not match.** Every other secret a run
+/// carries is named `…_token` or `…_key` and is redacted by that suffix
+/// test; this one is a list, and no honest name for a list of Zones carries
+/// the suffix. Nothing renders a run's variables today, so there is no leak
+/// path — but a caller that ever does must redact this name explicitly
+/// rather than by heuristic, and the Ansible task reading it needs `no_log`.
 pub const HOST_ZONES_VAR: &str = "host_zones";
 
 /// A DNS zone, identified by the prefix its Key Registry pair shares. `None`
@@ -323,6 +331,11 @@ fn placements<'a>(
 /// Computed for every App with a Meta, not only the run's: blocky builds its
 /// `customDNS` map `run_once` over all of them, so a map missing the Apps
 /// this run happens not to deploy is a name the tailnet stops resolving.
+///
+/// The Host's Zone set is derived, not declared: a Zone is in it when some
+/// App that publishes a name resolves to it *and* its pair answers for this
+/// Host. A Host that withdrew a Zone's token contributes no such Zone, which
+/// is how the agent tier's box ends up holding one token rather than two.
 pub fn computed_vars(
     metas: &[(String, PlaybookMeta)],
     config: &Config,
@@ -336,10 +349,6 @@ pub fn computed_vars(
         vars.insert(format!("{app}{DNS_TOKEN_SUFFIX}"), pair.token.clone());
     }
 
-    // Derived, not declared: a Zone is in the set when some App that
-    // publishes a name resolves to it *and* its pair answers for this Host.
-    // A Host that withdrew a Zone's token contributes no such Zone, which is
-    // how the agent tier's box ends up holding one token rather than two.
     let zones: BTreeMap<&Zone, &ZonePair> =
         placed.iter().map(|(_, zone, pair)| (zone, pair)).collect();
     let set: Vec<HostZone> = zones

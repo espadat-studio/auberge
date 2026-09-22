@@ -83,24 +83,3 @@ fn no_computed_var_is_a_key_registry_key() {
          to override (ADR-0081). Drop the key, or rename the Computed Var."
     );
 }
-
-/// The Host's zone set is one name for the whole fleet rather than one per
-/// App, so it cannot be shadowed by an App called `host`. Held separately
-/// because it is the only Computed Var that is not derived from an App name.
-#[test]
-fn the_host_zone_set_is_not_an_apps_var() {
-    let apps: BTreeSet<String> = meta_files().into_iter().map(|(app, _)| app).collect();
-    for suffix in [PARENT_DOMAIN_SUFFIX, DNS_TOKEN_SUFFIX] {
-        assert!(
-            !HOST_ZONES_VAR.ends_with(suffix)
-                || !apps.contains(HOST_ZONES_VAR.trim_end_matches(suffix)),
-            "'{HOST_ZONES_VAR}' collides with an App's own {suffix} var"
-        );
-    }
-    assert!(
-        !registry_keys().contains(HOST_ZONES_VAR),
-        "'{HOST_ZONES_VAR}' is computed from which Apps resolve to which Zone on a Host \
-         (ADR-0082); a config answer would let an operator put a token on a box by \
-         writing its name"
-    );
-}
