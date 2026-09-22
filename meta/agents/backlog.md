@@ -20,3 +20,11 @@ Create a GitHub issue.
 ## When a skill says "fetch the relevant ticket"
 
 Run `gh issue view <number> --comments`.
+
+## Rejected enhancements
+
+`.out-of-scope/` holds one Markdown file per rejected **concept**, not per issue: why it was rejected, and every issue that asked for it. Triage reads `.out-of-scope/*.md` before evaluating a new request, so a concept settled once is not re-litigated.
+
+Write here only when an **enhancement** is closed `wontfix`. Never for a bug, and never for something closed because it is already implemented — a built feature recorded as a rejection poisons the dedup read. Point those at where the feature lives instead.
+
+Changed your mind? Delete the file. Old issues stay closed as the historical record.
