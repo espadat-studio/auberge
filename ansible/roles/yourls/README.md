@@ -87,7 +87,7 @@ ansible-playbook -i inventory playbook.yml
 - **Database**: MariaDB on `localhost` via Unix socket
 - **Web server**: Caddy with PHP-FPM via a dedicated pool socket `/var/run/php/yourls-fpm.sock`
 - **PHP-FPM pool**: dedicated `yourls` pool in `pool.d/yourls.conf`, so YOURLS never depends on the default `www` pool another role may delete (#733)
-- **Domain**: `{{ yourls_subdomain }}.{{ domain }}`
+- **Domain**: `{{ yourls_subdomain }}.{{ yourls_parent_domain }}`
 - **Admin interface**: `https://{{ yourls_domain }}/admin/`
 
 ## Idempotency

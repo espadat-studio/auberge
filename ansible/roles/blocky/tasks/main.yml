@@ -75,7 +75,7 @@
 
 - name: Obtain Let's Encrypt certificate with Lego (Cloudflare DNS challenge)
   environment:
-    CLOUDFLARE_DNS_API_TOKEN: "{{ cloudflare_dns_api_token }}"
+    CLOUDFLARE_DNS_API_TOKEN: "{{ blocky_dns_api_token }}"
   ansible.builtin.command:
     cmd: "{{ blocky_lego_run_cmd }}"
     creates: "{{ blocky_cert_file }}"
@@ -196,9 +196,9 @@
     app_name: "{{ item.source | basename | regex_replace('\\.meta\\.yml$', '') }}"
     override_var: "{{ app_name + '_subdomain' }}"
     address_var: "{{ app_name + '_tailscale_ip' }}"
-    domain_var: "{{ parsed.domain_key | default('domain') }}"
+    parent_domain_var: "{{ app_name + '_parent_domain' }}"
     effective_subdomain: "{{ lookup('vars', override_var, default=parsed.subdomain | default('')) }}"
-    app_domain: "{{ lookup('vars', domain_var, default='') }}"
+    app_domain: "{{ lookup('vars', parent_domain_var, default='') }}"
     app_fqdn: "{{ effective_subdomain + '.' + app_domain }}"
     app_address: "{{ lookup('vars', address_var, default='') }}"
   ansible.builtin.set_fact:
@@ -318,10 +318,10 @@
     state: started
   when: not ansible_check_mode
 
-- name: Ensure Cloudflare DNS A record exists for {{ blocky_subdomain + '.' + domain }}
+- name: Ensure Cloudflare DNS A record exists for {{ blocky_domain }}
   ansible.builtin.include_role:
     name: dns_record
   vars:
     dns_record_subdomain: "{{ blocky_subdomain }}"
-    dns_record_domain: "{{ domain }}"
-    dns_record_cloudflare_api_token: "{{ cloudflare_dns_api_token }}"
+    dns_record_domain: "{{ blocky_parent_domain }}"
+    dns_record_cloudflare_api_token: "{{ blocky_dns_api_token }}"

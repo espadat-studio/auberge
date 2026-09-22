@@ -115,9 +115,10 @@
 
 mod common;
 
+use auberge::services::zone::{DNS_TOKEN_SUFFIX, PARENT_DOMAIN_SUFFIX};
 use common::{
     all_roles, meta_files, parse_yaml, playbook_files, registry_keys, relative, repo,
-    role_template_files, role_templates, role_yml_files, templated_yml_files, yml_files,
+    role_template_files, role_templates, role_yml_files, strings, templated_yml_files, yml_files,
 };
 use regex::Regex;
 use serde_yaml::Value;
@@ -586,6 +587,14 @@ fn runs() -> Vec<Run> {
 
 /// The answers that hold for every run: the Key Registry, `group_vars/`, and
 /// the names the CLI injects off the Playbook Metas.
+///
+/// The Computed Vars are the third kind, and the only one with no authoring
+/// site anywhere in the tree: the CLI resolves each App's **Zone** once per
+/// run and overlays `<app>_parent_domain` and `<app>_dns_api_token` onto the
+/// run's variables (ADR-0081). They are absent from the Key Registry
+/// deliberately — a resolved Zone has no config answer to override — so a
+/// fence reading only the registry sees every role that composes off one as
+/// reading a name nothing can answer.
 fn universal_answers() -> BTreeSet<String> {
     let mut answers = registry_keys();
     for path in group_vars_files() {
@@ -604,6 +613,22 @@ fn universal_answers() -> BTreeSet<String> {
                 answers.insert(format!("{prefix}_memory_high"));
                 answers.insert(format!("{prefix}_memory_max"));
             }
+        }
+        // An App's Computed Vars exist only where the App publishes a name,
+        // which `zone::publishes_a_name` reads as its Meta's `subdomain:` or
+        // an answered `<app>_subdomain`. No config is readable from here, so
+        // the second half is taken as the Meta *demanding* that key — the one
+        // way a run is made to carry it. An App declaring neither gets no
+        // answer here, and a role of its composing `<app>_parent_domain` fails
+        // this fence, which is what the deploy would do.
+        let publishes = meta
+            .get("subdomain")
+            .and_then(Value::as_str)
+            .is_some_and(|name| !name.trim().is_empty())
+            || strings(meta.get("required_keys")).contains(&format!("{app}_subdomain"));
+        if publishes {
+            answers.insert(format!("{app}{PARENT_DOMAIN_SUFFIX}"));
+            answers.insert(format!("{app}{DNS_TOKEN_SUFFIX}"));
         }
     }
     answers

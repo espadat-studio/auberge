@@ -5,7 +5,7 @@ gokapi_config_dir: /var/lib/gokapi/config
 gokapi_sys_user: gokapi
 gokapi_sys_group: gokapi
 gokapi_port: 53842
-gokapi_domain: "{{ gokapi_subdomain }}.{{ domain }}"
+gokapi_domain: "{{ gokapi_subdomain }}.{{ gokapi_parent_domain }}"
 gokapi_redirect_url: "/admin"
 gokapi_max_file_size_mb: 102400
 gokapi_max_memory_mb: 50

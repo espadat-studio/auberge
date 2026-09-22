@@ -11,17 +11,17 @@ Deploys the [Actual Budget](https://actualbudget.org) sync server (`@actual-app/
 
 ## Variables
 
-| Variable             | Default                               | Description                                  |
-| -------------------- | ------------------------------------- | -------------------------------------------- |
-| `actual_sys_user`    | `actual`                              | System user                                  |
-| `actual_sys_group`   | `actual`                              | System group                                 |
-| `actual_port`        | `5006`                                | Local port for Caddy reverse proxy           |
-| `actual_subdomain`   | `actual`                              | Subdomain (operator override in config.toml) |
-| `actual_domain`      | `{{ actual_subdomain }}.{{ domain }}` | Tailnet hostname                             |
-| `actual_install_dir` | `/opt/actual`                         | npm install prefix (root-owned)              |
-| `actual_data_dir`    | `/var/lib/actual`                     | `server-files/` + `user-files/`              |
-| `actual_version`     | `26.8.0`                              | Pinned `@actual-app/sync-server` release     |
-| `actual_node_major`  | `22`                                  | NodeSource major (minors float via apt)      |
+| Variable             | Default                                             | Description                                  |
+| -------------------- | --------------------------------------------------- | -------------------------------------------- |
+| `actual_sys_user`    | `actual`                                            | System user                                  |
+| `actual_sys_group`   | `actual`                                            | System group                                 |
+| `actual_port`        | `5006`                                              | Local port for Caddy reverse proxy           |
+| `actual_subdomain`   | `actual`                                            | Subdomain (operator override in config.toml) |
+| `actual_domain`      | `{{ actual_subdomain }}.{{ actual_parent_domain }}` | Tailnet hostname                             |
+| `actual_install_dir` | `/opt/actual`                                       | npm install prefix (root-owned)              |
+| `actual_data_dir`    | `/var/lib/actual`                                   | `server-files/` + `user-files/`              |
+| `actual_version`     | `26.8.0`                                            | Pinned `@actual-app/sync-server` release     |
+| `actual_node_major`  | `22`                                                | NodeSource major (minors float via apt)      |
 
 ## First deploy
 

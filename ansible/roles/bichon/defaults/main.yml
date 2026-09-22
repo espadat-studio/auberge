@@ -11,7 +11,7 @@ bichon_bind_ip: 127.0.0.1
 bichon_log_level: info
 
 bichon_subdomain: bichon
-bichon_domain: "{{ bichon_subdomain }}.{{ domain }}"
+bichon_domain: "{{ bichon_subdomain }}.{{ bichon_parent_domain }}"
 bichon_public_url: "https://{{ bichon_domain }}"
 bichon_encrypt_password_file: "{{ bichon_install_dir }}/encrypt.password"
 

@@ -1,4 +1,4 @@
-radio_domain: "{{ radio_subdomain }}.{{ domain }}"
+radio_domain: "{{ radio_subdomain }}.{{ radio_parent_domain }}"
 radio_icecast_port: 8005
 radio_icecast_user: icecast2
 radio_icecast_group: icecast

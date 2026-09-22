@@ -6,7 +6,7 @@ grimmory_bookdrop_path: /srv/bookdrop
 grimmory_sys_user: grimmory
 grimmory_sys_group: grimmory
 grimmory_port: 6060
-grimmory_domain: "{{ grimmory_subdomain }}.{{ domain }}"
+grimmory_domain: "{{ grimmory_subdomain }}.{{ grimmory_parent_domain }}"
 
 grimmory_db_host: "127.0.0.1"
 grimmory_db_name: grimmory

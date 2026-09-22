@@ -12,21 +12,21 @@ Deploys [Gokapi](https://github.com/Forceu/Gokapi) — a Go single-binary, self-
 
 ## Variables
 
-| Variable                        | Default                                 | Description                                                |
-| ------------------------------- | --------------------------------------- | ---------------------------------------------------------- |
-| `gokapi_install_path`           | `/opt/gokapi`                           | Binary install directory                                   |
-| `gokapi_data_dir`               | `/var/lib/gokapi`                       | Persistent data + DB directory                             |
-| `gokapi_config_dir`             | `/var/lib/gokapi/config`                | Config directory (`config.json` lives here)                |
-| `gokapi_sys_user`               | `gokapi`                                | System user                                                |
-| `gokapi_sys_group`              | `gokapi`                                | System group                                               |
-| `gokapi_port`                   | `53842`                                 | Local port for Caddy reverse proxy                         |
-| `gokapi_domain`                 | `{{ gokapi_subdomain }}.{{ domain }}`   | Public hostname                                            |
-| `gokapi_version`                | `2.2.4`                                 | Pinned upstream release                                    |
-| `gokapi_bootstrap_marker`       | `{{ gokapi_data_dir }}/.bootstrap_done` | Sentinel file gating the one-shot superadmin bootstrap     |
-| `gokapi_public_name`            | `Gokapi`                                | `<title>`, `<h1>` and Open Graph name (not the hostname)   |
-| `gokapi_custom_dir`             | `{{ gokapi_data_dir }}/custom`          | On the host; served at `/custom`                           |
-| `gokapi_custom_assets_src`      | `~/.config/auberge/gokapi/custom`       | On the deploying machine; optional branding, may be absent |
-| `gokapi_custom_assets_revision` | `2`                                     | Cache-buster for every asset under `custom/`               |
+| Variable                        | Default                                             | Description                                                |
+| ------------------------------- | --------------------------------------------------- | ---------------------------------------------------------- |
+| `gokapi_install_path`           | `/opt/gokapi`                                       | Binary install directory                                   |
+| `gokapi_data_dir`               | `/var/lib/gokapi`                                   | Persistent data + DB directory                             |
+| `gokapi_config_dir`             | `/var/lib/gokapi/config`                            | Config directory (`config.json` lives here)                |
+| `gokapi_sys_user`               | `gokapi`                                            | System user                                                |
+| `gokapi_sys_group`              | `gokapi`                                            | System group                                               |
+| `gokapi_port`                   | `53842`                                             | Local port for Caddy reverse proxy                         |
+| `gokapi_domain`                 | `{{ gokapi_subdomain }}.{{ gokapi_parent_domain }}` | Public hostname                                            |
+| `gokapi_version`                | `2.2.4`                                             | Pinned upstream release                                    |
+| `gokapi_bootstrap_marker`       | `{{ gokapi_data_dir }}/.bootstrap_done`             | Sentinel file gating the one-shot superadmin bootstrap     |
+| `gokapi_public_name`            | `Gokapi`                                            | `<title>`, `<h1>` and Open Graph name (not the hostname)   |
+| `gokapi_custom_dir`             | `{{ gokapi_data_dir }}/custom`                      | On the host; served at `/custom`                           |
+| `gokapi_custom_assets_src`      | `~/.config/auberge/gokapi/custom`                   | On the deploying machine; optional branding, may be absent |
+| `gokapi_custom_assets_revision` | `2`                                                 | Cache-buster for every asset under `custom/`               |
 
 `gokapi_admin_user` and `gokapi_admin_password` are required keys from the operator's `config.toml` (declared in the Playbook Meta).
 

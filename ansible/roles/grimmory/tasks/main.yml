@@ -234,10 +234,10 @@
         mode: "0644"
       notify: Restart caddy
 
-    - name: Ensure Cloudflare DNS A record exists for {{ grimmory_subdomain + '.' + domain }}
+    - name: Ensure Cloudflare DNS A record exists for {{ grimmory_domain }}
       ansible.builtin.include_role:
         name: dns_record
       vars:
         dns_record_subdomain: "{{ grimmory_subdomain }}"
-        dns_record_domain: "{{ domain }}"
-        dns_record_cloudflare_api_token: "{{ cloudflare_dns_api_token }}"
+        dns_record_domain: "{{ grimmory_parent_domain }}"
+        dns_record_cloudflare_api_token: "{{ grimmory_dns_api_token }}"

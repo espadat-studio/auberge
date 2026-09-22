@@ -79,6 +79,12 @@ fn role_defaults() -> BTreeMap<String, Value> {
 const KEY_REGISTRY_ANSWERS: &[(&str, &str)] =
     &[("domain", "example.com"), ("headscale_subdomain", "hs")];
 
+/// The **Computed Var** carrying the Zone `headscale_domain` composes against.
+/// The CLI resolves an App's Zone once per run and hands the apex down under
+/// this name (ADR-0081), so it is deliberately absent from the Key Registry
+/// and seeded beside those answers rather than among them.
+const COMPUTED_VARS: &[(&str, &str)] = &[("headscale_parent_domain", "example.com")];
+
 /// The App Version the Meta pins, injected into every run as `<app>_version`
 /// (ADR-0017). Seeded here because the defaults reference it and nothing in
 /// `defaults/main.yml` declares it.
@@ -118,7 +124,7 @@ fn jinja() -> Environment<'static> {
 /// resolver refuses rather than skips.
 fn deploy_context(overrides: &[(&str, Value)]) -> BTreeMap<String, minijinja::Value> {
     let mut vars = role_defaults();
-    for (key, value) in KEY_REGISTRY_ANSWERS {
+    for (key, value) in KEY_REGISTRY_ANSWERS.iter().chain(COMPUTED_VARS) {
         vars.insert((*key).to_string(), Value::from(*value));
     }
     vars.insert("headscale_version".into(), Value::from(headscale_version()));

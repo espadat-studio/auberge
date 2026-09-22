@@ -2,7 +2,7 @@ actual_sys_user: actual
 actual_sys_group: actual
 actual_port: 5006
 actual_subdomain: actual
-actual_domain: "{{ actual_subdomain }}.{{ domain }}"
+actual_domain: "{{ actual_subdomain }}.{{ actual_parent_domain }}"
 actual_install_dir: /opt/actual
 actual_data_dir: /var/lib/actual
 actual_node_major: 22

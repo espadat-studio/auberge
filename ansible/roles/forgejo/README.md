@@ -18,18 +18,18 @@ Deliberately not deployed:
 
 ## Variables
 
-| Variable                     | Default                                 | Description                                            |
-| ---------------------------- | --------------------------------------- | ------------------------------------------------------ |
-| `forgejo_install_path`       | `/opt/forgejo`                          | Binary install directory                               |
-| `forgejo_data_dir`           | `/var/lib/forgejo`                      | Repositories, SQLite database, indexes                 |
-| `forgejo_config_dir`         | `/etc/forgejo`                          | `app.ini` and the three signing secrets                |
-| `forgejo_sys_user`           | `forgejo`                               | System user                                            |
-| `forgejo_port`               | `3043`                                  | Loopback port Caddy proxies to                         |
-| `forgejo_domain`             | `{{ forgejo_subdomain }}.{{ domain }}`  | Public hostname                                        |
-| `forgejo_app_name`           | `Forgejo`                               | Site name in the header and page titles                |
-| `forgejo_admin_email`        | `{{ forgejo_admin_user }}@{{ domain }}` | Email on the administrator account                     |
-| `forgejo_version`            | from `forgejo.meta.yml`                 | Pinned upstream release, tracked by Renovate           |
-| `forgejo_cors_allow_origins` | `""` (CORS off)                         | Comma-separated origins granted CORS access, see below |
+| Variable                     | Default                                               | Description                                            |
+| ---------------------------- | ----------------------------------------------------- | ------------------------------------------------------ |
+| `forgejo_install_path`       | `/opt/forgejo`                                        | Binary install directory                               |
+| `forgejo_data_dir`           | `/var/lib/forgejo`                                    | Repositories, SQLite database, indexes                 |
+| `forgejo_config_dir`         | `/etc/forgejo`                                        | `app.ini` and the three signing secrets                |
+| `forgejo_sys_user`           | `forgejo`                                             | System user                                            |
+| `forgejo_port`               | `3043`                                                | Loopback port Caddy proxies to                         |
+| `forgejo_domain`             | `{{ forgejo_subdomain }}.{{ forgejo_parent_domain }}` | Public hostname                                        |
+| `forgejo_app_name`           | `Forgejo`                                             | Site name in the header and page titles                |
+| `forgejo_admin_email`        | `{{ forgejo_admin_user }}@{{ domain }}`               | Email on the administrator account                     |
+| `forgejo_version`            | from `forgejo.meta.yml`                               | Pinned upstream release, tracked by Renovate           |
+| `forgejo_cors_allow_origins` | `""` (CORS off)                                       | Comma-separated origins granted CORS access, see below |
 
 Required config keys: `forgejo_subdomain`, `forgejo_admin_user`, `forgejo_admin_password`.
 
