@@ -7,6 +7,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.19.0](https://github.com/espadat-studio/auberge/compare/v0.18.0...v0.19.0) - 2026-09-23
+
+### Added
+
+- *(caddy)* every vhost states its own acme token ([#964](https://github.com/espadat-studio/auberge/pull/964))
+- *(ansible)* pass each app's zone down as computed vars ([#959](https://github.com/espadat-studio/auberge/pull/959))
+- *(config)* resolve an app's zone from a named pair of keys ([#957](https://github.com/espadat-studio/auberge/pull/957))
+
+### Fixed
+
+- *(dns)* name auberge deploy in the off-zone refusal ([#974](https://github.com/espadat-studio/auberge/pull/974))
+- *(caddy)* name a vhost file after its app, not its fqdn ([#965](https://github.com/espadat-studio/auberge/pull/965))
+- *(preflight)* demand a guarded role's zone off its serving gate ([#962](https://github.com/espadat-studio/auberge/pull/962))
+- *(dns)* name the off-zone apps a run cannot reach ([#958](https://github.com/espadat-studio/auberge/pull/958))
+
+### Other
+
+- *(deps)* update jdx/hk to 2.1.0 ([#972](https://github.com/espadat-studio/auberge/pull/972))
+- *(blocky)* bump to 5.5.2 ([#971](https://github.com/espadat-studio/auberge/pull/971))
+- *(deps)* update taiki-e/install-action digest to 4765db2 ([#970](https://github.com/espadat-studio/auberge/pull/970))
+- *(deps)* update taiki-e/install-action digest to cae505d ([#966](https://github.com/espadat-studio/auberge/pull/966))
+- *(docs)* update dependency @astrojs/starlight to v0.42.3 ([#967](https://github.com/espadat-studio/auberge/pull/967))
+- *(uv)* bump to 0.12.16 ([#968](https://github.com/espadat-studio/auberge/pull/968))
+- *(docs)* update dependency astro to v7.3.4 ([#969](https://github.com/espadat-studio/auberge/pull/969))
+- *(agents)* record the out-of-scope convention
+- *(ansible)* re-spell domain_key as zone ([#963](https://github.com/espadat-studio/auberge/pull/963))
+- *(ansible)* roles compose their fqdn off their app's zone ([#961](https://github.com/espadat-studio/auberge/pull/961))
+- *(deps)* repoint @espadat/docs-theme after history rewrite
+- *(adr)* record the zone model and its rollout
+- *(navidrome)* bump to 0.64.1 ([#947](https://github.com/espadat-studio/auberge/pull/947))
+
 ## [0.18.0](https://github.com/espadat-studio/auberge/compare/v0.17.15...v0.18.0) - 2026-09-21
 
 ### Added
