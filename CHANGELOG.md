@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.19.1](https://github.com/espadat-studio/auberge/compare/v0.19.0...v0.19.1) - 2026-09-23
+
+### Fixed
+
+- *(caddy)* remove the fqdn-named vhost an app-named one replaces ([#979](https://github.com/espadat-studio/auberge/pull/979))
+- *(zone)* resolve zone pair refs before handing them to ansible ([#975](https://github.com/espadat-studio/auberge/pull/975))
+
+### Other
+
+- *(zone)* stop registering one operator's zone name in the key registry ([#983](https://github.com/espadat-studio/auberge/pull/983))
+- *(dns)* pin XDG_CONFIG_HOME in the discover_subdomains tests ([#982](https://github.com/espadat-studio/auberge/pull/982))
+- *(headscale)* bump to 0.29.4 and verify its cli contract ([#976](https://github.com/espadat-studio/auberge/pull/976))
+- *(uv)* bump to 0.12.17 ([#977](https://github.com/espadat-studio/auberge/pull/977))
+
 ## [0.19.0](https://github.com/espadat-studio/auberge/compare/v0.18.0...v0.19.0) - 2026-09-23
 
 ### Added
