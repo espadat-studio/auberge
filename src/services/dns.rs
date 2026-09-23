@@ -745,9 +745,12 @@ mod tests {
 
     #[test]
     fn test_discover_subdomains_returns_expected_public_apps() {
-        // discover_subdomains -> Config::load() reads XDG_CONFIG_HOME, which
-        // other tests in this binary mutate. Hold TEST_LOCK to serialize.
+        // Config::load() reads XDG_CONFIG_HOME: pin it at an empty dir so the
+        // operator's config.toml cannot move an App between partitions.
+        use crate::output::EnvVarGuard;
         let _guard = crate::output::TEST_LOCK.lock().unwrap();
+        let dir = tempfile::tempdir().unwrap();
+        let _xdg = EnvVarGuard::set("XDG_CONFIG_HOME", dir.path());
         let discovered = discover_subdomains();
         let got: BTreeSet<String> = discovered.keys().cloned().collect();
         let expected: BTreeSet<String> = [
@@ -772,7 +775,10 @@ mod tests {
 
     #[test]
     fn test_discover_subdomains_excludes_tailnet_only_apps() {
+        use crate::output::EnvVarGuard;
         let _guard = crate::output::TEST_LOCK.lock().unwrap();
+        let dir = tempfile::tempdir().unwrap();
+        let _xdg = EnvVarGuard::set("XDG_CONFIG_HOME", dir.path());
         let discovered = discover_subdomains();
         for tailnet_only in ["bichon", "cockpit", "paperless"] {
             assert!(
@@ -970,9 +976,12 @@ mod tests {
     // Cloudflare A record published for an App that must not have one.
     #[test]
     fn discover_all_subdomains_partitions_tailnet_only() {
-        // discover_all_subdomains -> Config::load() reads XDG_CONFIG_HOME, which
-        // other tests in this binary mutate. Hold TEST_LOCK to serialize.
+        // Config::load() reads XDG_CONFIG_HOME: pin it at an empty dir so the
+        // operator's config.toml cannot move an App between partitions.
+        use crate::output::EnvVarGuard;
         let _guard = crate::output::TEST_LOCK.lock().unwrap();
+        let dir = tempfile::tempdir().unwrap();
+        let _xdg = EnvVarGuard::set("XDG_CONFIG_HOME", dir.path());
         let discovered = discover_all_subdomains();
         for app in ["bichon", "cockpit", "paperless"] {
             assert!(
