@@ -82,7 +82,7 @@ dig +short cal.example.com    # verify
   "skipped": [
     { "subdomain": "bichon", "ip": "100.64.0.9", "reason": "tailnet_only" }
   ],
-  "off_zone": [{ "app": "forgejo", "subdomain": "git", "zone": "studio" }]
+  "off_zone": [{ "app": "forgejo", "subdomain": "git", "zone": "shop" }]
 }
 ```
 

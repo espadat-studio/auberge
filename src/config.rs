@@ -1011,11 +1011,11 @@ ssh_port = 22022
             .unwrap()
             .with_computed_vars([(
                 "forgejo_parent_domain".to_string(),
-                "studio.example".to_string(),
+                "shop.example".to_string(),
             )]);
         assert_eq!(
             preflight.flat_vars().get("forgejo_parent_domain").unwrap(),
-            "studio.example",
+            "shop.example",
             "config.toml must not be able to answer a Computed Var"
         );
     }

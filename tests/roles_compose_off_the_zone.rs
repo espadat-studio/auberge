@@ -3,7 +3,7 @@
 //!
 //! Before ADR-0081 there was one zone, so `{{ domain }}` was both "the fleet's
 //! apex" and "where this App's name lives", and nothing had to tell them
-//! apart. A second zone splits them: `git` moves to the studio's apex while
+//! apart. A second zone splits them: `git` moves to the shop's apex while
 //! sixteen other names stay on the fleet's, and every expression that spelled
 //! the apex directly now has to say *whose* apex it meant.
 //!
@@ -255,11 +255,11 @@ fn every_dns_record_call_passes_its_apps_pair() {
 /// file does not ask about.
 const SEEDED: &[&str] = &["parsed", "app_name"];
 
-/// The fleet's apex and the studio's, as the Computed Vars would carry them.
+/// The fleet's apex and the shop's, as the Computed Vars would carry them.
 /// Written out, so an edit that moves which answer an entry composes against
 /// has to move an assertion too (ADR-0046).
 const FLEET_DOMAIN: &str = "example.com";
-const STUDIO_DOMAIN: &str = "studio-example.com";
+const SHOP_DOMAIN: &str = "shop-example.com";
 
 /// Render the way ansible's own jinja will: `trim_blocks` on, and undefined
 /// strict — minijinja renders an unknown name as empty, which would turn every
@@ -418,14 +418,11 @@ fn an_app_in_a_second_zone_publishes_under_that_zones_apex() {
             "forgejo",
             &[
                 ("domain", FLEET_DOMAIN),
-                ("forgejo_parent_domain", STUDIO_DOMAIN),
+                ("forgejo_parent_domain", SHOP_DOMAIN),
                 ("forgejo_tailscale_ip", "100.64.0.2"),
             ],
         ),
-        Some((
-            "git.studio-example.com".to_string(),
-            "100.64.0.2".to_string()
-        )),
+        Some(("git.shop-example.com".to_string(), "100.64.0.2".to_string())),
         "the map composes off the App's resolved Zone, not the fleet's apex"
     );
 }
@@ -457,12 +454,12 @@ fn the_subdomain_override_composes_against_the_apps_zone() {
             "forgejo",
             &[
                 ("domain", FLEET_DOMAIN),
-                ("forgejo_parent_domain", STUDIO_DOMAIN),
+                ("forgejo_parent_domain", SHOP_DOMAIN),
                 ("forgejo_subdomain", "forge"),
             ],
         )
         .map(|(fqdn, _)| fqdn),
-        Some("forge.studio-example.com".to_string()),
+        Some("forge.shop-example.com".to_string()),
     );
 }
 
@@ -508,7 +505,7 @@ fn a_public_app_reaches_no_entry() {
             "forgejo",
             &[
                 ("domain", FLEET_DOMAIN),
-                ("forgejo_parent_domain", STUDIO_DOMAIN)
+                ("forgejo_parent_domain", SHOP_DOMAIN)
             ],
         ),
         None,

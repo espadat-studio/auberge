@@ -4,7 +4,7 @@ title: "Forgejo"
 
 Self-hosted git forge. Docs: [forgejo.org/docs](https://forgejo.org/docs/latest/), source: [codeberg.org/forgejo/forgejo](https://codeberg.org/forgejo/forgejo)
 
-- **URL**: `https://{forgejo_subdomain}.{domain}` (default subdomain: `git`)
+- **URL**: `https://{forgejo_subdomain}.{domain}` (default subdomain: `git`), or `https://{forgejo_subdomain}.{<zone>_domain}` in [its own DNS zone](#its-own-dns-zone)
 - **Data**: repositories, SQLite database and indexes under `/var/lib/forgejo/`; `app.ini` and the signing secrets under `/etc/forgejo/`
 - **Pinned version**: 16.0.5
 
@@ -23,6 +23,30 @@ auberge deploy forgejo
 | `forgejo_subdomain`      | Subdomain for HTTPS access            |
 | `forgejo_admin_user`     | Administrator username                |
 | `forgejo_admin_password` | Administrator password (first deploy) |
+
+## Its own DNS zone
+
+Forgejo can serve from a zone other than the fleet's. A zone is two keys sharing a prefix you choose: `<zone>_domain` and `<zone>_cloudflare_dns_api_token`. The fleet's zone is the unprefixed pair, `domain` and `cloudflare_dns_api_token`. `auberge config init` does not scaffold these keys, and the `auberge config set` picker does not list them, so set them by name:
+
+```bash
+auberge config set shop_domain shop-example.com
+auberge config set shop_cloudflare_dns_api_token YOUR_TOKEN
+```
+
+The domain must be its own Cloudflare zone. Scope the token to that zone only, as for the [agent tier's token](/configuration/agent-tier-dns-zone/#provisioning).
+
+Then point Forgejo at the zone with `auberge config edit`. Leave `forgejo_zone` unset to keep it in the fleet's zone.
+
+```toml
+[hosts.auberge]
+forgejo_zone = "shop"
+```
+
+:::caution
+`forgejo_zone` must sit under `[hosts.<name>]`. Preflight refuses it at the top level, because a Host's zones decide which ACME tokens land on its Caddy. The pair may sit at the top level or in the same host table. If either half is missing, preflight fails and names it.
+:::
+
+`auberge deploy forgejo` publishes the A record in `shop-example.com`. `auberge dns list`, `status`, `set-all` and `migrate` hold only the fleet's zone. They report Forgejo under `off_zone` and do not manage its record.
 
 ## Notes
 

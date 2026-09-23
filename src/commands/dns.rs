@@ -1211,7 +1211,7 @@ mod tests {
             off_zone: off_zone_rows(&[OffZoneApp {
                 app: "forgejo".to_string(),
                 subdomain: "git".to_string(),
-                zone: "studio".to_string(),
+                zone: "shop".to_string(),
             }]),
         };
         let json = serde_json::to_string(&status).unwrap();
@@ -1219,7 +1219,7 @@ mod tests {
         assert!(json.contains("\"active_a_records\":[{\"name\":\"freshrss.example.com\""));
         assert!(
             json.contains(
-                "\"off_zone\":[{\"app\":\"forgejo\",\"subdomain\":\"git\",\"zone\":\"studio\"}]"
+                "\"off_zone\":[{\"app\":\"forgejo\",\"subdomain\":\"git\",\"zone\":\"shop\"}]"
             ),
             "an empty missing_subdomains must not read as an all-clear for a zone \
              this run never saw: {json}"
@@ -1536,7 +1536,7 @@ mod tests {
                 app: "forgejo".to_string(),
                 subdomain: "git".to_string(),
                 reason: SkipReason::OffZone {
-                    zone: "studio".to_string(),
+                    zone: "shop".to_string(),
                     run_domain: "example.com".to_string(),
                 },
             },
@@ -1550,7 +1550,7 @@ mod tests {
         assert!(text.contains("forgejo"), "{text}");
         assert!(text.contains("subdomain: git"), "{text}");
         assert!(
-            text.contains("studio"),
+            text.contains("shop"),
             "the off-Zone reason must name the App's Zone: {text}"
         );
         assert!(
@@ -1573,7 +1573,7 @@ mod tests {
         let off_zone = [OffZoneApp {
             app: "forgejo".to_string(),
             subdomain: "git".to_string(),
-            zone: "studio".to_string(),
+            zone: "shop".to_string(),
         }];
 
         let rows = off_zone_as_skipped(&off_zone, "example.com");
@@ -1581,7 +1581,7 @@ mod tests {
 
         let text = skipped_report(OFF_ZONE_HEADER, &rows).expect("one row must produce a report");
         assert!(text.contains("forgejo"), "{text}");
-        assert!(text.contains("studio"), "{text}");
+        assert!(text.contains("shop"), "{text}");
         assert!(text.contains("example.com"), "{text}");
     }
 
@@ -1594,13 +1594,13 @@ mod tests {
             app: "forgejo".to_string(),
             subdomain: "git".to_string(),
             reason: SkipReason::OffZone {
-                zone: "studio".to_string(),
+                zone: "shop".to_string(),
                 run_domain: "example.com".to_string(),
             },
         }))
         .unwrap();
         assert!(json.contains("\"reason\":\"off_zone\""));
-        assert!(json.contains("\"zone\":\"studio\""));
+        assert!(json.contains("\"zone\":\"shop\""));
         assert!(json.contains("\"run_domain\":\"example.com\""));
     }
 

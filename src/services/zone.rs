@@ -1,5 +1,5 @@
 //! An App's **Zone**: the DNS zone its public name lives in, named by the
-//! prefix its two Key Registry entries share — `<zone>_domain` and
+//! prefix its two config keys share — `<zone>_domain` and
 //! `<zone>_cloudflare_dns_api_token`. The fleet's Zone is the unnamed one
 //! (ADR-0081).
 //!
@@ -488,8 +488,8 @@ mod tests {
     const ZONES_ANSWERED: &str = r#"
         domain = "fleet.example"
         cloudflare_dns_api_token = "fleet-token"
-        studio_domain = "studio.example"
-        studio_cloudflare_dns_api_token = "studio-token"
+        shop_domain = "shop.example"
+        shop_cloudflare_dns_api_token = "shop-token"
     "#;
 
     fn config(toml: &str) -> Config {
@@ -507,9 +507,9 @@ mod tests {
 
     #[test]
     fn test_a_named_zones_pair_shares_its_prefix() {
-        let studio = Zone::named("studio");
-        assert_eq!(studio.domain_key(), "studio_domain");
-        assert_eq!(studio.token_key(), "studio_cloudflare_dns_api_token");
+        let shop = Zone::named("shop");
+        assert_eq!(shop.domain_key(), "shop_domain");
+        assert_eq!(shop.token_key(), "shop_cloudflare_dns_api_token");
     }
 
     /// The fleet's spelling is fixed by what is already on every Host: caddy
@@ -523,8 +523,8 @@ mod tests {
     #[test]
     fn test_a_named_zones_env_var_carries_its_prefix() {
         assert_eq!(
-            Zone::named("studio").env_var(),
-            "STUDIO_CLOUDFLARE_DNS_API_TOKEN"
+            Zone::named("shop").env_var(),
+            "SHOP_CLOUDFLARE_DNS_API_TOKEN"
         );
         assert_eq!(
             Zone::named("agents").env_var(),
@@ -543,11 +543,11 @@ mod tests {
     #[test]
     fn test_a_host_scoped_app_zone_moves_that_host_only() {
         let config = config(&format!(
-            "{ZONES_ANSWERED}\n[hosts.auberge]\nforgejo_zone = \"studio\"\n"
+            "{ZONES_ANSWERED}\n[hosts.auberge]\nforgejo_zone = \"shop\"\n"
         ));
         assert_eq!(
             effective_zone(&meta(BARE), &config, "forgejo", Some("auberge")).unwrap(),
-            Zone::named("studio")
+            Zone::named("shop")
         );
         assert_eq!(
             effective_zone(&meta(BARE), &config, "forgejo", Some("ruche")).unwrap(),
@@ -566,7 +566,7 @@ mod tests {
     fn test_a_meta_pin_refuses_a_config_override() {
         let pinned = meta("required_keys: []\nsubdomain: essaim\nzone: agents\n");
         let config = config(&format!(
-            "{ZONES_ANSWERED}\n[hosts.ruche]\naoe_zone = \"studio\"\n"
+            "{ZONES_ANSWERED}\n[hosts.ruche]\naoe_zone = \"shop\"\n"
         ));
         let err = effective_zone(&pinned, &config, "aoe", Some("ruche"))
             .unwrap_err()
@@ -579,9 +579,9 @@ mod tests {
 
     #[test]
     fn test_resolving_a_zone_answers_both_halves() {
-        let pair = resolve(&Zone::named("studio"), &config(ZONES_ANSWERED), None).unwrap();
-        assert_eq!(pair.domain, "studio.example");
-        assert_eq!(pair.token, "studio-token");
+        let pair = resolve(&Zone::named("shop"), &config(ZONES_ANSWERED), None).unwrap();
+        assert_eq!(pair.domain, "shop.example");
+        assert_eq!(pair.token, "shop-token");
     }
 
     #[test]
@@ -590,21 +590,18 @@ mod tests {
             r#"
             domain = "fleet.example"
             cloudflare_dns_api_token = "fleet-token"
-            studio_domain = "studio.example"
-            studio_cloudflare_dns_api_token = ""
+            shop_domain = "shop.example"
+            shop_cloudflare_dns_api_token = ""
         "#,
         );
-        let err = resolve(&Zone::named("studio"), &config, Some("auberge"))
+        let err = resolve(&Zone::named("shop"), &config, Some("auberge"))
             .unwrap_err()
             .to_string();
         assert!(
-            err.contains("studio_cloudflare_dns_api_token"),
+            err.contains("shop_cloudflare_dns_api_token"),
             "names the missing half: {err}"
         );
-        assert!(
-            !err.contains("studio_domain"),
-            "not the answered half: {err}"
-        );
+        assert!(!err.contains("shop_domain"), "not the answered half: {err}");
         assert!(err.contains("auberge"), "names the host: {err}");
     }
 
@@ -706,12 +703,12 @@ mod tests {
     /// composes against *that* Zone, and does so on that Host alone.
     #[test]
     fn test_an_off_zone_app_gets_its_own_zones_pair() {
-        let toml = format!("{ZONES_ANSWERED}\n[hosts.auberge]\nforgejo_zone = \"studio\"\n");
+        let toml = format!("{ZONES_ANSWERED}\n[hosts.auberge]\nforgejo_zone = \"shop\"\n");
         let metas = vec![("forgejo".to_string(), meta(BARE))];
 
         let auberge = computed(&toml, "auberge", &metas);
-        assert_eq!(auberge["forgejo_parent_domain"], "studio.example");
-        assert_eq!(auberge["forgejo_dns_api_token"], "studio-token");
+        assert_eq!(auberge["forgejo_parent_domain"], "shop.example");
+        assert_eq!(auberge["forgejo_dns_api_token"], "shop-token");
 
         let ruche = computed(&toml, "ruche", &metas);
         assert_eq!(ruche["forgejo_parent_domain"], "fleet.example");
@@ -775,7 +772,7 @@ mod tests {
     /// and neither answer is the one the operator believes in.
     #[test]
     fn test_a_pin_the_config_contradicts_fails_the_computation() {
-        let toml = format!("{ZONES_ANSWERED}\n[hosts.auberge]\naoe_zone = \"studio\"\n");
+        let toml = format!("{ZONES_ANSWERED}\n[hosts.auberge]\naoe_zone = \"shop\"\n");
         let metas = vec![(
             "aoe".to_string(),
             meta("required_keys: []\nsubdomain: essaim\nzone: agents\n"),
@@ -790,7 +787,7 @@ mod tests {
     /// drop-in writes one line per Zone and reads no token by name.
     #[test]
     fn test_the_host_zone_set_carries_each_zone_once_with_its_pair() {
-        let toml = format!("{ZONES_ANSWERED}\n[hosts.auberge]\nforgejo_zone = \"studio\"\n");
+        let toml = format!("{ZONES_ANSWERED}\n[hosts.auberge]\nforgejo_zone = \"shop\"\n");
         let metas = vec![
             ("forgejo".to_string(), meta(BARE)),
             (
@@ -812,10 +809,10 @@ mod tests {
                     env: "CLOUDFLARE_DNS_API_TOKEN".to_string(),
                 },
                 HostZone {
-                    prefix: Some("studio".to_string()),
-                    domain: "studio.example".to_string(),
-                    token: "studio-token".to_string(),
-                    env: "STUDIO_CLOUDFLARE_DNS_API_TOKEN".to_string(),
+                    prefix: Some("shop".to_string()),
+                    domain: "shop.example".to_string(),
+                    token: "shop-token".to_string(),
+                    env: "SHOP_CLOUDFLARE_DNS_API_TOKEN".to_string(),
                 },
             ]
         );
@@ -828,7 +825,7 @@ mod tests {
     /// the Zone the repo guessed.
     #[test]
     fn test_an_app_is_handed_the_env_var_name_of_its_zone() {
-        let toml = format!("{ZONES_ANSWERED}\n[hosts.auberge]\nforgejo_zone = \"studio\"\n");
+        let toml = format!("{ZONES_ANSWERED}\n[hosts.auberge]\nforgejo_zone = \"shop\"\n");
         let metas = vec![
             ("forgejo".to_string(), meta(BARE)),
             (
@@ -839,7 +836,7 @@ mod tests {
         let vars = computed(&toml, "auberge", &metas);
         assert_eq!(
             vars["forgejo_dns_api_token_env"],
-            "STUDIO_CLOUDFLARE_DNS_API_TOKEN"
+            "SHOP_CLOUDFLARE_DNS_API_TOKEN"
         );
         assert_eq!(
             vars["navidrome_dns_api_token_env"],
@@ -852,7 +849,7 @@ mod tests {
     /// the assertion that fails if a later edit spells either separately.
     #[test]
     fn test_every_apps_env_var_is_one_the_hosts_drop_in_writes() {
-        let toml = format!("{ZONES_ANSWERED}\n[hosts.auberge]\nforgejo_zone = \"studio\"\n");
+        let toml = format!("{ZONES_ANSWERED}\n[hosts.auberge]\nforgejo_zone = \"shop\"\n");
         let metas = vec![
             ("forgejo".to_string(), meta(BARE)),
             (
@@ -950,7 +947,7 @@ mod tests {
     /// Host's token set is the one ADR-0068 exists to bound.
     #[test]
     fn test_a_host_with_no_off_zone_app_holds_one_zone() {
-        let toml = format!("{ZONES_ANSWERED}\n[hosts.auberge]\nforgejo_zone = \"studio\"\n");
+        let toml = format!("{ZONES_ANSWERED}\n[hosts.auberge]\nforgejo_zone = \"shop\"\n");
         let metas = vec![("forgejo".to_string(), meta(BARE))];
         assert_eq!(
             zone_set(&computed(&toml, "lechuck", &metas))
@@ -965,7 +962,7 @@ mod tests {
     /// walk, and this is the assertion that fails if a later edit splits them.
     #[test]
     fn test_every_apps_pair_is_in_its_hosts_zone_set() {
-        let toml = format!("{ZONES_ANSWERED}\n[hosts.auberge]\nforgejo_zone = \"studio\"\n");
+        let toml = format!("{ZONES_ANSWERED}\n[hosts.auberge]\nforgejo_zone = \"shop\"\n");
         let metas = vec![
             ("forgejo".to_string(), meta(BARE)),
             (
@@ -1002,7 +999,7 @@ mod tests {
 
     #[test]
     fn test_a_fleet_wide_app_zone_is_refused() {
-        let err = assert_no_fleet_wide_zone(&config("forgejo_zone = \"studio\"\n"))
+        let err = assert_no_fleet_wide_zone(&config("forgejo_zone = \"shop\"\n"))
             .unwrap_err()
             .to_string();
         assert!(err.contains("forgejo_zone"), "{err}");
@@ -1011,7 +1008,7 @@ mod tests {
 
     #[test]
     fn test_a_host_scoped_app_zone_is_accepted() {
-        let config = config("[hosts.auberge]\nforgejo_zone = \"studio\"\n");
+        let config = config("[hosts.auberge]\nforgejo_zone = \"shop\"\n");
         assert!(assert_no_fleet_wide_zone(&config).is_ok());
     }
 }

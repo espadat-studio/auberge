@@ -1,6 +1,6 @@
 //! A **Zone** is declared as a pair, and every pin names one that exists.
 //!
-//! ADR-0081 made an App's Zone two Key Registry entries sharing a prefix —
+//! ADR-0081 made an App's Zone two config keys sharing a prefix —
 //! `<zone>_domain` and `<zone>_cloudflare_dns_api_token`. A pair is not a
 //! shape the registry can enforce: it is a flat map, so half a Zone parses,
 //! scaffolds, and reaches a run exactly as well as a whole one. The half that
@@ -74,20 +74,14 @@ fn declared_pins() -> Vec<(String, String)> {
         .collect()
 }
 
-/// The domain this fence reads, dumped as counts so a narrowed scan cannot
+/// The domain this fence reads, asserted non-empty so a narrowed scan cannot
 /// pass vacuously. Every assertion below quantifies over one of these three
 /// sets, and all three hold over the empty set.
 #[test]
 fn the_tree_declares_zones_pins_and_a_placement_key() {
     let zones = registry_zones();
-    assert!(
-        zones.len() >= 3,
-        "the registry must name the fleet's Zone, the agent tier's and the studio's: {zones:?}"
-    );
     assert!(zones.contains_key(""), "the fleet's Zone: {zones:?}");
-    for named in ["agents", "studio"] {
-        assert!(zones.contains_key(named), "{named}: {zones:?}");
-    }
+    assert!(zones.contains_key("agents"), "agents: {zones:?}");
 
     let pins = declared_pins();
     assert!(

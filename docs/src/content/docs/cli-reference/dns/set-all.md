@@ -102,7 +102,7 @@ One shape on every path. `outcome` says what the run did with its plan; `planned
       "app": "forgejo",
       "subdomain": "git",
       "reason": "off_zone",
-      "zone": "studio",
+      "zone": "shop",
       "run_domain": "example.com"
     }
   ],

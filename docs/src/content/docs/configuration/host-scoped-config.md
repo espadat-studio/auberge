@@ -30,7 +30,9 @@ Naming a gated role's tag asserts it runs, so asking for it on a host that withd
 
 ## What stays top-level
 
-An `<app>_subdomain` is the app's record name in your one DNS zone — fleet identity, read by DNS discovery from the top level. Scope it per host only to withdraw the role (blank); give divergent _values_ per host only for keys that are genuinely per-host (ports, `<app>_tailscale_ip`).
+An `<app>_subdomain` is the app's record name in the fleet's DNS zone — fleet identity, read by DNS discovery from the top level. Scope it per host only to withdraw the role (blank); give divergent _values_ per host only for keys that are genuinely per-host (ports, `<app>_tailscale_ip`).
+
+`<app>_zone` is the exception: it must be host-scoped, and preflight refuses it at the top level. A host's zones decide which ACME tokens land on its Caddy. See [Forgejo's own DNS zone](/applications/apps/forgejo/#its-own-dns-zone).
 
 ## Existing multi-host fleets
 

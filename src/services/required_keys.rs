@@ -798,11 +798,11 @@ mod tests {
         let dir = zone_fixture(&[("forgejo", "required_keys: []\nsubdomain: git\n")]);
         let config = Config::from_toml_str(
             r#"
-            studio_domain = "studio.example"
-            studio_cloudflare_dns_api_token = "studio-token"
+            shop_domain = "shop.example"
+            shop_cloudflare_dns_api_token = "shop-token"
 
             [hosts.auberge]
-            forgejo_zone = "studio"
+            forgejo_zone = "shop"
         "#,
         )
         .unwrap();
@@ -840,9 +840,9 @@ mod tests {
         ]);
         let config = Config::from_toml_str(&format!(
             "{FLEET_ANSWERED}\n\
-             studio_domain = \"studio.example\"\n\
-             studio_cloudflare_dns_api_token = \"studio-token\"\n\n\
-             [hosts.auberge]\nforgejo_zone = \"studio\"\n"
+             shop_domain = \"shop.example\"\n\
+             shop_cloudflare_dns_api_token = \"shop-token\"\n\n\
+             [hosts.auberge]\nforgejo_zone = \"shop\"\n"
         ))
         .unwrap();
 
@@ -851,8 +851,8 @@ mod tests {
         let vars = computed(dir.path(), &config, "auberge");
         assert_eq!(vars["navidrome_parent_domain"], "fleet.example");
         assert_eq!(vars["navidrome_dns_api_token"], "fleet-token");
-        assert_eq!(vars["forgejo_parent_domain"], "studio.example");
-        assert_eq!(vars["forgejo_dns_api_token"], "studio-token");
+        assert_eq!(vars["forgejo_parent_domain"], "shop.example");
+        assert_eq!(vars["forgejo_dns_api_token"], "shop-token");
     }
 
     /// An App outside the roster is still handed its Zone. Blocky's map is
@@ -893,7 +893,7 @@ mod tests {
         )
         .unwrap();
         let config = Config::from_toml_str(&format!(
-            "{FLEET_ANSWERED}\n[hosts.auberge]\naoe_zone = \"studio\"\n"
+            "{FLEET_ANSWERED}\n[hosts.auberge]\naoe_zone = \"shop\"\n"
         ))
         .unwrap();
 
