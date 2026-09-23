@@ -131,6 +131,12 @@
         mode: "0644"
       notify: Restart caddy
 
+    - name: Remove the FQDN-named vhost freshrss.caddyfile replaces
+      ansible.builtin.file:
+        path: "/etc/caddy/sites/{{ freshrss_domain }}.caddyfile"
+        state: absent
+      notify: Restart caddy
+
     - name: Deploy systemd timer for feed updates
       ansible.builtin.template:
         src: templates/freshrss-update.timer.j2

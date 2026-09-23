@@ -241,6 +241,12 @@
         mode: "0644"
       notify: Restart caddy
 
+    - name: Remove the FQDN-named vhost colporteur.caddyfile replaces
+      ansible.builtin.file:
+        path: "/etc/caddy/sites/{{ colporteur_domain }}.caddyfile"
+        state: absent
+      notify: Restart caddy
+
     - name: Sync Colporteur feeds to FreshRSS
       when: colporteur_freshrss_sync | bool
       block:

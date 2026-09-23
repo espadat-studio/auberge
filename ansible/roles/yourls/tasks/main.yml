@@ -188,6 +188,12 @@
         mode: "0644"
       notify: Restart caddy
 
+    - name: Remove the FQDN-named vhost yourls.caddyfile replaces
+      ansible.builtin.file:
+        path: "/etc/caddy/sites/{{ yourls_domain }}.caddyfile"
+        state: absent
+      notify: Restart caddy
+
     - name: Ensure Cloudflare DNS A record exists for {{ yourls_domain }}
       ansible.builtin.include_role:
         name: dns_record

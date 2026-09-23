@@ -184,6 +184,12 @@
         mode: "0644"
       notify: Restart caddy
 
+    - name: Remove the FQDN-named vhost headscale.caddyfile replaces
+      ansible.builtin.file:
+        path: "/etc/caddy/sites/{{ headscale_domain }}.caddyfile"
+        state: absent
+      notify: Restart caddy
+
     - name: Write installed headscale version
       ansible.builtin.copy:
         content: "{{ headscale_version }}"

@@ -198,6 +198,12 @@
         mode: "0644"
       notify: Restart caddy
 
+    - name: Remove the FQDN-named vhost bichon.caddyfile replaces
+      ansible.builtin.file:
+        path: "/etc/caddy/sites/{{ bichon_domain }}.caddyfile"
+        state: absent
+      notify: Restart caddy
+
     - name: Deploy systemd service
       ansible.builtin.template:
         src: bichon.service.j2
