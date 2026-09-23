@@ -363,7 +363,24 @@ pub fn computed_vars(
     config: &Config,
     host: &str,
 ) -> Result<BTreeMap<String, String>> {
-    let placed = placements(config, host, metas)?;
+    let mut placed = placements(config, host, metas)?;
+    let mut resolved: BTreeMap<Zone, ZonePair> = BTreeMap::new();
+    for (_, zone, pair) in &mut placed {
+        if !resolved.contains_key(zone) {
+            let answer = |raw: &str, key: String| {
+                crate::config::resolve_value(raw)
+                    .wrap_err_with(|| format!("Failed to resolve config key '{key}'"))
+            };
+            resolved.insert(
+                zone.clone(),
+                ZonePair {
+                    domain: answer(&pair.domain, zone.domain_key())?,
+                    token: answer(&pair.token, zone.token_key())?,
+                },
+            );
+        }
+        *pair = resolved[zone].clone();
+    }
 
     let mut vars = BTreeMap::new();
     for (app, zone, pair) in &placed {
@@ -699,6 +716,33 @@ mod tests {
         let ruche = computed(&toml, "ruche", &metas);
         assert_eq!(ruche["forgejo_parent_domain"], "fleet.example");
         assert_eq!(ruche["forgejo_dns_api_token"], "fleet-token");
+    }
+
+    /// A secret-store ref reaches Ansible as a Bearer header, so it must leave
+    /// resolved — the raw `!cmd` is what Cloudflare rejects with error 6111.
+    #[test]
+    fn test_a_command_ref_token_is_resolved() {
+        let toml = r#"
+            domain = "fleet.example"
+            cloudflare_dns_api_token = "!printf fleet-token"
+        "#;
+        let metas = vec![("navidrome".to_string(), meta(BARE))];
+        let vars = computed(toml, "auberge", &metas);
+        assert_eq!(vars["navidrome_dns_api_token"], "fleet-token");
+        assert_eq!(zone_set(&vars)[0].token, "fleet-token");
+    }
+
+    #[test]
+    fn test_a_failing_token_ref_refuses_the_run() {
+        let toml = r#"
+            domain = "fleet.example"
+            cloudflare_dns_api_token = "!false"
+        "#;
+        let metas = vec![("navidrome".to_string(), meta(BARE))];
+        let err = computed_vars(&metas, &config(toml), "auberge")
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("cloudflare_dns_api_token"), "{err}");
     }
 
     /// An App with no name serves no vhost and writes no record, so it is

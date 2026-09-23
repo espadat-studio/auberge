@@ -427,7 +427,7 @@ fn value_to_string(v: &toml::Value) -> Option<String> {
     }
 }
 
-fn resolve_value(v: &str) -> Result<String> {
+pub(crate) fn resolve_value(v: &str) -> Result<String> {
     if let Some(rest) = v.strip_prefix("!!") {
         return Ok(format!("!{rest}"));
     }
