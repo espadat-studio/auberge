@@ -31,11 +31,19 @@
 //! is discovered by unrelated means — reading task text for the handler name
 //! — so narrowing both at once takes two edits, in two directions.
 //!
+//! ## The file the rename replaces
+//!
+//! An App whose name did not move gets its new file and still has the old one,
+//! both declaring the same site. Caddy refuses that config outright
+//! ("ambiguous site definition"), so the first redeploy after the rename took
+//! every vhost on the Host dark. Each role therefore removes the FQDN-named
+//! file for the name it serves now, in the run that writes its replacement.
+//!
 //! ## Not fenced here
 //!
-//! Removing what the old naming already left on each Host. A role cannot know
-//! which stale names were once its own, so the sweep is a one-time operator
-//! step, written down with the Zone cutover it lands beside. It is
+//! Removing names an App no longer serves. A role cannot know which stale names
+//! were once its own, so the sweep is a one-time operator step, written down
+//! with the Zone cutover it lands beside. It is
 //! `find /etc/caddy/sites -name '*.*.caddyfile' -delete`, and
 //! `test_no_vhost_file_matches_the_operators_sweep_pattern` is what keeps
 //! that pattern unable to match a live site.
@@ -276,6 +284,39 @@ fn test_no_vhost_file_matches_the_operators_sweep_pattern() {
              `find {SITES_DIR} -name '*.*{EXTENSION}' -delete` would delete. That sweep \
              clears the FQDN-named files the old naming left on each Host, and it tells \
              them apart from a live site by the dot alone"
+        );
+    }
+}
+
+/// The rename's own residue, for the name an App still serves: left in place,
+/// it declares the same site as its replacement and caddy refuses to start.
+#[test]
+fn test_every_role_removes_the_fqdn_named_file_its_vhost_replaces() {
+    for vhost in vhosts() {
+        let app = app_of(&vhost.role).expect("checked by the naming fence");
+        if stem(&vhost) != app {
+            continue;
+        }
+        let legacy = format!("{SITES_DIR}{{{{ {app}_domain }}}}{EXTENSION}");
+        let removes = role_tasks(&vhost.role).into_iter().any(|task| {
+            let Some(args) = field(&task.body, "ansible.builtin.file").and_then(Value::as_mapping)
+            else {
+                return false;
+            };
+            field(args, "path").and_then(Value::as_str) == Some(legacy.as_str())
+                && field(args, "state").and_then(Value::as_str) == Some("absent")
+                && common::strings(field(&task.body, "notify"))
+                    .iter()
+                    .any(|h| h == "Restart caddy")
+        });
+        assert!(
+            removes,
+            "{} writes {}{EXTENSION} but never removes `{legacy}`. On a Host deployed \
+             before #954 both files declare the same site, and caddy refuses the whole \
+             config as ambiguous. Add an `ansible.builtin.file` task, `state: absent`, \
+             notifying `Restart caddy`",
+            vhost.id(),
+            app
         );
     }
 }

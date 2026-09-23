@@ -159,6 +159,12 @@
         mode: "0644"
       notify: Restart caddy
 
+    - name: Remove the FQDN-named vhost baikal.caddyfile replaces
+      ansible.builtin.file:
+        path: "/etc/caddy/sites/{{ baikal_domain }}.caddyfile"
+        state: absent
+      notify: Restart caddy
+
     - name: Validate Baikal admin password is set
       ansible.builtin.assert:
         that:

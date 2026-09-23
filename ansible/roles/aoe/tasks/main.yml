@@ -188,3 +188,9 @@
     group: root
     mode: "0644"
   notify: Restart caddy
+
+- name: Remove the FQDN-named vhost aoe.caddyfile replaces
+  ansible.builtin.file:
+    path: "/etc/caddy/sites/{{ aoe_domain }}.caddyfile"
+    state: absent
+  notify: Restart caddy

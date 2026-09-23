@@ -88,7 +88,8 @@ fn render<S: serde::Serialize>(expr: &str, context: S) -> String {
 }
 
 /// The role's defaults as a jinja context, so a role expression resolves the way
-/// ansible would resolve it.
+/// ansible would resolve it — plus the two run inputs its FQDN composes from,
+/// which the CLI hands every run rather than the role defaulting.
 fn defaults_context() -> BTreeMap<String, minijinja::Value> {
     role_defaults()
         .as_mapping()
@@ -100,6 +101,16 @@ fn defaults_context() -> BTreeMap<String, minijinja::Value> {
                 minijinja::Value::from(value.as_str()?),
             ))
         })
+        .chain([
+            (
+                "immich_subdomain".to_string(),
+                minijinja::Value::from("photos"),
+            ),
+            (
+                "immich_parent_domain".to_string(),
+                minijinja::Value::from("example.test"),
+            ),
+        ])
         .collect()
 }
 

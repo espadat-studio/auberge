@@ -310,6 +310,12 @@
         mode: "0644"
       notify: Restart caddy
 
+    - name: Remove the FQDN-named vhost paperless.caddyfile replaces
+      ansible.builtin.file:
+        path: "/etc/caddy/sites/{{ paperless_domain }}.caddyfile"
+        state: absent
+      notify: Restart caddy
+
     - name: Run database migrations
       ansible.builtin.command:
         cmd: "{{ paperless_install_path }}/venv/bin/python3 manage.py migrate --no-input"
