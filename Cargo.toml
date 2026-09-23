@@ -1,6 +1,6 @@
 [package]
 name = "auberge"
-version = "0.19.0"
+version = "0.19.1"
 edition = "2024"
 description = "Self-host a full FOSS stack on a 2 GB VPS as plain systemd services. Rust CLI over Ansible to deploy, back up and restore it."
 license = "AGPL-3.0-or-later"
