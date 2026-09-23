@@ -4,9 +4,13 @@
 
 Accepted, 2026-09-22. Amends [ADR-0071](./0071-a-tailnet-only-apps-parent-domain-is-per-app.md), which made a Tailnet-only App's parent domain per App and left the Public App half unplumbed. Supersedes it as of 2026-09-22: `zone:` is the only spelling of the pin, and `domain_key:` is gone from the tree.
 
+**Amended 2026-09-23** (was: a Zone is a pair of Key Registry entries, and the registry listed one operator's `studio` pair): the registry holds only the Zones the repo requires; an operator's own pair is set by key name (#981).
+
 ## Decision
 
-**A Zone is a pair of Key Registry entries sharing a prefix — `<zone>_domain` and `<zone>_cloudflare_dns_api_token`.** The fleet's Zone is the unnamed one. `agents_domain` + `agents_cloudflare_dns_api_token` was already this shape; naming it makes a second one cost two registry entries instead of a mechanism.
+**A Zone is a pair of config keys sharing a prefix — `<zone>_domain` and `<zone>_cloudflare_dns_api_token`.** The fleet's Zone is the unnamed one. `agents_domain` + `agents_cloudflare_dns_api_token` was already this shape; naming it makes a second one cost two config keys instead of a mechanism.
+
+**The Key Registry holds only the Zones the repo requires: the fleet's and `agents`.** An operator's own Zone is a name they choose, so the repo does not register it. They set `<zone>_domain` and `<zone>_cloudflare_dns_api_token` by typing the names (`auberge config set <zone>_domain ...`), because the key picker lists registry keys only, and select it per App with `<app>_zone = "<zone>"`. Nothing rejects an unregistered key: preflight and the Computed Vars read `config.toml` directly.
 
 **Which Zone an App is in has two declaration sites, because it is two different claims.** A Playbook Meta's `zone:` is the repo asserting an App must be isolated — true for every operator, and true of the agent tier alone (ADR-0068). `<app>_zone` in `config.toml` is the operator placing an App in a Zone of their own. A Meta pin **refuses** a Config override.
 
@@ -22,7 +26,7 @@ ADR-0071 named the failure precisely and then left half of it live: publish a na
 
 A test asserting that two expressions agree is a weaker instrument than one value. Making the CLI the only resolver deletes the divergence class rather than fencing it: the role's vhost, the role's A record and the CLI's verification read the same string because it is the same string.
 
-The two declaration sites are not redundancy. ADR-0068's isolation of the agent tier is a security invariant the repo states on every operator's behalf, and an operator who could unset it would re-create the leak. "The forge lives on the studio's domain" is the opposite: a fact about one deployment that the repo has no business asserting, and ADR-0071's "an unanswered key publishes nothing" rule would have left every other operator with no forge at all. One vocabulary, two authorities, and the repo's wins.
+The two declaration sites are not redundancy. ADR-0068's isolation of the agent tier is a security invariant the repo states on every operator's behalf, and an operator who could unset it would re-create the leak. "The forge lives on a second zone's domain" is the opposite: a fact about one deployment that the repo has no business asserting, and ADR-0071's "an unanswered key publishes nothing" rule would have left every other operator with no forge at all. One vocabulary, two authorities, and the repo's wins.
 
 A Computed Var is not an Injected Key. An Injected Key is in the registry precisely so a stale `config.toml` value can be overridden (`tailscale_authkey`, ADR-0063). A resolved Zone has no such value to override — config naming one would be the third declaration site this ADR spent two paragraphs avoiding.
 

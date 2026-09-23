@@ -885,15 +885,15 @@ mod tests {
     fn app_parent_domain_follows_an_operators_app_zone() {
         let dir = meta_dir("forgejo", "required_keys: []\nsubdomain: git\n");
         let config = Config::from_toml_str(&format!(
-            "{ZONES}studio_domain = \"espadat.com\"\n\
-             studio_cloudflare_dns_api_token = \"studio-token\"\n\n\
-             [hosts.auberge]\nforgejo_zone = \"studio\"\n"
+            "{ZONES}shop_domain = \"shop.example\"\n\
+             shop_cloudflare_dns_api_token = \"shop-token\"\n\n\
+             [hosts.auberge]\nforgejo_zone = \"shop\"\n"
         ))
         .unwrap();
 
         assert_eq!(
             app_parent_domain(dir.path(), "forgejo", &config, Some("auberge")),
-            "espadat.com"
+            "shop.example"
         );
         assert_eq!(
             app_parent_domain(dir.path(), "forgejo", &config, Some("lechuck")),
@@ -943,7 +943,7 @@ mod tests {
             "required_keys: []\nsubdomain: essaim\nzone: agents\ntailnet_only: true\n",
         );
         let config =
-            Config::from_toml_str(&format!("{ZONES}\n[hosts.ruche]\naoe_zone = \"studio\"\n"))
+            Config::from_toml_str(&format!("{ZONES}\n[hosts.ruche]\naoe_zone = \"shop\"\n"))
                 .unwrap();
 
         assert_eq!(
@@ -1049,12 +1049,12 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         std::fs::write(
             dir.path().join("forgejo.meta.yml"),
-            "required_keys: []\nsubdomain: git\nzone: studio\n",
+            "required_keys: []\nsubdomain: git\nzone: shop\n",
         )
         .unwrap();
         std::fs::write(
             dir.path().join("colporteur.meta.yml"),
-            "required_keys: []\nsubdomain: blog\nzone: studio\n",
+            "required_keys: []\nsubdomain: blog\nzone: shop\n",
         )
         .unwrap();
         std::fs::write(
@@ -1070,8 +1070,8 @@ mod tests {
         assert_eq!(
             found,
             vec![
-                off_zone("colporteur", "blog", "studio"),
-                off_zone("forgejo", "git", "studio"),
+                off_zone("colporteur", "blog", "shop"),
+                off_zone("forgejo", "git", "shop"),
             ]
         );
         assert!(!discovered.public.contains_key("forgejo"));
@@ -1097,11 +1097,11 @@ mod tests {
         )
         .unwrap();
 
-        let placed = Config::from_toml_str("[hosts.auberge]\nforgejo_zone = \"studio\"\n").unwrap();
+        let placed = Config::from_toml_str("[hosts.auberge]\nforgejo_zone = \"shop\"\n").unwrap();
         let discovered = discover_all_subdomains_in(dir.path(), Some(&placed));
         assert_eq!(
             discovered.off_zone,
-            vec![off_zone("forgejo", "git", "studio")]
+            vec![off_zone("forgejo", "git", "shop")]
         );
         assert!(!discovered.public.contains_key("forgejo"));
         assert!(discovered.public.contains_key("freshrss"));
@@ -1440,7 +1440,7 @@ mod tests {
     #[test]
     fn plan_implicit_names_an_off_zone_app_rather_than_dropping_it() {
         let mut d = discovered(&[("freshrss", entry("rss"))], &[("bichon", "bichon")]);
-        d.off_zone = vec![off_zone("forgejo", "git", "studio")];
+        d.off_zone = vec![off_zone("forgejo", "git", "shop")];
 
         let p = plan(d, &[], &[]).unwrap();
 
@@ -1458,7 +1458,7 @@ mod tests {
                     app: "forgejo".to_string(),
                     subdomain: "git".to_string(),
                     reason: SkipReason::OffZone {
-                        zone: "studio".to_string(),
+                        zone: "shop".to_string(),
                         run_domain: "example.com".to_string(),
                     },
                 },
@@ -1473,14 +1473,14 @@ mod tests {
     #[test]
     fn an_off_zone_skip_reason_names_the_apps_zone_and_the_runs() {
         let mut d = discovered(&[], &[]);
-        d.off_zone = vec![off_zone("forgejo", "git", "studio")];
+        d.off_zone = vec![off_zone("forgejo", "git", "shop")];
 
         let p = plan(d, &[], &[]).unwrap();
         let described = p.skipped[0].reason.describe();
 
         assert_eq!(p.skipped[0].reason.as_str(), "off_zone");
         assert!(
-            described.contains("studio"),
+            described.contains("shop"),
             "must name the App's Zone: {described}"
         );
         assert!(
@@ -1496,8 +1496,8 @@ mod tests {
     fn plan_implicit_sorts_off_zone_apps_into_the_skipped_list() {
         let mut d = discovered(&[], &[("paperless", "docs")]);
         d.off_zone = vec![
-            off_zone("forgejo", "git", "studio"),
-            off_zone("colporteur", "blog", "studio"),
+            off_zone("forgejo", "git", "shop"),
+            off_zone("colporteur", "blog", "shop"),
         ];
 
         let p = plan(d, &[], &[]).unwrap();
@@ -1510,8 +1510,8 @@ mod tests {
     fn plan_implicit_skip_excludes_an_off_zone_app_from_skipped_list() {
         let mut d = discovered(&[], &[]);
         d.off_zone = vec![
-            off_zone("forgejo", "git", "studio"),
-            off_zone("colporteur", "blog", "studio"),
+            off_zone("forgejo", "git", "shop"),
+            off_zone("colporteur", "blog", "shop"),
         ];
 
         let p = plan(d, &[], &["forgejo"]).unwrap();
@@ -1527,7 +1527,7 @@ mod tests {
     #[test]
     fn plan_explicit_off_zone_target_errors_before_returning() {
         let mut d = discovered(&[("freshrss", entry("rss"))], &[]);
-        d.off_zone = vec![off_zone("forgejo", "git", "studio")];
+        d.off_zone = vec![off_zone("forgejo", "git", "shop")];
 
         let err = plan(d, &["forgejo", "freshrss"], &[]).unwrap_err();
         let msg = err.to_string();
@@ -1537,10 +1537,7 @@ mod tests {
             msg.contains("subdomain: git"),
             "error must surface the effective subdomain"
         );
-        assert!(
-            msg.contains("zone: studio"),
-            "error must name the App's Zone"
-        );
+        assert!(msg.contains("zone: shop"), "error must name the App's Zone");
         assert!(
             msg.contains("example.com"),
             "error must name the Zone the run does hold"
@@ -1556,7 +1553,7 @@ mod tests {
     #[test]
     fn plan_explicit_off_zone_error_names_deploy_not_a_run_scoping() {
         let mut d = discovered(&[], &[]);
-        d.off_zone = vec![off_zone("forgejo", "git", "studio")];
+        d.off_zone = vec![off_zone("forgejo", "git", "shop")];
 
         let msg = plan(d, &["forgejo"], &[]).unwrap_err().to_string();
 
@@ -1573,7 +1570,7 @@ mod tests {
     #[test]
     fn plan_explicit_skip_excludes_an_off_zone_target_avoids_error() {
         let mut d = discovered(&[], &[]);
-        d.off_zone = vec![off_zone("forgejo", "git", "studio")];
+        d.off_zone = vec![off_zone("forgejo", "git", "shop")];
 
         let p = plan(d, &["forgejo"], &["forgejo"]).unwrap();
 

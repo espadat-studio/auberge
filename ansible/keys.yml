@@ -143,9 +143,10 @@ keys:
   forgejo_zone:
     secret: false
     doc: >-
-      Zone the forge's public name lives in, named by the prefix its pair shares (e.g. "studio"
-      for studio_domain + studio_cloudflare_dns_api_token); unset leaves it in the fleet's zone.
-      Must be answered under [hosts.<name>], never fleet-wide (ADR-0081).
+      Zone the forge's public name lives in. "<zone>" selects the pair <zone>_domain +
+      <zone>_cloudflare_dns_api_token. Set both by name with auberge config set; the picker does
+      not list them. Unset leaves the forge in the fleet's zone. Must be answered under
+      [hosts.<name>], never fleet-wide (ADR-0081).
 
   freshrss_subdomain:
     secret: false
@@ -307,18 +308,6 @@ keys:
   ssh_port:
     secret: false
     doc: "SSH port to configure on the remote server during bootstrap"
-
-  studio_cloudflare_dns_api_token:
-    secret: true
-    doc: >-
-      Cloudflare API token scoped to the studio_domain zone only; answers DNS-01 for the apps
-      placed there, off the fleet zone's blast radius (ADR-0081).
-
-  studio_domain:
-    secret: false
-    doc: >-
-      Domain of the studio's own Cloudflare zone, e.g. espadat.com. Paired with
-      studio_cloudflare_dns_api_token; an app joins the zone via <app>_zone = "studio".
 
   tailscale_api_key:
     secret: true

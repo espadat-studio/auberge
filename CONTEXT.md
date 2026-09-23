@@ -77,7 +77,7 @@ An App without `tailnet_only`. Caddy serves on the host's public address; DNS pu
 _Avoid_: External app, world-facing app
 
 **Zone**:
-The DNS zone an App's public name lives in, named by the prefix its two **Key Registry** entries share: `<zone>_domain` and `<zone>_cloudflare_dns_api_token`. The fleet's Zone is the unnamed one (`domain`, `cloudflare_dns_api_token`). A Zone is a **pair**, never a domain alone — a Cloudflare token is zone-scoped, so holding the name without the token is a vhost that can never complete an ACME challenge (ADR-0068).
+The DNS zone an App's public name lives in, named by the prefix its two config keys share: `<zone>_domain` and `<zone>_cloudflare_dns_api_token`. The fleet's Zone is the unnamed one (`domain`, `cloudflare_dns_api_token`). The **Key Registry** holds only the Zones the repo requires, the fleet's and `agents`; an operator's own Zone is set by key name. A Zone is a **pair**, never a domain alone — a Cloudflare token is zone-scoped, so holding the name without the token is a vhost that can never complete an ACME challenge (ADR-0068).
 
 Which Zone an App is in has **two declaration sites, answering two different kinds of question**. A **Playbook Meta**'s `zone:` is the repo asserting that an App must be isolated, true for every operator — the agent tier, and nothing else. `<app>_zone` in `Config` is the operator placing an App in a Zone of their own; unanswered means the fleet's. A Meta pin **refuses** a Config override, so the repo's assertion cannot be unset by configuration.
 

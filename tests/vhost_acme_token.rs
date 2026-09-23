@@ -2,7 +2,7 @@
 //!
 //! Caddy takes one DNS-01 token per process, chosen per Host (ADR-0072). That
 //! was the whole problem while each Zone lived on its own Host, and stops
-//! being it the moment one Caddy terminates two Zones — a studio forge beside
+//! being it the moment one Caddy terminates two Zones — a shop's forge beside
 //! the personal fleet. So the choice moves into the site: every Caddyfile
 //! carries `tls { dns cloudflare {env.<name>} }`, naming its own Zone's token
 //! (ADR-0082).
@@ -46,7 +46,7 @@ const FLEET_INDIRECTION: &str = "caddy_dns_api_token";
 /// an assertion too (ADR-0046).
 const FLEET_TOKEN: &str = "parent-zone-token";
 const AGENT_TOKEN: &str = "agent-zone-token";
-const STUDIO_TOKEN: &str = "studio-zone-token";
+const SHOP_TOKEN: &str = "shop-zone-token";
 
 /// A vhost carrying no `tls` block, and why it answers no challenge.
 ///
@@ -297,13 +297,13 @@ fn test_a_host_with_an_empty_zone_set_still_gets_the_fleets_line() {
 fn test_a_host_serving_a_second_zone_writes_both_tokens() {
     let rendered = render(
         FLEET_TOKEN,
-        &[(None, FLEET_TOKEN), (Some("studio"), STUDIO_TOKEN)],
+        &[(None, FLEET_TOKEN), (Some("shop"), SHOP_TOKEN)],
     );
     assert_eq!(
         environment(&rendered),
         vec![
             (Zone::fleet().env_var(), FLEET_TOKEN.to_string()),
-            (Zone::named("studio").env_var(), STUDIO_TOKEN.to_string()),
+            (Zone::named("shop").env_var(), SHOP_TOKEN.to_string()),
         ],
         "{rendered}"
     );

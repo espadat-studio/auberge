@@ -39,7 +39,7 @@ auberge dns status --output json
   "configured_subdomains": ["blocky", "freshrss"],
   "active_a_records": [{ "name": "blocky", "ip": "192.168.1.10" }],
   "missing_subdomains": ["freshrss"],
-  "off_zone": [{ "app": "forgejo", "subdomain": "git", "zone": "studio" }]
+  "off_zone": [{ "app": "forgejo", "subdomain": "git", "zone": "shop" }]
 }
 ```
 
