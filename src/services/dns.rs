@@ -510,7 +510,8 @@ pub fn plan_set_all(
                     "apps in another DNS zone are out of this run's reach (ADR-0081):\n{}\n\n\
                  `dns` resolves one zone per run and this run holds {}. Answer that \
                  zone's `<zone>_domain` and `<zone>_cloudflare_dns_api_token`, then \
-                 publish the app from a run scoped to it.",
+                 publish the record with `auberge deploy <app>`, which reads the \
+                 app's own zone.",
                     off_zone_offenders.join("\n"),
                     domain
                 );
@@ -1536,6 +1537,28 @@ mod tests {
             "error must name the Zone the run does hold"
         );
         assert!(msg.contains("ADR-0081"), "error must reference the ADR");
+    }
+
+    /// The refusal used to send the operator to "a run scoped to" the App's
+    /// Zone. No such scoping exists — `CloudflareDns::connect` resolves the
+    /// fleet pair unconditionally — so the advice looped: answer both keys,
+    /// re-run, same error. The record is written by `auberge deploy <app>`,
+    /// which reads the App's own Zone from its Computed Vars.
+    #[test]
+    fn plan_explicit_off_zone_error_names_deploy_not_a_run_scoping() {
+        let mut d = discovered(&[], &[]);
+        d.off_zone = vec![off_zone("forgejo", "git", "studio")];
+
+        let msg = plan(d, &["forgejo"], &[]).unwrap_err().to_string();
+
+        assert!(
+            msg.contains("auberge deploy forgejo") || msg.contains("auberge deploy <app>"),
+            "error must name the command that writes the record: {msg}"
+        );
+        assert!(
+            !msg.contains("scoped to"),
+            "error must not promise a run scoping the CLI cannot do: {msg}"
+        );
     }
 
     #[test]

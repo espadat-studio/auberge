@@ -132,7 +132,8 @@ pub enum DnsCommands {
                         to stderr with its own reason.\n\
                       • Explicit target (--subdomains names one of them): hard-error before \
                         any record is written. For a tailnet-only app use \
-                        `auberge deploy <app>`; for an off-zone app, run against its zone.\n\n\
+                        `auberge deploy <app>`; for an off-zone app, publish it with \
+                      `auberge deploy <app>` too, which reads the app's own zone.\n\n\
                       EXAMPLES:\n  \
                       # Publish all Public Apps in this zone; the rest are named and skipped\n  \
                       auberge dns set-all --host auberge\n\n  \
