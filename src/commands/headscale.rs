@@ -29,7 +29,7 @@ use tabled::Tabled;
 /// Stated here rather than in the fence so the claim sits next to the code
 /// making it: a reader who changes a command string below is looking at the
 /// version it is true of.
-pub const VERIFIED_CLI_VERSION: &str = "0.29.3";
+pub const VERIFIED_CLI_VERSION: &str = "0.29.4";
 
 #[derive(Subcommand)]
 pub enum HeadscaleCommands {
