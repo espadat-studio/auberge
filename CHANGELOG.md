@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.19.3](https://github.com/espadat-studio/auberge/compare/v0.19.2...v0.19.3) - 2026-09-25
+
+### Other
+
+- *(deps)* update jdx/hk to 2.2.0 ([#994](https://github.com/espadat-studio/auberge/pull/994))
+- *(docs)* bump the docs theme to v0.4.0
+- *(paperless)* bump to 3.2.0 ([#992](https://github.com/espadat-studio/auberge/pull/992))
+- *(aoe)* bump to 1.17.2 ([#991](https://github.com/espadat-studio/auberge/pull/991))
+- *(docs)* update dependency astro to v7.3.5 ([#990](https://github.com/espadat-studio/auberge/pull/990))
+- *(docs)* update dependency @astrojs/starlight to v0.42.4 ([#989](https://github.com/espadat-studio/auberge/pull/989))
+
 ## [0.19.2](https://github.com/espadat-studio/auberge/compare/v0.19.1...v0.19.2) - 2026-09-25
 
 ### Other
