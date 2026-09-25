@@ -4,7 +4,7 @@ subdomain: navidrome
 memory:
   navidrome: { high: 256M, max: 384M }
 version:
-  value: "0.64.1"
+  value: "0.64.2"
   datasource: github-releases
   depName: "navidrome/navidrome"
   extractVersion: "^v(?<version>.+)$"
