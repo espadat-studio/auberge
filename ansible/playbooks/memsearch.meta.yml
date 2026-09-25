@@ -3,7 +3,7 @@ required_keys:
   - memsearch_sync_device_id
   - memsearch_sync_device_name
 version:
-  value: "0.4.20"
+  value: "0.4.21"
   datasource: github-releases
   depName: "zilliztech/memsearch"
   extractVersion: "^v(?<version>.+)$"
