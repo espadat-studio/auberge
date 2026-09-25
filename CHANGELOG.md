@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.19.2](https://github.com/espadat-studio/auberge/compare/v0.19.1...v0.19.2) - 2026-09-25
+
+### Other
+
+- *(navidrome)* bump to 0.64.2 ([#987](https://github.com/espadat-studio/auberge/pull/987))
+- *(memsearch)* bump to 0.4.21 ([#986](https://github.com/espadat-studio/auberge/pull/986))
+- *(deps)* update github/codeql-action digest to 2892aa5 ([#984](https://github.com/espadat-studio/auberge/pull/984))
+- *(deps)* update taiki-e/install-action digest to 45fceba ([#985](https://github.com/espadat-studio/auberge/pull/985))
+- bump local node version
+
 ## [0.19.1](https://github.com/espadat-studio/auberge/compare/v0.19.0...v0.19.1) - 2026-09-23
 
 ### Fixed
