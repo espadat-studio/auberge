@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.19.4](https://github.com/espadat-studio/auberge/compare/v0.19.3...v0.19.4) - 2026-09-29
+
+### Other
+
+- *(immich)* bump to 3.2.4 ([#1002](https://github.com/espadat-studio/auberge/pull/1002))
+- *(deps)* update jdx/mise-action action to v5 ([#1003](https://github.com/espadat-studio/auberge/pull/1003))
+- *(uv)* bump to 0.12.18 ([#1001](https://github.com/espadat-studio/auberge/pull/1001))
+- *(deps)* update jdx/hk to 2.4.0 ([#999](https://github.com/espadat-studio/auberge/pull/999))
+- *(opencode)* bump to 1.18.32 ([#1000](https://github.com/espadat-studio/auberge/pull/1000))
+- *(hermes)* bump to v2026.9.21 ([#998](https://github.com/espadat-studio/auberge/pull/998))
+- *(deps)* update taiki-e/install-action digest to 23d41aa ([#997](https://github.com/espadat-studio/auberge/pull/997))
+- *(paperless)* bump to 3.2.1 ([#995](https://github.com/espadat-studio/auberge/pull/995))
+
 ## [0.19.3](https://github.com/espadat-studio/auberge/compare/v0.19.2...v0.19.3) - 2026-09-25
 
 ### Other
