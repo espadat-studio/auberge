@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.19.5](https://github.com/espadat-studio/auberge/compare/v0.19.4...v0.19.5) - 2026-10-02
+
+### Other
+
+- *(actual)* bump to 26.10.0 ([#1013](https://github.com/espadat-studio/auberge/pull/1013))
+- *(deps)* update dtolnay/rust-toolchain digest to 89b1218 ([#1012](https://github.com/espadat-studio/auberge/pull/1012))
+- *(deps)* bump devalue from 5.9.2 to 5.9.4 in /docs in the npm_and_yarn group across 1 directory ([#1010](https://github.com/espadat-studio/auberge/pull/1010))
+- *(aoe)* bump to 1.18.0 ([#1011](https://github.com/espadat-studio/auberge/pull/1011))
+- *(docs)* update dependency @astrojs/starlight to v0.42.5 ([#1009](https://github.com/espadat-studio/auberge/pull/1009))
+- *(deps)* update jdx/mise-action digest to 7a4e45a ([#1008](https://github.com/espadat-studio/auberge/pull/1008))
+- *(deps)* update taiki-e/install-action digest to badb8c3 ([#1005](https://github.com/espadat-studio/auberge/pull/1005))
+- *(hermes)* bump to v2026.9.24 ([#1004](https://github.com/espadat-studio/auberge/pull/1004))
+- *(uv)* bump to 0.12.19 ([#1006](https://github.com/espadat-studio/auberge/pull/1006))
+
 ## [0.19.4](https://github.com/espadat-studio/auberge/compare/v0.19.3...v0.19.4) - 2026-09-29
 
 ### Other
