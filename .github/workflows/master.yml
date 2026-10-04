@@ -34,7 +34,7 @@ jobs:
         with:
           persist-credentials: false
       - run: rm -fr .mise/config.toml
-      - uses: jdx/mise-action@7a4e45a543138629540c9a1616d08632b893e492 # v5
+      - uses: jdx/mise-action@94c60b39bc2d90ab2f9bab27f38d3cc4812c1834 # v5
         with:
           mise_toml: |
             [tasks]
@@ -129,7 +129,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@89b12181fb390509a0842a86cc55eeb8eb928c1d # stable
         with:
           components: llvm-tools-preview
-      - uses: taiki-e/install-action@badb8c3638e0b773c6c17a6025c2306a8f1c4303 # nextest
+      - uses: taiki-e/install-action@c6be25d576b61102b3af9c1f35a7f2b3a55b5e3a # nextest
       - run: cargo nextest run
 
   test:
