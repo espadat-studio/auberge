@@ -327,6 +327,17 @@
       register: paperless_migrate_result
       changed_when: "'No migrations to apply' not in paperless_migrate_result.stdout"
 
+    - name: Rebuild the search index a new release may have emptied
+      when: paperless_installed_version != paperless_version
+      ansible.builtin.command:
+        cmd: "{{ paperless_install_path }}/venv/bin/python3 manage.py document_index reindex"
+        chdir: "{{ paperless_src_dir }}"
+      become: true
+      become_user: "{{ paperless_sys_user }}"
+      environment:
+        PAPERLESS_CONFIGURATION_PATH: "{{ paperless_install_path }}/paperless.conf"
+      changed_when: true
+
     - name: Create admin superuser
       ansible.builtin.command:
         cmd: "{{ paperless_install_path }}/venv/bin/python3 manage.py createsuperuser --noinput"
