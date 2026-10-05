@@ -39,6 +39,7 @@ const QUIESCED: &[&str] = &[
     "Download NLTK stopwords data",
     "Download NLTK punkt_tab tokenizer",
     "Run database migrations",
+    "Rebuild the search index a new release may have emptied",
     "Create admin superuser",
 ];
 
