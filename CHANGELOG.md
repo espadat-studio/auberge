@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.19.6](https://github.com/espadat-studio/auberge/compare/v0.19.5...v0.19.6) - 2026-10-05
+
+### Fixed
+
+- *(paperless)* rebuild the search index on every release change ([#1026](https://github.com/espadat-studio/auberge/pull/1026))
+
+### Other
+
+- *(deps)* update taiki-e/install-action digest to db63522 ([#1024](https://github.com/espadat-studio/auberge/pull/1024))
+- *(colporteur)* bump to 0.6.7 ([#1023](https://github.com/espadat-studio/auberge/pull/1023))
+
 ## [0.19.5](https://github.com/espadat-studio/auberge/compare/v0.19.4...v0.19.5) - 2026-10-05
 
 ### Other
