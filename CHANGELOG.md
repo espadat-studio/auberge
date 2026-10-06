@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.19.7](https://github.com/espadat-studio/auberge/compare/v0.19.6...v0.19.7) - 2026-10-06
+
+### Other
+
+- *(examples)* register an admin page passed whole as given ([#1029](https://github.com/espadat-studio/auberge/pull/1029))
+- *(examples)* seed the content repo and add the editor on onboarding ([#1032](https://github.com/espadat-studio/auberge/pull/1032))
+- *(examples)* ask for the onboarding token when run by hand ([#1030](https://github.com/espadat-studio/auberge/pull/1030))
+- *(opencode)* bump to 1.18.34 ([#1028](https://github.com/espadat-studio/auberge/pull/1028))
+- *(freshrss)* bump to 1.30.1 ([#1027](https://github.com/espadat-studio/auberge/pull/1027))
+
 ## [0.19.6](https://github.com/espadat-studio/auberge/compare/v0.19.5...v0.19.6) - 2026-10-05
 
 ### Fixed
