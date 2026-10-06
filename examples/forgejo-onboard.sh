@@ -5,17 +5,22 @@
 # REFERENCE SCRIPT — NOT SHIPPED IN THE auberge BINARY
 # ---------------------------------------------------
 # Onboards one client site onto a self-hosted Forgejo so that an editor who has
-# no github.com account can edit its copy through Decap CMS. Two things to
-# create, in order:
+# no github.com account can edit its copy through Decap CMS. Up to four
+# things to create, in order:
 #
 #   1. repository   creates a private content repository on the forge, holding
 #                   only the README that initialised it. Decap commits the
-#                   editable copy into it, and nothing else writes there.
+#                   editable copy into it.
 #   2. oauth app    one redirect URI per <site-origin>, each the Decap admin
 #                   page itself, and confidential_client is false. A browser
 #                   app holds no secret, and leaving it true is the documented
 #                   cause of "Impossible to login with forgejo"
 #                   (decap-cms#7867).
+#   3. seed         with --seed <file>, uploads that JSON file to the repository
+#                   root under its basename, once. A file already there holds
+#                   the client's published edits and is never overwritten.
+#   4. editor       with --editor <username>, grants that existing forge user
+#                   write access to the repository. It creates no account.
 #
 # It then prints the backend block to paste into the site's Decap config.
 #
@@ -43,7 +48,8 @@
 # the environment and the shell history.
 #
 # Re-running is safe, and it is also how the redirect URIs are changed. The
-# repository step looks for its own result and skips it; the OAuth step
+# repository and seed steps look for their own result and skip it, the editor
+# step is a PUT that converges, and the OAuth step
 # reconciles instead, PATCHing the application to exactly the origins given on
 # this run. The client ID survives that, so the site's Decap config never has
 # to be edited — a site moving from a staging host to its real domain is one
@@ -57,14 +63,18 @@
 
 set -euo pipefail
 
-readonly USAGE="usage: ${0##*/} <content-repo> <site-origin>...
+readonly USAGE="usage: ${0##*/} [--seed <file>] [--editor <username>] <content-repo> <site-origin>...
 
-  ${0##*/} client-content https://client.example.com \\
-    http://localhost:4321
+  ${0##*/} --seed copy.json --editor client client-content \\
+    https://client.example.com http://localhost:4321
 
 <content-repo> is a bare name, created under the account FORGEJO_TOKEN belongs
 to. Each <site-origin> becomes the redirect URI <site-origin>/admin/. The set
-is replaced on every run, so pass all of them every time."
+is replaced on every run, so pass all of them every time.
+
+--seed <file>        upload a JSON file to the repository root under its
+                     basename, unless a file of that name is already there
+--editor <username>  grant an existing forge user write access"
 
 # Set by main() before the first api call. Globals rather than main()'s locals
 # because the EXIT trap outlives main(): it runs once the frame is gone, so a
@@ -104,6 +114,14 @@ repo_name_is_bare() {
   [[ $1 =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]]
 }
 
+# <file> -> its path in the content repository: the basename, held to the same
+# rule as a repository name, since it goes into a request path the same way.
+seed_path_for() {
+  local name="${1##*/}"
+  repo_name_is_bare "${name}" || return 1
+  printf '%s' "${name}"
+}
+
 api() {
   local method="$1" path="$2"
   shift 2
@@ -118,6 +136,23 @@ api_code() {
 }
 
 main() {
+  local seed='' editor=''
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --seed)
+        [[ $# -ge 2 ]] || die "$USAGE"
+        seed="$2"
+        shift 2
+        ;;
+      --editor)
+        [[ $# -ge 2 ]] || die "$USAGE"
+        editor="$2"
+        shift 2
+        ;;
+      -*) die "$USAGE" ;;
+      *) break ;;
+    esac
+  done
   [[ $# -ge 2 ]] || die "$USAGE"
 
   local repo="$1"
@@ -140,6 +175,17 @@ main() {
 
   command -v jq >/dev/null || die 'jq is required'
 
+  local seed_path=''
+  if [[ -n ${seed} ]]; then
+    [[ -s ${seed} ]] || die "seed file is missing or empty: ${seed}"
+    jq empty "${seed}" 2>/dev/null || die "seed file is not valid JSON: ${seed}"
+    seed_path="$(seed_path_for "${seed}")" \
+      || die "seed file name cannot be a repository path: ${seed}"
+  fi
+  if [[ -n ${editor} ]]; then
+    repo_name_is_bare "${editor}" || die "expected a bare username, got: ${editor}"
+  fi
+
   forge="${FORGEJO_URL%/}"
 
   local site redirects=()
@@ -158,6 +204,12 @@ main() {
   local owner
   owner="$(api GET /user | jq -er '.login')" \
     || die "cannot reach ${forge} — check FORGEJO_URL and FORGEJO_TOKEN"
+
+  # Checked before anything is written, so a typo fails the run whole.
+  if [[ -n ${editor} ]]; then
+    [[ $(api_code "/users/${editor}") == 200 ]] \
+      || die "no Forgejo user ${editor} on ${forge} — create the account first"
+  fi
 
   # The branch the backend block names is read off the forge, never assumed. A
   # repository created by hand in the web UI lands on whatever that forge
@@ -216,6 +268,34 @@ main() {
     note "redirect ${uri}"
   done
 
+  if [[ -n ${seed_path} ]]; then
+    step "Seed ${seed_path}"
+    code="$(api_code "/repos/${owner}/${repo}/contents/${seed_path}")"
+    case "${code}" in
+      200)
+        note 'already in the repository, leaving it alone: it holds published edits'
+        ;;
+      404)
+        jq -n --rawfile content "${seed}" --arg branch "${branch}" \
+          --arg message "Seed ${seed_path}" \
+          '{content: ($content | @base64), branch: $branch, message: $message}' \
+          | api POST "/repos/${owner}/${repo}/contents/${seed_path}" \
+            --data @- >/dev/null
+        note "committed to ${branch}"
+        ;;
+      *)
+        die "unexpected HTTP ${code} from ${forge} for ${seed_path}"
+        ;;
+    esac
+  fi
+
+  if [[ -n ${editor} ]]; then
+    step "Editor ${editor}"
+    api PUT "/repos/${owner}/${repo}/collaborators/${editor}" \
+      --data '{"permission":"write"}' >/dev/null
+    note 'collaborator with write access'
+  fi
+
   step 'Decap backend block'
   cat <<CONFIG
 
@@ -228,9 +308,16 @@ backend:
   app_id: ${client_id}
 
 CONFIG
-  note 'Remaining by hand: give the editor a Forgejo account and write access'
-  note 'to this repository, and wire the site CI that carries a commit here'
-  note 'into the site source on GitHub. GitHub stays origin; nothing mirrors.'
+  note 'Remaining by hand:'
+  if [[ -z ${editor} ]]; then
+    note "- the editor's Forgejo account, then a re-run with --editor <username>"
+  fi
+  note '- the site CI that carries a commit here into the site source on GitHub.'
+  note '  GitHub stays origin; nothing mirrors.'
+  note '- the sync token that CI reads, one per site: Settings > Applications on'
+  note "  ${forge}, specific repositories: ${owner}/${repo}, read:repository,"
+  note "  stored as the site's FORGEJO_TOKEN GitHub secret. Creating a token"
+  note '  takes basic auth, so this run cannot make it.'
   note 'Delete the token this run used: nothing reads it again.'
 }
 

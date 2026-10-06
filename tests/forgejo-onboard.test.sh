@@ -3,14 +3,15 @@
 # tests/forgejo-onboard.test.sh
 #
 # Unit tests for the pure, network-free logic in examples/forgejo-onboard.sh —
-# the derivation of the OAuth redirect URI from a site origin. That derivation
+# the derivation of the OAuth redirect URI from a site origin, and of a seed
+# file's path in the content repository. The redirect derivation
 # is the one thing in the script an editor's login fails on silently: Forgejo
 # matches a redirect URI exactly, so a missing trailing slash or an accepted
 # non-origin registers a URI no site ever serves, and the only symptom is a
 # login that will not complete.
 #
-# The two API steps are not covered here: they are one create and one
-# reconcile against a live forge, and stubbing curl would test the stub.
+# The API steps are not covered here: they are creates, a reconcile and a PUT
+# against a live forge, and stubbing curl would test the stub.
 #
 # Run: ./tests/forgejo-onboard.test.sh
 
@@ -34,6 +35,7 @@ printf '== the subjects exist\n'
 
 assert_succeeds 'redirect_uri_for is defined' is_defined redirect_uri_for
 assert_succeeds 'repo_name_is_bare is defined' is_defined repo_name_is_bare
+assert_succeeds 'seed_path_for is defined' is_defined seed_path_for
 
 printf '\n== redirect_uri_for\n'
 
@@ -102,5 +104,30 @@ assert_fails 'a leading dash is refused' \
 
 assert_fails 'an empty name is refused' \
   repo_name_is_bare ''
+
+printf '\n== seed_path_for\n'
+
+assert_eq 'a seed lands at the repository root under its basename' \
+  'copy.json' "$(seed_path_for '/tmp/copy.json')"
+
+assert_eq 'a relative path keeps only its basename' \
+  'copy.json' "$(seed_path_for 'out/copy.json')"
+
+assert_eq 'a bare file name is its own path' \
+  'copy.json' "$(seed_path_for 'copy.json')"
+
+# A trailing slash leaves an empty basename: there is no file to name.
+assert_fails 'a directory path is refused' \
+  seed_path_for '/tmp/'
+
+# Unencoded in the request path, a space would split the URL.
+assert_fails 'a basename with a space is refused' \
+  seed_path_for '/tmp/my copy.json'
+
+assert_fails 'a dot-file is refused' \
+  seed_path_for '/tmp/.copy.json'
+
+assert_fails 'a parent-directory basename is refused' \
+  seed_path_for '/tmp/..'
 
 report 'forgejo-onboard'

@@ -71,7 +71,22 @@ sudo -u forgejo env HOME=/var/lib/forgejo /opt/forgejo/forgejo \
 
 GitHub stays origin. Decap writes to a **separate, content-only repository on this forge**: it holds the client-editable copy and nothing else, shares no history with the site's source, and has no git relation to github.com. The site's own CI reads that repository, merges the editable keys into its source on GitHub, and deploys from there.
 
-`examples/forgejo-onboard.sh` in this repository is the whole forge-side onboarding — it creates the content repository and registers the OAuth application described below. It migrates nothing and creates no mirror.
+`examples/forgejo-onboard.sh` in this repository does the forge-side onboarding. It creates the content repository and registers the OAuth application described below. It migrates nothing and creates no mirror. Two optional flags go before the positional arguments:
+
+- `--seed <file>` uploads a JSON file to the repository root under its basename. It only creates: a file already there holds the client's published edits, so a re-run skips it and never overwrites. A missing, empty or invalid JSON file is refused.
+- `--editor <username>` makes an existing forge user a collaborator with write access. It creates no account, and refuses a username the forge does not know.
+
+```sh
+mise -C ~/code/client.example run amorce > /tmp/copy.json
+examples/forgejo-onboard.sh --seed /tmp/copy.json --editor client \
+  client-content https://client.example.com
+```
+
+Three steps stay manual, and the script prints them at the end:
+
+1. The editor's account. Registration is disabled, so the administrator creates it.
+2. The site CI that carries a commit from the content repository into the site source on GitHub.
+3. The sync token that CI reads, one per site. Create it under **Settings → Applications**, limited to the content repository with _specific repositories_ and the `read:repository` scope. Store it as the site's `FORGEJO_TOKEN` GitHub secret. Forgejo creates tokens only over basic auth, so the script cannot make one with a token.
 
 ### Why not migrate the site and mirror back
 
