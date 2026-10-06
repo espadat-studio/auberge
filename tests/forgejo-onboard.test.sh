@@ -57,6 +57,16 @@ assert_eq 'a preview host is an origin like any other' \
   'https://site.example.workers.dev/admin/' \
   "$(redirect_uri_for 'https://site.example.workers.dev')"
 
+# A site whose edge drops the trailing slash serves the admin page at /admin,
+# and an exact matcher never maps it onto /admin/. The page is passed whole.
+assert_eq 'an admin page passed whole is registered as given' \
+  'https://site.example.workers.dev/admin' \
+  "$(redirect_uri_for 'https://site.example.workers.dev/admin')"
+
+assert_eq 'an admin page passed whole keeps its trailing slash' \
+  'https://client.example.com/admin/' \
+  "$(redirect_uri_for 'https://client.example.com/admin/')"
+
 printf '\n== redirect_uri_for rejects what is not an origin\n'
 
 assert_fails 'a bare hostname is refused' \
