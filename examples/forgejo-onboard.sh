@@ -69,8 +69,9 @@ readonly USAGE="usage: ${0##*/} [--seed <file>] [--editor <username>] <content-r
     https://client.example.com http://localhost:4321
 
 <content-repo> is a bare name, created under the account FORGEJO_TOKEN belongs
-to. Each <site-origin> becomes the redirect URI <site-origin>/admin/. The set
-is replaced on every run, so pass all of them every time.
+to. Each <site-origin> becomes the redirect URI <site-origin>/admin/; pass the
+admin page whole (https://client.example.com/admin) to register another path.
+The set is replaced on every run, so pass all of them every time.
 
 --seed <file>        upload a JSON file to the repository root under its
                      basename, unless a file of that name is already there
@@ -98,13 +99,19 @@ note() {
 }
 
 # <site-origin> -> the redirect URI to register, or non-zero if the argument is
-# not an origin. Decap's redirect target is the admin page itself, trailing
-# slash included: /admin/ and /admin are two different URIs to an exact
-# matcher, and only one of them is what the site serves.
+# not an origin. Decap's redirect target is the admin page itself:
+# /admin/ and /admin are two different URIs to an exact matcher, and only one
+# of them is what the site serves. A bare origin gets /admin/, which is what a
+# folder-index edge serves; a URL with a path is the admin page passed whole,
+# for an edge that drops the trailing slash and serves /admin.
 redirect_uri_for() {
   local site="$1"
   [[ $site == http://?* || $site == https://?* ]] || return 1
-  printf '%s/admin/' "${site%/}"
+  if [[ ${site#*://} == */?* ]]; then
+    printf '%s' "${site}"
+  else
+    printf '%s/admin/' "${site%/}"
+  fi
 }
 
 # A bare repository name. Anchored on an alphanumeric because curl resolves a
