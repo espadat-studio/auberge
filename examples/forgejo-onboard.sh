@@ -37,6 +37,11 @@
 #   FORGEJO_URL     base URL of the forge, e.g. https://git.example.com
 #   FORGEJO_TOKEN   Forgejo token, scopes write:repository and write:user
 #
+# Run from a terminal with FORGEJO_TOKEN unset, it asks for the token instead,
+# without echo. That is the intended use: the token can write every repository
+# on the account, so make one for the run, delete it after, and keep it out of
+# the environment and the shell history.
+#
 # Re-running is safe, and it is also how the redirect URIs are changed. The
 # repository step looks for its own result and skips it; the OAuth step
 # reconciles instead, PATCHing the application to exactly the origins given on
@@ -122,6 +127,11 @@ main() {
   # GitHub any more.
   repo_name_is_bare "${repo}" \
     || die "expected a bare repository name, got: ${repo}"
+
+  if [[ -z ${FORGEJO_TOKEN:-} && -t 0 ]]; then
+    read -rsp 'Forgejo token (write:repository, write:user): ' FORGEJO_TOKEN
+    printf '\n' >&2
+  fi
 
   local var
   for var in FORGEJO_URL FORGEJO_TOKEN; do
@@ -221,6 +231,7 @@ CONFIG
   note 'Remaining by hand: give the editor a Forgejo account and write access'
   note 'to this repository, and wire the site CI that carries a commit here'
   note 'into the site source on GitHub. GitHub stays origin; nothing mirrors.'
+  note 'Delete the token this run used: nothing reads it again.'
 }
 
 if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
