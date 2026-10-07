@@ -7,7 +7,7 @@ required_keys:
   - immich_subdomain
 subdomain: photos
 version:
-  value: "3.2.4"
+  value: "3.3.0"
   datasource: github-releases
   depName: "immich-app/immich"
   extractVersion: "^v(?<version>.+)$"
