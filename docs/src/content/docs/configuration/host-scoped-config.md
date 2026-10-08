@@ -47,4 +47,10 @@ An `<app>_subdomain` is the app's record name in the fleet's DNS zone — fleet 
 
 ## Editing
 
-`auberge config set` writes flat top-level keys and rejects dotted names (and the reserved `hosts` name). Edit host tables in the file: `auberge config edit`. `auberge config list` shows host-scoped entries as `hosts.<name>.<key>` rows, secrets redacted.
+`auberge config set hosts.<name>.<key> <value>` writes one key into `[hosts.<name>]`, creating the table if absent. `auberge config remove hosts.<name>.<key>` removes it, and drops the table once empty. `auberge config get hosts.<name>.<key>` reads the override alone, never the fleet-wide value behind it. Every other dotted name is refused, as is the bare `hosts` name. `auberge config list` shows host-scoped entries as `hosts.<name>.<key>` rows, secrets redacted.
+
+```bash
+auberge config set hosts.agent-box.headscale_subdomain ""
+```
+
+`set` and `remove` rewrite the whole file, dropping comments and key order. To keep them, edit the file instead: `auberge config edit`.

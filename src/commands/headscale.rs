@@ -985,14 +985,22 @@ fn mint_coordinator<'a>(hosts: &'a [Host], config: &Config) -> Result<Option<&'a
         [only] => Ok(Some(only)),
         several => eyre::bail!(
             "{} roster hosts serve headscale ({}) — the auto-mint cannot tell which tailnet the \
-             target is joining. Blank headscale_subdomain for all but one, or mint by hand with \
-             `auberge headscale add-key`.",
+             target is joining. Run the command below for every host except the one that should \
+             serve, or mint by hand with `auberge headscale add-key`.\n{}",
             several.len(),
             several
                 .iter()
                 .map(|h| h.name.as_str())
                 .collect::<Vec<_>>()
                 .join(", "),
+            several
+                .iter()
+                .map(|h| format!(
+                    "  auberge config set hosts.{}.headscale_subdomain \"\"",
+                    h.name
+                ))
+                .collect::<Vec<_>>()
+                .join("\n"),
         ),
     }
 }
@@ -2719,9 +2727,11 @@ mod tests {
     fn several_headscale_hosts_stop_the_run_rather_than_falling_back() {
         let config = Config::from_toml_str(r#"headscale_subdomain = "hs""#).unwrap();
         let hosts = [named_host("auberge"), named_host("ruche")];
-        let err = mint_coordinator(&hosts, &config).unwrap_err();
-        assert!(err.to_string().contains("auberge"), "{err}");
-        assert!(err.to_string().contains("ruche"), "{err}");
+        let err = mint_coordinator(&hosts, &config).unwrap_err().to_string();
+        for name in ["auberge", "ruche"] {
+            let command = format!("auberge config set hosts.{name}.headscale_subdomain \"\"");
+            assert!(err.contains(&command), "{err}");
+        }
     }
 
     #[test]

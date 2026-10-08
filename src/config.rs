@@ -117,8 +117,14 @@ impl Config {
         self.values.keys().cloned().collect()
     }
 
+    /// A top-level key, or one Host's override as `hosts.<name>.<key>` —
+    /// the shape `set`, `remove` and `list` use.
     pub fn get(&self, key: &str) -> Option<String> {
-        self.values.get(key).and_then(value_to_string)
+        match self.split_host_key(key) {
+            Ok(Some((host, host_key))) => self.host_overrides(host)?.get(host_key),
+            _ => self.values.get(key),
+        }
+        .and_then(value_to_string)
     }
 
     pub fn get_resolved(&self, key: &str) -> Result<Option<String>> {
@@ -233,19 +239,16 @@ impl Config {
         if key == HOSTS_TABLE {
             eyre::bail!(
                 "'{key}' is the reserved per-Host override table (ADR-0058); \
-                 edit {} directly.",
-                self.path.display()
+                 set one Host's key with `{HOSTS_TABLE}.<name>.<key>`."
             );
         }
-        if key.contains('.') {
-            eyre::bail!(
-                "'{key}' looks like a nested key, which `set` cannot write. \
-                 Edit {} directly (e.g. a [hosts.<name>] table).",
-                self.path.display()
-            );
+        let value = toml::Value::String(value.to_string());
+        match self.split_host_key(key)? {
+            Some((host, host_key)) => self.set_host_key(host, host_key, value)?,
+            None => {
+                self.values.insert(key.to_string(), value);
+            }
         }
-        self.values
-            .insert(key.to_string(), toml::Value::String(value.to_string()));
         self.save()
     }
 
@@ -253,15 +256,84 @@ impl Config {
         if key == HOSTS_TABLE {
             eyre::bail!(
                 "'{key}' is the reserved per-Host override table (ADR-0058); \
-                 removing it would drop every host's overrides. Edit {} directly.",
-                self.path.display()
+                 removing it would drop every host's overrides. Remove one Host's \
+                 key with `{HOSTS_TABLE}.<name>.<key>`."
             );
         }
-        if self.values.remove(key).is_none() {
-            return Ok(false);
+        let removed = match self.split_host_key(key)? {
+            Some((host, host_key)) => self.remove_host_key(host, host_key),
+            None => self.values.remove(key).is_some(),
+        };
+        if removed {
+            self.save()?;
         }
-        self.save()?;
-        Ok(true)
+        Ok(removed)
+    }
+
+    /// Creates `[hosts]` and `[hosts.<host>]` as needed.
+    fn set_host_key(&mut self, host: &str, key: &str, value: toml::Value) -> Result<()> {
+        let mut table = &mut self.values;
+        for (name, label) in [
+            (HOSTS_TABLE, HOSTS_TABLE.to_string()),
+            (host, format!("{HOSTS_TABLE}.{host}")),
+        ] {
+            table = table
+                .entry(name)
+                .or_insert_with(|| toml::Value::Table(toml::Table::new()))
+                .as_table_mut()
+                .ok_or_else(|| eyre::eyre!("'{label}' in config.toml is not a table"))?;
+        }
+        table.insert(key.to_string(), value);
+        Ok(())
+    }
+
+    /// Drops `[hosts.<host>]` once its last key goes, and `[hosts]` with it,
+    /// so a removal leaves no empty header behind.
+    fn remove_host_key(&mut self, host: &str, key: &str) -> bool {
+        let Some(tables) = self
+            .values
+            .get_mut(HOSTS_TABLE)
+            .and_then(toml::Value::as_table_mut)
+        else {
+            return false;
+        };
+        let Some(entries) = tables.get_mut(host).and_then(toml::Value::as_table_mut) else {
+            return false;
+        };
+        if entries.remove(key).is_none() {
+            return false;
+        }
+        if entries.is_empty() {
+            tables.remove(host);
+        }
+        if tables.is_empty() {
+            self.values.remove(HOSTS_TABLE);
+        }
+        true
+    }
+
+    /// Where `set`/`remove` write `key`: `None` for a top-level key,
+    /// `Some((host, key))` for `hosts.<host>.<key>`. Host names may carry
+    /// dots and keys never do, so the last dot splits. Every other dotted
+    /// key is refused — other nested tables carry their own meaning.
+    fn split_host_key<'k>(&self, key: &'k str) -> Result<Option<(&'k str, &'k str)>> {
+        if !key.contains('.') {
+            return Ok(None);
+        }
+        if let Some((host, host_key)) = key
+            .strip_prefix(HOSTS_TABLE)
+            .and_then(|rest| rest.strip_prefix('.'))
+            .and_then(|rest| rest.rsplit_once('.'))
+            && !host.is_empty()
+            && !host_key.is_empty()
+        {
+            return Ok(Some((host, host_key)));
+        }
+        eyre::bail!(
+            "'{key}' looks like a nested key, which `config` can only write as \
+             `{HOSTS_TABLE}.<name>.<key>`. Edit {} directly.",
+            self.path.display()
+        )
     }
 
     // ── Display helpers ───────────────────────────────────────────────────────
@@ -1149,14 +1221,146 @@ ssh_port = 22022
         assert_eq!(config.get_for_host("domain", None).unwrap(), "example.com");
     }
 
-    /// `set` writes flat top-level keys only; a dotted key would land as a
-    /// literal name no run can read. Host tables are edited in the file.
+    fn file_backed(toml_str: &str) -> (tempfile::TempDir, Config) {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("config.toml");
+        fs::write(&path, toml_str).unwrap();
+        let values = toml::from_str(toml_str).unwrap();
+        (dir, Config { path, values })
+    }
+
+    fn reload(config: &Config) -> Config {
+        let values = toml::from_str(&fs::read_to_string(&config.path).unwrap()).unwrap();
+        Config {
+            path: config.path.clone(),
+            values,
+        }
+    }
+
     #[test]
-    fn test_set_rejects_nested_keys() {
+    fn test_set_host_key_blanks_a_fleet_wide_gate_for_that_host() {
+        let (_dir, mut config) = file_backed(
+            r#"
+            blocky_subdomain = "dns"
+
+            [hosts.ruche]
+            domain = "ruche.example.com"
+        "#,
+        );
+        config.set("hosts.ruche.blocky_subdomain", "").unwrap();
+        let config = reload(&config);
+        assert_eq!(
+            config
+                .get_for_host("blocky_subdomain", Some("ruche"))
+                .unwrap(),
+            ""
+        );
+        assert_eq!(
+            config.get_for_host("domain", Some("ruche")).unwrap(),
+            "ruche.example.com"
+        );
+        let hosts = [
+            crate::hosts::Host::fixture("auberge", None),
+            crate::hosts::Host::fixture("ruche", None),
+        ];
+        let serving: Vec<_> = crate::hosts::serving_hosts(&hosts, &config, "blocky_subdomain")
+            .into_iter()
+            .map(|h| h.name.as_str())
+            .collect();
+        assert_eq!(serving, vec!["auberge"]);
+    }
+
+    #[test]
+    fn test_set_host_key_creates_the_hosts_table() {
+        let (_dir, mut config) = file_backed(r#"headscale_subdomain = "hs""#);
+        config
+            .set("hosts.recordreel.headscale_subdomain", "")
+            .unwrap();
+        let config = reload(&config);
+        assert_eq!(config.host_override_names(), vec!["recordreel"]);
+        assert_eq!(
+            config
+                .get_for_host("headscale_subdomain", Some("recordreel"))
+                .unwrap(),
+            ""
+        );
+        assert_eq!(config.get("headscale_subdomain").unwrap(), "hs");
+    }
+
+    /// `get` reads the override alone, never the fleet-wide value behind it:
+    /// it answers "what does this table say", the row `list` prints.
+    #[test]
+    fn test_get_reads_a_host_key_without_falling_back() {
+        let config = make_config(HOST_SCOPED);
+        assert_eq!(config.get("hosts.ruche.headscale_subdomain").unwrap(), "");
+        assert!(config.get("hosts.ruche.domain").is_none());
+        assert!(config.get("hosts.missing.domain").is_none());
+    }
+
+    #[test]
+    fn test_set_host_key_accepts_a_dotted_host_name() {
+        let (_dir, mut config) = file_backed("");
+        config.set("hosts.box.lan.domain", "x").unwrap();
+        assert_eq!(
+            reload(&config)
+                .get_for_host("domain", Some("box.lan"))
+                .unwrap(),
+            "x"
+        );
+    }
+
+    #[test]
+    fn test_remove_host_key_drops_the_emptied_table() {
+        let (_dir, mut config) = file_backed(
+            r#"
+            [hosts.ruche]
+            blocky_subdomain = ""
+            headscale_subdomain = ""
+
+            [hosts.staging]
+            domain = "staging.example.com"
+        "#,
+        );
+        assert!(config.remove("hosts.ruche.blocky_subdomain").unwrap());
+        assert_eq!(reload(&config).host_override_names().len(), 2);
+        assert!(config.remove("hosts.ruche.headscale_subdomain").unwrap());
+        assert_eq!(reload(&config).host_override_names(), vec!["staging"]);
+        assert!(config.remove("hosts.staging.domain").unwrap());
+        assert!(!reload(&config).keys().contains(&HOSTS_TABLE.to_string()));
+    }
+
+    #[test]
+    fn test_remove_absent_host_key_reports_not_found() {
+        let (_dir, mut config) = file_backed("[hosts.ruche]\ndomain = \"x\"\n");
+        assert!(!config.remove("hosts.ruche.blocky_subdomain").unwrap());
+        assert!(!config.remove("hosts.other.domain").unwrap());
+        assert_eq!(config.host_override_names(), vec!["ruche"]);
+    }
+
+    /// Other nested tables carry their own meaning; a generic dotted writer
+    /// would create tables nothing reads.
+    #[test]
+    fn test_set_rejects_every_other_nested_key() {
         let mut config = make_config("");
-        let err = config
-            .set("hosts.ruche.headscale_subdomain", "x")
-            .unwrap_err();
-        assert!(err.to_string().contains("nested"), "{err}");
+        for key in [
+            "bichon.hosts.x.base_url",
+            "a.b",
+            "hosts.ruche",
+            "hosts..domain",
+            "hosts.ruche.",
+        ] {
+            let err = config.set(key, "x").unwrap_err();
+            assert!(err.to_string().contains("nested"), "{key}: {err}");
+            let err = config.remove(key).unwrap_err();
+            assert!(err.to_string().contains("nested"), "{key}: {err}");
+        }
+    }
+
+    #[test]
+    fn test_set_and_remove_refuse_the_whole_hosts_table() {
+        let mut config = make_config("[hosts.ruche]\ndomain = \"x\"\n");
+        assert!(config.set(HOSTS_TABLE, "x").is_err());
+        assert!(config.remove(HOSTS_TABLE).is_err());
+        assert_eq!(config.host_override_names(), vec!["ruche"]);
     }
 }

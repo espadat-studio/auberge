@@ -63,6 +63,9 @@ auberge config init --output config.toml --force
 # Set a value directly
 auberge c s admin_user_name myuser
 
+# Withdraw a fleet-wide answer for one host (see Host-scoped Config)
+auberge c s hosts.ruche.headscale_subdomain ""
+
 # Set interactively (select key, then type value)
 auberge c s
 
