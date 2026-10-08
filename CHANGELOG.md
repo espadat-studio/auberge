@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.19.8](https://github.com/espadat-studio/auberge/compare/v0.19.7...v0.19.8) - 2026-10-08
+
+### Other
+
+- *(immich)* bump to 3.3.0 ([#1044](https://github.com/espadat-studio/auberge/pull/1044))
+- *(deps)* update release-plz/action digest to 18641b6 ([#1043](https://github.com/espadat-studio/auberge/pull/1043))
+- *(docs)* update dependency astro to v7.3.7 ([#1045](https://github.com/espadat-studio/auberge/pull/1045))
+- *(bichon)* bump to 2.1.1 ([#1042](https://github.com/espadat-studio/auberge/pull/1042))
+- *(uv)* bump to 0.12.22 ([#1039](https://github.com/espadat-studio/auberge/pull/1039))
+- *(deps)* bump the npm_and_yarn group across 1 directory with 2 updates ([#1038](https://github.com/espadat-studio/auberge/pull/1038))
+- *(deps)* bump http-cache-semantics from 4.2.0 to 4.3.0 in /docs in the npm_and_yarn group across 1 directory ([#1034](https://github.com/espadat-studio/auberge/pull/1034))
+- *(docs)* update dependency astro to v7.3.6 ([#1037](https://github.com/espadat-studio/auberge/pull/1037))
+- *(deps)* update taiki-e/install-action digest to bb0282c ([#1036](https://github.com/espadat-studio/auberge/pull/1036))
+- *(deps)* bump the cargo group across 1 directory with 2 updates ([#1035](https://github.com/espadat-studio/auberge/pull/1035))
+
 ## [0.19.7](https://github.com/espadat-studio/auberge/compare/v0.19.6...v0.19.7) - 2026-10-06
 
 ### Other
