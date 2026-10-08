@@ -81,7 +81,7 @@ pub enum SyncCommands {
 /// has to say so.
 fn music_ssh_arg(host: &crate::services::inventory::Host, ssh_key: &Path) -> String {
     format!(
-        "ssh -o HostKeyAlias={} -i {} -p {}",
+        "ssh -o HostKeyAlias={} -o IdentitiesOnly=yes -i {} -p {}",
         shell_escape::escape(host.name.clone().into()),
         shell_escape::escape(ssh_key.display().to_string().into()),
         host.vars.ansible_port
@@ -392,7 +392,7 @@ mod tests {
 
         assert_eq!(
             arg,
-            "ssh -o HostKeyAlias=auberge -i /home/me/.ssh/identities/auberge/ansible -p 2222"
+            "ssh -o HostKeyAlias=auberge -o IdentitiesOnly=yes -i /home/me/.ssh/identities/auberge/ansible -p 2222"
         );
     }
 
