@@ -126,6 +126,8 @@ impl<'a> SshTransport<'a> {
         let mut args = self.sharing_args();
         args.extend(self.host_key_alias_args());
         args.extend([
+            "-o".into(),
+            "IdentitiesOnly=yes".into(),
             "-i".into(),
             self.ssh_key().into(),
             "-p".into(),
@@ -251,7 +253,7 @@ impl<'a> SshTransport<'a> {
         let key = shell_escape::escape(self.ssh_key().display().to_string().into());
         let alias = shell_escape::escape(self.route.alias.clone().into());
         format!(
-            "ssh {} -o HostKeyAlias={} -i {} -p {}",
+            "ssh {} -o HostKeyAlias={} -o IdentitiesOnly=yes -i {} -p {}",
             mux, alias, key, self.route.port
         )
     }
@@ -260,6 +262,8 @@ impl<'a> SshTransport<'a> {
         let mut args = self.sharing_args();
         args.extend(self.host_key_alias_args());
         args.extend([
+            "-o".into(),
+            "IdentitiesOnly=yes".into(),
             "-i".into(),
             self.ssh_key().into(),
             "-P".into(),
@@ -434,6 +438,20 @@ mod tests {
             .unwrap()
             .rsync_e_arg();
         assert!(e_arg.contains("HostKeyAlias=test"), "{e_arg}");
+    }
+
+    /// sshd refuses a connection after `MaxAuthTries` (3 on a hardened Host), and
+    /// `-i` alone still offers every agent key first: an agent holding more than
+    /// two keys exhausts the limit before the named one is tried.
+    #[test]
+    fn every_argv_offers_only_the_named_key() {
+        let route = test_route();
+        let session = SshTransport::new(&route, BECOME_METHOD).unwrap();
+        for strs in [strings(&session.ssh_args()), strings(&session.scp_args())] {
+            assert!(strs.contains(&"IdentitiesOnly=yes".to_string()), "{strs:?}");
+        }
+        let e_arg = session.rsync_e_arg();
+        assert!(e_arg.contains("-o IdentitiesOnly=yes"), "{e_arg}");
     }
 
     #[test]
