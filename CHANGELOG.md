@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.19.9](https://github.com/espadat-studio/auberge/compare/v0.19.8...v0.19.9) - 2026-10-08
+
+### Added
+
+- *(config)* set and remove per-host overrides from the CLI ([#1056](https://github.com/espadat-studio/auberge/pull/1056))
+
+### Fixed
+
+- *(ssh)* offer only the host's key on every cli connection ([#1055](https://github.com/espadat-studio/auberge/pull/1055))
+
+### Other
+
+- *(docs)* update dependency @astrojs/starlight to v0.42.6 ([#1051](https://github.com/espadat-studio/auberge/pull/1051))
+- *(aoe)* bump to 1.19.0 ([#1052](https://github.com/espadat-studio/auberge/pull/1052))
+- *(docs)* update dependency astro to v7.3.8 ([#1050](https://github.com/espadat-studio/auberge/pull/1050))
+- *(uv)* bump to 0.12.23 ([#1049](https://github.com/espadat-studio/auberge/pull/1049))
+- *(deps)* update github/codeql-action digest to 24c5418 ([#1048](https://github.com/espadat-studio/auberge/pull/1048))
+
 ## [0.19.8](https://github.com/espadat-studio/auberge/compare/v0.19.7...v0.19.8) - 2026-10-08
 
 ### Other
