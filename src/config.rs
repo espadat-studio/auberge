@@ -117,8 +117,14 @@ impl Config {
         self.values.keys().cloned().collect()
     }
 
+    /// A top-level key, or one Host's override as `hosts.<name>.<key>` —
+    /// the shape `set`, `remove` and `list` use.
     pub fn get(&self, key: &str) -> Option<String> {
-        self.values.get(key).and_then(value_to_string)
+        match self.split_host_key(key) {
+            Ok(Some((host, host_key))) => self.host_overrides(host)?.get(host_key),
+            _ => self.values.get(key),
+        }
+        .and_then(value_to_string)
     }
 
     pub fn get_resolved(&self, key: &str) -> Result<Option<String>> {
@@ -233,25 +239,12 @@ impl Config {
         if key == HOSTS_TABLE {
             eyre::bail!(
                 "'{key}' is the reserved per-Host override table (ADR-0058); \
-                 set one Host's key with `hosts.<name>.<key>`."
+                 set one Host's key with `{HOSTS_TABLE}.<name>.<key>`."
             );
         }
         let value = toml::Value::String(value.to_string());
-        match self.address(key)? {
-            Some((host, host_key)) => {
-                let tables = self
-                    .values
-                    .entry(HOSTS_TABLE)
-                    .or_insert_with(|| toml::Value::Table(toml::Table::new()))
-                    .as_table_mut()
-                    .ok_or_else(|| eyre::eyre!("'{HOSTS_TABLE}' in config.toml is not a table"))?;
-                tables
-                    .entry(host)
-                    .or_insert_with(|| toml::Value::Table(toml::Table::new()))
-                    .as_table_mut()
-                    .ok_or_else(|| eyre::eyre!("'hosts.{host}' in config.toml is not a table"))?
-                    .insert(host_key.to_string(), value);
-            }
+        match self.split_host_key(key)? {
+            Some((host, host_key)) => self.set_host_key(host, host_key, value)?,
             None => {
                 self.values.insert(key.to_string(), value);
             }
@@ -264,10 +257,10 @@ impl Config {
             eyre::bail!(
                 "'{key}' is the reserved per-Host override table (ADR-0058); \
                  removing it would drop every host's overrides. Remove one Host's \
-                 key with `hosts.<name>.<key>`."
+                 key with `{HOSTS_TABLE}.<name>.<key>`."
             );
         }
-        let removed = match self.address(key)? {
+        let removed = match self.split_host_key(key)? {
             Some((host, host_key)) => self.remove_host_key(host, host_key),
             None => self.values.remove(key).is_some(),
         };
@@ -275,6 +268,23 @@ impl Config {
             self.save()?;
         }
         Ok(removed)
+    }
+
+    /// Creates `[hosts]` and `[hosts.<host>]` as needed.
+    fn set_host_key(&mut self, host: &str, key: &str, value: toml::Value) -> Result<()> {
+        let mut table = &mut self.values;
+        for (name, label) in [
+            (HOSTS_TABLE, HOSTS_TABLE.to_string()),
+            (host, format!("{HOSTS_TABLE}.{host}")),
+        ] {
+            table = table
+                .entry(name)
+                .or_insert_with(|| toml::Value::Table(toml::Table::new()))
+                .as_table_mut()
+                .ok_or_else(|| eyre::eyre!("'{label}' in config.toml is not a table"))?;
+        }
+        table.insert(key.to_string(), value);
+        Ok(())
     }
 
     /// Drops `[hosts.<host>]` once its last key goes, and `[hosts]` with it,
@@ -306,12 +316,13 @@ impl Config {
     /// `Some((host, key))` for `hosts.<host>.<key>`. Host names may carry
     /// dots and keys never do, so the last dot splits. Every other dotted
     /// key is refused — other nested tables carry their own meaning.
-    fn address<'k>(&self, key: &'k str) -> Result<Option<(&'k str, &'k str)>> {
+    fn split_host_key<'k>(&self, key: &'k str) -> Result<Option<(&'k str, &'k str)>> {
         if !key.contains('.') {
             return Ok(None);
         }
         if let Some((host, host_key)) = key
-            .strip_prefix("hosts.")
+            .strip_prefix(HOSTS_TABLE)
+            .and_then(|rest| rest.strip_prefix('.'))
             .and_then(|rest| rest.rsplit_once('.'))
             && !host.is_empty()
             && !host_key.is_empty()
@@ -320,7 +331,7 @@ impl Config {
         }
         eyre::bail!(
             "'{key}' looks like a nested key, which `config` can only write as \
-             `hosts.<name>.<key>`. Edit {} directly.",
+             `{HOSTS_TABLE}.<name>.<key>`. Edit {} directly.",
             self.path.display()
         )
     }
@@ -1276,7 +1287,16 @@ ssh_port = 22022
         assert_eq!(config.get("headscale_subdomain").unwrap(), "hs");
     }
 
-    /// Host names may carry dots; keys never do, so the last dot splits.
+    /// `get` reads the override alone, never the fleet-wide value behind it:
+    /// it answers "what does this table say", the row `list` prints.
+    #[test]
+    fn test_get_reads_a_host_key_without_falling_back() {
+        let config = make_config(HOST_SCOPED);
+        assert_eq!(config.get("hosts.ruche.headscale_subdomain").unwrap(), "");
+        assert!(config.get("hosts.ruche.domain").is_none());
+        assert!(config.get("hosts.missing.domain").is_none());
+    }
+
     #[test]
     fn test_set_host_key_accepts_a_dotted_host_name() {
         let (_dir, mut config) = file_backed("");
