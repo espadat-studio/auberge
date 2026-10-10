@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.19.10](https://github.com/espadat-studio/auberge/compare/v0.19.9...v0.19.10) - 2026-10-10
+
+### Other
+
+- *(deps)* update taiki-e/install-action digest to b1351b8 ([#1062](https://github.com/espadat-studio/auberge/pull/1062))
+- pass client-id to create-github-app-token ([#1061](https://github.com/espadat-studio/auberge/pull/1061))
+- *(immich)* bump to 3.3.1 ([#1057](https://github.com/espadat-studio/auberge/pull/1057))
+- *(deps)* update dtolnay/rust-toolchain digest to 686976e ([#1058](https://github.com/espadat-studio/auberge/pull/1058))
+
 ## [0.19.9](https://github.com/espadat-studio/auberge/compare/v0.19.8...v0.19.9) - 2026-10-08
 
 ### Added
