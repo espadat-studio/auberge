@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.19.10](https://github.com/espadat-studio/auberge/compare/v0.19.9...v0.19.10) - 2026-10-12
+
+### Other
+
+- *(forgejo)* bump to 16.0.6 ([#1069](https://github.com/espadat-studio/auberge/pull/1069))
+- *(deps)* update jdx/hk to 2.6.0 ([#1068](https://github.com/espadat-studio/auberge/pull/1068))
+- *(deps)* update jdx/mise-action digest to 08ae2a0 ([#1067](https://github.com/espadat-studio/auberge/pull/1067))
+- *(deps)* update taiki-e/install-action digest to 2eb6de2 ([#1066](https://github.com/espadat-studio/auberge/pull/1066))
+- *(opencode)* bump to 1.18.35 ([#1065](https://github.com/espadat-studio/auberge/pull/1065))
+- *(paperless)* bump to 3.3.0 ([#1064](https://github.com/espadat-studio/auberge/pull/1064))
+- *(deps)* update release-plz/action digest to f393a7b ([#1063](https://github.com/espadat-studio/auberge/pull/1063))
+- *(deps)* update taiki-e/install-action digest to b1351b8 ([#1062](https://github.com/espadat-studio/auberge/pull/1062))
+- pass client-id to create-github-app-token ([#1061](https://github.com/espadat-studio/auberge/pull/1061))
+- *(immich)* bump to 3.3.1 ([#1057](https://github.com/espadat-studio/auberge/pull/1057))
+- *(deps)* update dtolnay/rust-toolchain digest to 686976e ([#1058](https://github.com/espadat-studio/auberge/pull/1058))
+
 ## [0.19.9](https://github.com/espadat-studio/auberge/compare/v0.19.8...v0.19.9) - 2026-10-08
 
 ### Added
