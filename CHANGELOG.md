@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.19.11](https://github.com/espadat-studio/auberge/compare/v0.19.10...v0.19.11) - 2026-10-13
+
+### Other
+
+- *(deps)* update actions/create-github-app-token digest to 64ab729 ([#1070](https://github.com/espadat-studio/auberge/pull/1070))
+- *(deps)* update release-plz/action digest to 8921286 ([#1071](https://github.com/espadat-studio/auberge/pull/1071))
+- *(colporteur)* bump to 0.6.8 ([#1072](https://github.com/espadat-studio/auberge/pull/1072))
+
 ## [0.19.10](https://github.com/espadat-studio/auberge/compare/v0.19.9...v0.19.10) - 2026-10-12
 
 ### Other
