@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.19.12](https://github.com/espadat-studio/auberge/compare/v0.19.11...v0.19.12) - 2026-10-14
+
+### Added
+
+- *(tailscale)* advertise auberge as an exit node ([#1079](https://github.com/espadat-studio/auberge/pull/1079))
+
+### Fixed
+
+- *(ansible)* resolve a relative playbook path before ansible runs ([#1078](https://github.com/espadat-studio/auberge/pull/1078))
+
+### Other
+
+- *(headscale)* bump to 0.29.5 ([#1075](https://github.com/espadat-studio/auberge/pull/1075))
+- *(uv)* bump to 0.12.24 ([#1076](https://github.com/espadat-studio/auberge/pull/1076))
+
 ## [0.19.11](https://github.com/espadat-studio/auberge/compare/v0.19.10...v0.19.11) - 2026-10-13
 
 ### Other
