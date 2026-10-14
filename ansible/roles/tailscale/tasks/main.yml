@@ -63,7 +63,7 @@
         --hostname={{ tailscale_hostname }}
         {% if tailscale_login_server | length > 0 %}--login-server={{ tailscale_login_server }}{% endif %}
         {% if tailscale_accept_routes %}--accept-routes{% endif %}
-        {% if tailscale_advertise_exit_node %}--advertise-exit-node{% endif %}
+        {% if tailscale_advertise_exit_node | bool %}--advertise-exit-node{% endif %}
         {% if not tailscale_accept_dns %}--accept-dns=false{% endif %}
         --authkey={{ tailscale_authkey }}
         {{ tailscale_extra_args }}
@@ -76,6 +76,31 @@
       ansible.builtin.command: tailscale set --accept-dns={{ tailscale_accept_dns | bool | lower }}
       when: tailscale_is_authenticated
       changed_when: false
+
+    - name: Ensure advertise-exit-node matches configuration
+      ansible.builtin.command: tailscale set --advertise-exit-node={{ tailscale_advertise_exit_node | bool | lower }}
+      when: tailscale_is_authenticated
+      changed_when: false
+
+    - name: Deploy exit node sysctl drop-in
+      ansible.builtin.copy:
+        content: |
+          net.ipv4.ip_forward = 1
+          net.ipv6.conf.all.forwarding = 1
+          net.ipv4.conf.all.rp_filter = 2
+          net.ipv4.conf.default.rp_filter = 2
+        dest: /etc/sysctl.d/99-tailscale-exit-node.conf
+        owner: root
+        group: root
+        mode: "0644"
+      when: tailscale_advertise_exit_node | bool
+      notify: Reload sysctl for exit node
+
+    - name: Remove exit node sysctl drop-in
+      ansible.builtin.file:
+        path: /etc/sysctl.d/99-tailscale-exit-node.conf
+        state: absent
+      when: not (tailscale_advertise_exit_node | bool)
 
     - name: Configure UFW firewall for Tailscale
       when: ansible_facts.services['ufw'] is defined and ansible_facts.services['ufw'].state == 'running'
@@ -93,3 +118,11 @@
             interface_in: tailscale0
             direction: in
             comment: "Tailscale mesh"
+
+        - name: Allow routed traffic from the Tailscale interface for the exit node
+          community.general.ufw:
+            rule: allow
+            route: true
+            interface_in: tailscale0
+            comment: "Tailscale exit node"
+          when: tailscale_advertise_exit_node | bool

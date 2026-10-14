@@ -309,6 +309,10 @@ keys:
     secret: false
     doc: "SSH port to configure on the remote server during bootstrap"
 
+  tailscale_advertise_exit_node:
+    secret: false
+    doc: "Offer this host as a tailnet exit node (true/false); scope it under [hosts.<name>] to one host"
+
   tailscale_api_key:
     secret: true
     doc: "Tailscale API key used for node management"
