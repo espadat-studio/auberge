@@ -30,10 +30,12 @@ The server runs with `accept_dns: false` (the default) to prevent Tailscale from
 
 An exit node lets a device send all its traffic through the host, so a phone on public WiFi egresses from the host's public IP.
 
-```toml
-[hosts.auberge]
-tailscale_advertise_exit_node = true
+```bash
+auberge host edit auberge
+auberge config set hosts.auberge.tailscale_advertise_exit_node true
 ```
+
+Either form writes `tailscale_advertise_exit_node = true` under `[hosts.auberge]`: `host edit` asks for it interactively, `config set` is the one-liner.
 
 Deploy with `auberge ansible run --tags tailscale`. On the host this enables IPv4 and IPv6 forwarding, sets `rp_filter = 2` (strict filtering drops forwarded packets), and allows routed traffic from `tailscale0` in UFW. With [Headscale](/applications/networking/headscale/), the route is auto-approved for `tag:data` hosts and `tag:trusted` devices may use it.
 

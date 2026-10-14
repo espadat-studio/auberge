@@ -35,6 +35,7 @@ Note: Host name cannot be changed through this command — the name is a foreign
 - **Description**: Host description
 - **Tailnet trust tier**: picked from `(none)`, `trusted`, `data`, `agent`, `standby` (ADR-0055), current value preselected. A picker rather than a text field because the set is closed — a typo would otherwise surface as a `hosts.toml` parse failure on some later, unrelated command
 - **Route over the tailnet address** (`prefer_tailnet`): asked only when the host has a cached `tailscale_ip`. Without one the prompt is skipped and says so, because the write would refuse the answer anyway and you would lose the seven you just gave. See [Tailnet Transport](/configuration/tailnet-transport/)
+- **Offer as a tailnet exit node** (`tailscale_advertise_exit_node`): lives in `config.toml` under `[hosts.<name>]`, not `hosts.toml`. The write happens after the host saves, and only when the answer differs from the effective value. A changed answer drops `config.toml` comments, as `auberge config set` does. Skipped when there is no `config.toml`. See [Tailscale](/applications/networking/tailscale/#exit-node)
 
 ## Examples
 
@@ -62,5 +63,6 @@ Description [Production web server]: Main API server
   agent
   standby
 Route over the tailnet address? [y/N]: y
+Offer as a tailnet exit node? [y/N]: n
 ✓ Host 'myserver' updated
 ```
