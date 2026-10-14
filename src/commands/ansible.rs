@@ -115,7 +115,8 @@ fn select_or_use_playbook(playbook_arg: Option<PathBuf>) -> Result<PathBuf> {
     match playbook_arg {
         Some(path) => {
             if path.is_file() {
-                return Ok(path);
+                return std::fs::canonicalize(&path)
+                    .wrap_err_with(|| format!("Failed to canonicalize: {}", path.display()));
             }
             let playbooks = get_playbooks(None)?;
             resolve_playbook_name(&path, &playbooks)
@@ -827,6 +828,20 @@ mod tests {
         let msg = err.to_string();
         assert!(msg.contains("Playbook 'nope' not found"));
         assert!(msg.contains("apps, hardening, hermes, infrastructure"));
+    }
+
+    #[test]
+    fn test_select_or_use_playbook_makes_relative_file_absolute() {
+        let resolved = select_or_use_playbook(Some(PathBuf::from("Cargo.toml"))).unwrap();
+        assert!(resolved.is_absolute());
+        assert_eq!(resolved, std::fs::canonicalize("Cargo.toml").unwrap());
+    }
+
+    #[test]
+    fn test_select_or_use_playbook_keeps_absolute_file() {
+        let absolute = std::fs::canonicalize("Cargo.toml").unwrap();
+        let resolved = select_or_use_playbook(Some(absolute.clone())).unwrap();
+        assert_eq!(resolved, absolute);
     }
 
     #[test]
