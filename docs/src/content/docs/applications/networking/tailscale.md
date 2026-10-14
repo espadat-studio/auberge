@@ -26,6 +26,21 @@ See [Blocky - Required config](/applications/networking/blocky/#required-config)
 
 The server runs with `accept_dns: false` (the default) to prevent Tailscale from overriding the server's own DNS resolution. This avoids DNS breakage during redeployments — if the server accepted Tailscale DNS pointing at its own Blocky instance, a Blocky restart would break DNS resolution for the server itself.
 
+## Exit Node
+
+An exit node lets a device send all its traffic through the host, so a phone on public WiFi egresses from the host's public IP.
+
+```bash
+auberge host edit auberge
+auberge config set hosts.auberge.tailscale_advertise_exit_node true
+```
+
+Either form writes `tailscale_advertise_exit_node = true` under `[hosts.auberge]`: `host edit` asks for it interactively, `config set` is the one-liner.
+
+Deploy with `auberge ansible run --tags tailscale`. On the host this enables IPv4 and IPv6 forwarding, sets `rp_filter = 2` (strict filtering drops forwarded packets), and allows routed traffic from `tailscale0` in UFW. With [Headscale](/applications/networking/headscale/), the route is auto-approved for `tag:data` hosts and `tag:trusted` devices may use it.
+
+Advertising is permanent; using it is per device. In the Tailscale app, pick the host under **Exit node**, or **None** to return to split-tunnel. Reverting the flag removes the sysctl drop-in, but the kernel keeps the values until reboot.
+
 ## Self-Hosted Control Server
 
 To replace Tailscale SaaS with a self-hosted control plane, see [Headscale](/applications/networking/headscale/). Set `tailscale_login_server` in `config.toml` to point nodes at your Headscale instance.

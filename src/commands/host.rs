@@ -523,6 +523,68 @@ fn prompt_prefer_tailnet(host: &Host) -> Result<bool> {
     )
 }
 
+const EXIT_NODE_KEY: &str = "tailscale_advertise_exit_node";
+
+#[derive(Debug, PartialEq)]
+enum ExitNodeEdit {
+    Keep,
+    Set(bool),
+    Remove,
+}
+
+fn is_enabled(value: Option<String>) -> bool {
+    value.is_some_and(|v| v.trim().eq_ignore_ascii_case("true"))
+}
+
+fn exit_node_edit(fleet: bool, host_override: Option<bool>, answer: bool) -> ExitNodeEdit {
+    if answer == host_override.unwrap_or(fleet) {
+        return ExitNodeEdit::Keep;
+    }
+    if answer == fleet {
+        return ExitNodeEdit::Remove;
+    }
+    ExitNodeEdit::Set(answer)
+}
+
+fn exit_node_key(host: &str) -> String {
+    format!("hosts.{host}.{EXIT_NODE_KEY}")
+}
+
+fn prompt_exit_node(
+    host: &str,
+    config: Option<&crate::config::Config>,
+) -> Result<Option<ExitNodeEdit>> {
+    let Some(config) = config else {
+        output::info("No config.toml, so the exit node is not offered.");
+        return Ok(None);
+    };
+    let fleet = is_enabled(config.get(EXIT_NODE_KEY));
+    let host_override = config
+        .get(&exit_node_key(host))
+        .map(|v| is_enabled(Some(v)));
+    let answer = crate::prompt::confirm_default(
+        "Offer as a tailnet exit node",
+        host_override.unwrap_or(fleet),
+    )?;
+    Ok(Some(exit_node_edit(fleet, host_override, answer)))
+}
+
+fn apply_exit_node_edit(
+    config: &mut crate::config::Config,
+    host: &str,
+    edit: ExitNodeEdit,
+) -> Result<()> {
+    let key = exit_node_key(host);
+    match edit {
+        ExitNodeEdit::Keep => {}
+        ExitNodeEdit::Set(on) => config.set(&key, &on.to_string())?,
+        ExitNodeEdit::Remove => {
+            config.remove(&key)?;
+        }
+    }
+    Ok(())
+}
+
 pub fn run_host_edit(name: Option<String>) -> Result<()> {
     let host = crate::hosts::select_or_arg(name, crate::hosts::HOST_POSITIONAL)?;
 
@@ -554,6 +616,8 @@ pub fn run_host_edit(name: Option<String>) -> Result<()> {
 
     let tailnet_tag = prompt_tailnet_tag(host.tailnet_tag)?;
     let prefer_tailnet = prompt_prefer_tailnet(&host)?;
+    let mut config = load_config_if_present()?;
+    let exit_node_edit = prompt_exit_node(&host.name, config.as_ref())?;
 
     let updated_host = Host {
         name: host.name.clone(),
@@ -572,6 +636,9 @@ pub fn run_host_edit(name: Option<String>) -> Result<()> {
     };
 
     HostManager::update_host(&host.name, updated_host)?;
+    if let (Some(config), Some(edit)) = (config.as_mut(), exit_node_edit) {
+        apply_exit_node_edit(config, &host.name, edit)?;
+    }
     output::success(&format!("Host '{}' updated", host.name));
 
     Ok(())
@@ -929,6 +996,52 @@ mod tests {
             none_if_empty("~/.ssh/identities/custom".to_string()),
             Some("~/.ssh/identities/custom".to_string())
         );
+    }
+
+    #[test]
+    fn exit_node_answer_matching_the_effective_value_changes_nothing() {
+        assert_eq!(exit_node_edit(false, None, false), ExitNodeEdit::Keep);
+        assert_eq!(exit_node_edit(false, Some(true), true), ExitNodeEdit::Keep);
+        assert_eq!(exit_node_edit(true, None, true), ExitNodeEdit::Keep);
+    }
+
+    #[test]
+    fn enabling_the_exit_node_sets_a_host_override() {
+        assert_eq!(exit_node_edit(false, None, true), ExitNodeEdit::Set(true));
+    }
+
+    #[test]
+    fn disabling_an_override_removes_it_when_the_fleet_default_is_off() {
+        assert_eq!(
+            exit_node_edit(false, Some(true), false),
+            ExitNodeEdit::Remove
+        );
+    }
+
+    #[test]
+    fn opting_out_of_a_fleet_wide_exit_node_needs_an_explicit_override() {
+        assert_eq!(exit_node_edit(true, None, false), ExitNodeEdit::Set(false));
+        assert_eq!(
+            exit_node_edit(true, Some(false), true),
+            ExitNodeEdit::Remove
+        );
+    }
+
+    #[test]
+    fn the_exit_node_override_is_written_under_the_hosts_table() {
+        assert_eq!(
+            exit_node_key("auberge"),
+            "hosts.auberge.tailscale_advertise_exit_node"
+        );
+    }
+
+    #[test]
+    fn only_the_word_true_enables_the_exit_node() {
+        assert!(is_enabled(Some("true".to_string())));
+        assert!(is_enabled(Some(" TRUE ".to_string())));
+        assert!(!is_enabled(Some("false".to_string())));
+        assert!(!is_enabled(Some(String::new())));
+        assert!(!is_enabled(None));
     }
 
     #[test]

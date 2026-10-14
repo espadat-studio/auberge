@@ -23,9 +23,15 @@
     "tag:standby": [],
   },
 
+  "autoApprovers": {
+    "exitNode": ["tag:data"],
+  },
+
   "acls": [
     // tag:trusted (e.g. lechuck, pixel-9a) reaches everything on the tailnet.
     { "action": "accept", "src": ["tag:trusted"], "dst": ["*:*"] },
+
+    { "action": "accept", "src": ["tag:trusted"], "dst": ["autogroup:internet:*"] },
 
     // Every node reaches the tailnet's global resolver: the data host's Blocky
     // on 53 (ADR-0052). This is the only tailnet path open to tag:agent.

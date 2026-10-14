@@ -234,6 +234,35 @@ fn test_trusted_reaches_everything() {
     );
 }
 
+#[test]
+fn test_only_the_data_tier_auto_approves_as_an_exit_node() {
+    assert_eq!(
+        policy()["autoApprovers"]["exitNode"],
+        serde_json::json!([RESOLVER_TIER]),
+        "an exit-node route is auto-approved for the data host alone; a wider list lets any \
+         tagged node become the tailnet's egress without an admin looking"
+    );
+}
+
+#[test]
+fn test_only_the_trusted_tier_reaches_the_internet_through_an_exit_node() {
+    let sources: Vec<Vec<String>> = acls(&policy())
+        .iter()
+        .filter(|rule| {
+            rule_field(rule, "dst")
+                .iter()
+                .any(|entry| entry.starts_with("autogroup:internet"))
+        })
+        .map(|rule| rule_field(rule, "src"))
+        .collect();
+    assert_eq!(
+        sources,
+        [["tag:trusted"]],
+        "`*:*` does not cover the internet, so exit-node use needs its own rule, and only the \
+         trusted tier may hold it"
+    );
+}
+
 /// ADR-0052: every enrolled node resolves through the data host's Blocky. The
 /// carve-out is `*` -> the resolver on 53 and nothing wider, so it is also the
 /// single tailnet path left open to the confined tier.
