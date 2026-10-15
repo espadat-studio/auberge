@@ -6,7 +6,7 @@ subdomain: git
 memory:
   forgejo: { high: 400M, max: 600M }
 version:
-  value: "16.0.6"
+  value: "17.0.0"
   datasource: forgejo-releases
   depName: "forgejo/forgejo"
   extractVersion: "^v(?<version>.+)$"
