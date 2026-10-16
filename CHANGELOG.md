@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.19.13](https://github.com/espadat-studio/auberge/compare/v0.19.12...v0.19.13) - 2026-10-16
+
+### Other
+
+- *(forgejo)* bump to 17.0.0 ([#1087](https://github.com/espadat-studio/auberge/pull/1087))
+- *(deps)* update dtolnay/rust-toolchain digest to b725eda ([#1088](https://github.com/espadat-studio/auberge/pull/1088))
+- *(opencode)* bump to 1.19.0 ([#1089](https://github.com/espadat-studio/auberge/pull/1089))
+- *(deps)* update actions/setup-java digest to b843ebf ([#1083](https://github.com/espadat-studio/auberge/pull/1083))
+- *(uv)* bump to 0.13.0 ([#1082](https://github.com/espadat-studio/auberge/pull/1082))
+- *(immich)* bump to 3.3.3 ([#1080](https://github.com/espadat-studio/auberge/pull/1080))
+
 ## [0.19.12](https://github.com/espadat-studio/auberge/compare/v0.19.11...v0.19.12) - 2026-10-14
 
 ### Added
