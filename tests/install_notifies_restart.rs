@@ -407,6 +407,7 @@ const REPLACING_ROLES: &[&str] = &[
     "gokapi",
     "grimmory",
     "headscale",
+    "stirling",
     "tgtg",
 ];
 

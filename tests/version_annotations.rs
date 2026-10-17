@@ -17,6 +17,7 @@ const TOOL_VERSIONS: &[&str] = &[
     "grimmory_java_version",
     "hermes_uv_version",
     "memsearch_uv_version",
+    "stirling_java_version",
     "tgtg_uv_version",
 ];
 

@@ -1,0 +1,11 @@
+required_keys: []
+tailnet_only: true
+subdomain: pdf
+memory:
+  stirling: { high: 1400M, max: 1800M }
+version:
+  value: "3.2.0"
+  datasource: github-releases
+  depName: "Stirling-Tools/Stirling-PDF"
+  extractVersion: "^v(?<version>.+)$"
+units: [stirling]

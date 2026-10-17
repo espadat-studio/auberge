@@ -142,7 +142,7 @@ fn the_fence_reads_every_composition_and_every_dns_record_call() {
 
     assert_eq!(
         compositions.len(),
-        18,
+        19,
         "a role defining an <app>_domain appeared or vanished; check its composition \
          against the assertions below, then update this count: {:?}",
         compositions.iter().map(|(r, _)| r).collect::<Vec<_>>()

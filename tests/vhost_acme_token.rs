@@ -107,7 +107,7 @@ fn test_the_fence_reads_every_vhost_in_the_tree() {
 
     assert_eq!(
         found.len(),
-        18,
+        19,
         "the tree deploys a different number of caddy sites than this fence was \
          written against; check the new one's `tls` block, then update this count: \
          {:?}",
@@ -115,8 +115,8 @@ fn test_the_fence_reads_every_vhost_in_the_tree() {
     );
     assert_eq!(
         roles.len(),
-        17,
-        "17 roles serve those 18 sites — colporteur serves two: {roles:?}"
+        18,
+        "18 roles serve those 19 sites — colporteur serves two: {roles:?}"
     );
 }
 

@@ -1,0 +1,172 @@
+- name: Install and configure Stirling-PDF
+  block:
+    - name: Validate required Stirling-PDF variables are set
+      ansible.builtin.assert:
+        that:
+          - domain is defined
+          - domain | length > 0
+        fail_msg: "domain must be defined and non-empty"
+
+    - name: Get Tailscale status
+      ansible.builtin.command: tailscale status --json
+      register: stirling_tailscale_status_raw
+      changed_when: false
+      failed_when: false
+
+    - name: Parse Tailscale status
+      ansible.builtin.set_fact:
+        stirling_tailscale_status: "{{ stirling_tailscale_status_raw.stdout | from_json }}"
+      when: stirling_tailscale_status_raw.rc == 0
+      changed_when: false
+
+    - name: Set Tailscale IPv4 fact
+      ansible.builtin.set_fact:
+        stirling_tailscale_ip: "{{ stirling_tailscale_status.Self.TailscaleIPs | select('match', '^[0-9]+\\.') | first }}"
+      when:
+        - stirling_tailscale_status_raw.rc == 0
+        - stirling_tailscale_status is defined
+        - stirling_tailscale_status.BackendState | default('') == "Running"
+        - stirling_tailscale_status.Self is defined
+        - stirling_tailscale_status.Self.TailscaleIPs is defined
+        - stirling_tailscale_status.Self.TailscaleIPs | select('match', '^[0-9]+\\.') | list | length > 0
+      changed_when: false
+
+    - name: Fail if Tailscale not available
+      ansible.builtin.fail:
+        msg: "Tailscale is not running or no Tailscale IP available. Stirling-PDF is tailnet-only."
+      when: stirling_tailscale_ip is not defined
+
+    - name: Create Java installation directory
+      ansible.builtin.file:
+        path: "{{ stirling_java_home }}"
+        state: directory
+        owner: root
+        group: root
+        mode: "0755"
+
+    - name: Check if JRE is already installed
+      ansible.builtin.stat:
+        path: "{{ stirling_java_home }}/bin/java"
+      register: stirling_java_binary
+
+    - name: Download and extract Eclipse Temurin JRE
+      when: not stirling_java_binary.stat.exists
+      ansible.builtin.unarchive:
+        src: "{{ stirling_java_url }}"
+        dest: "{{ stirling_java_home }}"
+        remote_src: true
+        extra_opts:
+          - --strip-components=1
+      notify: Restart stirling
+
+    - name: Create Stirling-PDF system group
+      ansible.builtin.group:
+        name: "{{ stirling_sys_group }}"
+        system: true
+        state: present
+
+    - name: Create Stirling-PDF system user
+      ansible.builtin.user:
+        name: "{{ stirling_sys_user }}"
+        group: "{{ stirling_sys_group }}"
+        shell: /usr/sbin/nologin
+        home: "{{ stirling_install_path }}"
+        create_home: false
+        system: true
+        state: present
+
+    - name: Create Stirling-PDF installation directory
+      ansible.builtin.file:
+        path: "{{ stirling_install_path }}"
+        state: directory
+        owner: root
+        group: root
+        mode: "0755"
+
+    - name: Download Stirling-PDF JAR
+      ansible.builtin.get_url:
+        url: "{{ stirling_jar_url }}"
+        dest: "{{ stirling_jar_path }}"
+        checksum: "sha256:{{ stirling_jar_sha256 }}"
+        owner: root
+        group: root
+        mode: "0644"
+      notify: Restart stirling
+
+    - name: Deploy Stirling-PDF systemd service file
+      ansible.builtin.template:
+        src: templates/stirling.service.j2
+        dest: /etc/systemd/system/stirling.service
+        owner: root
+        group: root
+        mode: "0644"
+      notify: Restart stirling
+
+    - name: Find superseded Stirling-PDF JARs
+      ansible.builtin.find:
+        paths: "{{ stirling_install_path }}"
+        patterns: "Stirling-PDF-*.jar"
+        excludes:
+          - "{{ stirling_jar_path | basename }}"
+      register: stirling_superseded_jars
+
+    - name: Remove superseded Stirling-PDF JARs
+      ansible.builtin.file:
+        path: "{{ item.path }}"
+        state: absent
+      loop: "{{ stirling_superseded_jars.files }}"
+      loop_control:
+        label: "{{ item.path }}"
+
+    - name: Find superseded Temurin JREs
+      ansible.builtin.find:
+        paths: "{{ stirling_java_home | dirname }}"
+        file_type: directory
+        recurse: false
+        patterns:
+          - "temurin-*-jre"
+        excludes:
+          - "{{ stirling_java_home | basename }}"
+      register: stirling_superseded_jres
+
+    - name: Remove superseded Temurin JREs
+      ansible.builtin.file:
+        path: "{{ item.path }}"
+        state: absent
+      loop: "{{ stirling_superseded_jres.files }}"
+      loop_control:
+        label: "{{ item.path }}"
+
+    - name: Enable and start Stirling-PDF service
+      ansible.builtin.systemd_service:
+        name: stirling
+        enabled: true
+        state: started
+        daemon_reload: true
+
+    - name: Flush handlers so a pending stirling restart lands before the probe
+      ansible.builtin.meta: flush_handlers
+
+    - name: Wait for Stirling-PDF to be ready
+      ansible.builtin.uri:
+        url: "http://127.0.0.1:{{ stirling_port }}/api/v1/info/status"
+        method: GET
+      register: stirling_status
+      until: stirling_status.status == 200
+      retries: 90
+      delay: 2
+
+    - name: Deploy Stirling-PDF Caddyfile
+      ansible.builtin.template:
+        src: templates/Caddyfile.j2
+        dest: /etc/caddy/sites/stirling.caddyfile
+        owner: root
+        group: root
+        mode: "0644"
+      notify: Restart caddy
+
+    - name: Remove the FQDN-named vhost stirling.caddyfile replaces
+      ansible.builtin.file:
+        path: "/etc/caddy/sites/{{ stirling_domain }}.caddyfile"
+        state: absent
+      notify: Restart caddy
