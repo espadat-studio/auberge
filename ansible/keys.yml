@@ -311,7 +311,7 @@ keys:
 
   stirling_subdomain:
     secret: false
-    doc: "Subdomain for the Stirling-PDF editor"
+    doc: "Subdomain for the Stirling-PDF editor (default pdf)"
 
   tailscale_advertise_exit_node:
     secret: false

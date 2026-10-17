@@ -1,5 +1,4 @@
-required_keys:
-  - stirling_subdomain
+required_keys: []
 tailnet_only: true
 subdomain: pdf
 memory:

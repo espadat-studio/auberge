@@ -3,11 +3,9 @@
     - name: Validate required Stirling-PDF variables are set
       ansible.builtin.assert:
         that:
-          - stirling_subdomain is defined
-          - stirling_subdomain | length > 0
           - domain is defined
           - domain | length > 0
-        fail_msg: "stirling_subdomain and domain must be defined and non-empty"
+        fail_msg: "domain must be defined and non-empty"
 
     - name: Get Tailscale status
       ansible.builtin.command: tailscale status --json

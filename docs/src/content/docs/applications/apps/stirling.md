@@ -16,11 +16,9 @@ Draw a signature and add text boxes to a PDF from a phone browser. No login: the
 auberge deploy stirling
 ```
 
-## Required config
+## Config
 
-| Key                  | Purpose                    |
-| -------------------- | -------------------------- |
-| `stirling_subdomain` | Subdomain for HTTPS access |
+No key is required. `stirling_subdomain` is optional and defaults to `pdf`.
 
 ## Notes
 

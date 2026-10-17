@@ -4,6 +4,7 @@ stirling_runtime_dir: /run/stirling
 stirling_sys_user: stirling
 stirling_sys_group: stirling
 stirling_port: 8087
+stirling_subdomain: pdf
 stirling_domain: "{{ stirling_subdomain }}.{{ stirling_parent_domain }}"
 stirling_jvm_opts: "-Xmx1g -XX:+ExitOnOutOfMemoryError"
 stirling_jar_url: "https://github.com/Stirling-Tools/Stirling-PDF/releases/download/v{{ stirling_version }}/Stirling-PDF.jar"
