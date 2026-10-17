@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.19.14](https://github.com/espadat-studio/auberge/compare/v0.19.13...v0.19.14) - 2026-10-17
+
+### Added
+
+- *(stirling)* add a tailnet-only Stirling-PDF playbook ([#1095](https://github.com/espadat-studio/auberge/pull/1095))
+
+### Other
+
+- *(stirling)* list stirling-pdf in readme, index, intro and config keys
+- *(colporteur)* bump to 0.6.9 ([#1096](https://github.com/espadat-studio/auberge/pull/1096))
+- *(deps)* update taiki-e/install-action digest to 9252097 ([#1093](https://github.com/espadat-studio/auberge/pull/1093))
+- *(deps)* update jdx/mise-action digest to 9b200bc ([#1091](https://github.com/espadat-studio/auberge/pull/1091))
+- *(deps)* update jdx/hk to 2.7.0 ([#1092](https://github.com/espadat-studio/auberge/pull/1092))
+
 ## [0.19.13](https://github.com/espadat-studio/auberge/compare/v0.19.12...v0.19.13) - 2026-10-16
 
 ### Other
