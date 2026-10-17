@@ -1,0 +1,17 @@
+stirling_install_path: /opt/stirling
+stirling_jar_path: "{{ stirling_install_path }}/Stirling-PDF-{{ stirling_version }}.jar"
+stirling_runtime_dir: /run/stirling
+stirling_sys_user: stirling
+stirling_sys_group: stirling
+stirling_port: 8087
+stirling_domain: "{{ stirling_subdomain }}.{{ stirling_parent_domain }}"
+stirling_jvm_opts: "-Xmx1g -XX:+ExitOnOutOfMemoryError"
+stirling_jar_url: "https://github.com/Stirling-Tools/Stirling-PDF/releases/download/v{{ stirling_version }}/Stirling-PDF.jar"
+stirling_jar_sha256: "5a0c2aeb4450b948bcc4f330bc0cdca8a22f16a1213080640e38260acb80d665"
+
+# renovate: datasource=github-releases depName=adoptium/temurin25-binaries extractVersion=^jdk-(?<version>[\d.+]+)$
+stirling_java_version: "25.0.4.1+1"
+stirling_java_home: "/opt/java/temurin-{{ stirling_java_version }}-jre"
+stirling_java_release: "jdk-{{ stirling_java_version }}"
+stirling_java_archive: "OpenJDK25U-jre_x64_linux_hotspot_{{ stirling_java_version | replace('+', '_') }}.tar.gz"
+stirling_java_url: "https://github.com/adoptium/temurin25-binaries/releases/download/{{ stirling_java_release }}/{{ stirling_java_archive }}"

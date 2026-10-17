@@ -38,6 +38,7 @@ Auberge deploys a curated stack of self-hosted FOSS applications. Services run n
 | [Paperless-ngx](/applications/apps/paperless/) | Document management system                  |
 | [Radio](/applications/apps/radio/)             | Password-gated music streams                |
 | [memsearch](/applications/apps/memsearch/)     | Agent memory: markdown store + on-box index |
+| [Stirling-PDF](/applications/apps/stirling/)   | PDF signing and editing                     |
 | [Syncthing](/applications/apps/syncthing/)     | Continuous file synchronization             |
 | [Gokapi](/applications/apps/gokapi/)           | Expiring-link file sharing                  |
 | [YOURLS](/applications/apps/yourls/)           | URL shortener                               |

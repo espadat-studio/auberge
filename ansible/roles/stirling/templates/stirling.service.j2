@@ -1,0 +1,43 @@
+[Unit]
+Description=Stirling-PDF
+After=network-online.target
+Wants=network-online.target
+StartLimitIntervalSec=3600
+StartLimitBurst=30
+
+[Service]
+Type=simple
+User={{ stirling_sys_user }}
+Group={{ stirling_sys_group }}
+RuntimeDirectory=stirling
+RuntimeDirectoryMode=0750
+WorkingDirectory={{ stirling_runtime_dir }}
+Environment=SERVER_ADDRESS=127.0.0.1
+Environment=SERVER_PORT={{ stirling_port }}
+Environment=SECURITY_ENABLELOGIN=false
+Environment=STORAGE_ENABLED=false
+Environment=SYSTEM_ENABLEANALYTICS=false
+Environment=SYSTEM_ENABLEMOBILESIGNATURE=false
+Environment=SYSTEM_ENABLEMOBILESCANNER=false
+Environment=PREMIUM_ENTERPRISEFEATURES_AUDIT_ENABLED=false
+Environment=SYSTEM_TEMPFILEMANAGEMENT_BASETMPDIR={{ stirling_runtime_dir }}/tmp
+Environment=SYSTEM_TEMPFILEMANAGEMENT_MAXAGEHOURS=1
+Environment=SYSTEM_TEMPFILEMANAGEMENT_CLEANUPINTERVALMINUTES=10
+ExecStart={{ stirling_java_home }}/bin/java {{ stirling_jvm_opts }} -jar {{ stirling_jar_path }}
+SuccessExitStatus=143
+Restart=always
+RestartSec=5
+MemoryHigh={{ stirling_memory_high }}
+MemoryMax={{ stirling_memory_max }}
+NoNewPrivileges=true
+PrivateDevices=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectControlGroups=true
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target

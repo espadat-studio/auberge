@@ -22,7 +22,7 @@
 //!
 //! ## Reach
 //!
-//! Stated twice over, and both drift. As counts — 18 sites across 17 roles,
+//! Stated twice over, and both drift. As counts — 19 sites across 18 roles,
 //! the pair `vhost_acme_token.rs` states for its own assertions, so a new
 //! vhost moves both files. And against the **other** half of
 //! `common::caddy`: every role that can restart caddy, save caddy itself,
@@ -163,7 +163,7 @@ fn test_the_fence_reads_every_vhost_in_the_tree() {
 
     assert_eq!(
         found.len(),
-        18,
+        19,
         "the tree deploys a different number of caddy sites than this fence was \
          written against; check the new one's filename, then update this count \
          here and in vhost_acme_token.rs: {:?}",
@@ -171,8 +171,8 @@ fn test_the_fence_reads_every_vhost_in_the_tree() {
     );
     assert_eq!(
         roles.len(),
-        17,
-        "17 roles serve those 18 sites — colporteur serves two: {roles:?}"
+        18,
+        "18 roles serve those 19 sites — colporteur serves two: {roles:?}"
     );
 }
 

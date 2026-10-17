@@ -55,7 +55,7 @@ fn the_fence_reads_every_apps_computed_vars() {
     let names = computed_var_names();
 
     assert_eq!(
-        apps, 29,
+        apps, 30,
         "the playbooks directory holds a different number of Metas than this fence \
          was written against; check the new one's Computed Vars below, then update \
          this count"

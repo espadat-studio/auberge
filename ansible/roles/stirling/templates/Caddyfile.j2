@@ -1,0 +1,13 @@
+{{ stirling_domain }} {
+	bind {{ stirling_tailscale_ip }}
+	tls {
+		dns cloudflare {env.{{ stirling_dns_api_token_env }}}
+	}
+	reverse_proxy 127.0.0.1:{{ stirling_port }}
+
+	request_body {
+		max_size 500M
+	}
+
+	encode gzip
+}

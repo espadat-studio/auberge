@@ -45,6 +45,7 @@ const DEPLOYABLE: &[&str] = &[
     "memsearch",
     "opencode",
     "ruche",
+    "stirling",
 ];
 
 /// Every standalone playbook in the tree, by stem.

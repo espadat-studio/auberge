@@ -36,6 +36,8 @@
       tags: [apps, storage, documents, paperless]
     - role: radio
       tags: [apps, media, radio]
+    - role: stirling
+      tags: [apps, documents, pdf, stirling]
     - role: syncthing
       tags: [apps, sync, syncthing]
     - role: tgtg
