@@ -27,6 +27,7 @@ All values live in `~/.config/auberge/config.toml`. Manage with `auberge config 
 | `navidrome_subdomain`           | Optional | Subdomain for Navidrome                                                                                                                                     |
 | `paperless_subdomain`           | Optional | Subdomain for Paperless                                                                                                                                     |
 | `paperless_tailscale_ip`        | Optional | Tailnet address Blocky publishes for Paperless (see below)                                                                                                  |
+| `stirling_subdomain`            | Optional | Subdomain for Stirling-PDF (default: `pdf`)                                                                                                                 |
 | `gokapi_subdomain`              | Optional | Subdomain for Gokapi (default: `share`)                                                                                                                     |
 | `yourls_subdomain`              | Optional | Subdomain for YOURLS                                                                                                                                        |
 
