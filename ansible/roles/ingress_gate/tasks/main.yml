@@ -47,3 +47,37 @@
         success_msg: port {{ ingress_gate_port }} is listening
         quiet: true
       when: ingress_gate_vhosts.matched > 0
+
+    - name: Read the vhost bind addresses
+      ansible.builtin.command: grep --recursive --no-filename --extended-regexp '^[[:space:]]*bind[[:space:]]' {{ ingress_gate_sites_dir }}
+      register: ingress_gate_binds
+      changed_when: false
+      failed_when: ingress_gate_binds.rc > 1
+      when: ingress_gate_vhosts.matched > 0
+
+    - name: Read the IPv4 addresses this host holds
+      ansible.builtin.command: ip -family inet -oneline address show
+      register: ingress_gate_host_addresses
+      changed_when: false
+      when: ingress_gate_vhosts.matched > 0
+
+    # Caddy binds with ip_nonlocal_bind (roles/caddy), so an address the host
+    # does not hold no longer stops the unit. It stays active and the vhost is
+    # silently dark, which is the green-deploy failure of #568 by another route.
+    - name: Assert every vhost binds an address this host holds
+      vars:
+        ingress_gate_wanted: >-
+          {{ ingress_gate_binds.stdout_lines
+             | map('regex_replace', '^\s*bind\s+', '')
+             | map('split') | flatten | unique | list }}
+        ingress_gate_held: "{{ ingress_gate_host_addresses.stdout | regex_findall('inet ([0-9.]+)/') }}"
+      ansible.builtin.assert:
+        that: ingress_gate_wanted | difference(ingress_gate_held) | length == 0
+        fail_msg: >-
+          vhosts under {{ ingress_gate_sites_dir }} bind {{ ingress_gate_wanted | difference(ingress_gate_held) }},
+          which this host does not hold ({{ ingress_gate_held }}). Caddy starts anyway, so
+          those vhosts are unreachable under a green unit. Correct the `*_tailscale_ip` key,
+          or bring tailscale0 up.
+        success_msg: every vhost binds an address this host holds
+        quiet: true
+      when: ingress_gate_vhosts.matched > 0
