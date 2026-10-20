@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.19.15](https://github.com/espadat-studio/auberge/compare/v0.19.14...v0.19.15) - 2026-10-20
+
+### Fixed
+
+- *(caddy)* start without the tailnet IP to break boot deadlock ([#1103](https://github.com/espadat-studio/auberge/pull/1103))
+- *(build)* bump eyre to 0.6.14 to clear semicolon-in-macro warnings ([#1099](https://github.com/espadat-studio/auberge/pull/1099))
+
+### Other
+
+- *(uv)* bump to 0.13.1 ([#1102](https://github.com/espadat-studio/auberge/pull/1102))
+- *(paperless)* bump to 3.3.1 ([#1100](https://github.com/espadat-studio/auberge/pull/1100))
+
 ## [0.19.14](https://github.com/espadat-studio/auberge/compare/v0.19.13...v0.19.14) - 2026-10-17
 
 ### Added

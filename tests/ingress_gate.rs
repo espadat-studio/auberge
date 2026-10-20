@@ -139,3 +139,41 @@ fn test_the_gate_flushes_handlers_before_checking_ingress() {
          state from before the restart it is meant to verify."
     );
 }
+
+/// Tailnet vhosts bind the Host's tailnet IP, which Headscale (a public vhost on the
+/// same Caddy) hands out. A bind that fails kills the whole unit, so a boot where
+/// Caddy beats the tailnet login leaves Headscale down and the login impossible: the
+/// Host stays dark until someone restarts Caddy by hand. `ip_nonlocal_bind` lets the
+/// unit start regardless.
+#[test]
+fn test_caddy_can_bind_tailnet_addresses_before_they_exist() {
+    let sysctl = fs::read_to_string(role_dir("caddy").join("files/90-caddy-nonlocal-bind.conf"))
+        .expect("the caddy role ships a sysctl drop-in for ip_nonlocal_bind");
+    assert!(
+        sysctl
+            .lines()
+            .any(|line| line.replace(' ', "") == "net.ipv4.ip_nonlocal_bind=1"),
+        "the drop-in must set net.ipv4.ip_nonlocal_bind = 1, got:\n{sysctl}"
+    );
+
+    let deploys_it = role_tasks("caddy").iter().any(|task| {
+        field(&task.body, "ansible.builtin.copy")
+            .and_then(|copy| field(copy.as_mapping()?, "dest"))
+            .and_then(Value::as_str)
+            == Some("/etc/sysctl.d/90-caddy-nonlocal-bind.conf")
+    });
+    assert!(deploys_it, "the caddy role must deploy the drop-in");
+}
+
+/// `ip_nonlocal_bind` removes the loud failure a stale `bind` address used to cause, so
+/// the gate has to catch it instead, or #568 returns as a green deploy with dark vhosts.
+#[test]
+fn test_the_gate_checks_vhost_bind_addresses_are_held() {
+    let tasks = fs::read_to_string(role_dir(GATE_ROLE).join("tasks/main.yml")).unwrap();
+    assert!(
+        tasks.contains("ip -family inet -oneline address show")
+            && tasks.contains("difference(ingress_gate_held)"),
+        "{GATE_ROLE} must compare every vhost `bind` address against the addresses the \
+         host holds, now that caddy starts with an address it does not own (#568)."
+    );
+}
