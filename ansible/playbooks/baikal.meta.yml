@@ -5,7 +5,7 @@ required_keys:
   - baikal_subdomain
 subdomain: baikal
 version:
-  value: "0.12.1"
+  value: "0.13.0"
   datasource: github-releases
   depName: "sabre-io/Baikal"
 backup:
