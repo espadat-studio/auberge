@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.19.16](https://github.com/espadat-studio/auberge/compare/v0.19.15...v0.19.16) - 2026-10-21
+
+### Other
+
+- *(paperless)* bump to 3.3.2 ([#1117](https://github.com/espadat-studio/auberge/pull/1117))
+- *(bichon)* bump to 2.2.0 ([#1114](https://github.com/espadat-studio/auberge/pull/1114))
+- *(deps)* update jdx/hk to 2.8.0 ([#1116](https://github.com/espadat-studio/auberge/pull/1116))
+- *(opencode)* bump to 1.19.2 ([#1115](https://github.com/espadat-studio/auberge/pull/1115))
+- *(immich)* bump to 3.3.4 ([#1113](https://github.com/espadat-studio/auberge/pull/1113))
+- *(baikal)* bump to 0.13.0 ([#1109](https://github.com/espadat-studio/auberge/pull/1109))
+- *(deps)* update jdx/hk to 2.7.1 ([#1105](https://github.com/espadat-studio/auberge/pull/1105))
+- *(docs)* update dependency astro to v7.4.1 ([#1108](https://github.com/espadat-studio/auberge/pull/1108))
+- *(deps)* update jdx/mise-action digest to fc42bcc ([#1104](https://github.com/espadat-studio/auberge/pull/1104))
+- *(deps)* update release-plz/action digest to 6caa8d3 ([#1106](https://github.com/espadat-studio/auberge/pull/1106))
+
 ## [0.19.15](https://github.com/espadat-studio/auberge/compare/v0.19.14...v0.19.15) - 2026-10-20
 
 ### Fixed
