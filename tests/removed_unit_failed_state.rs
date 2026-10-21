@@ -358,6 +358,7 @@ fn test_the_scan_still_sees_every_removal_site() {
     let expected: BTreeSet<String> = [
         "ansible/roles/apt/tasks/main.yml::apache-htcacheclean.service",
         "ansible/roles/apt/tasks/main.yml::apache2.service",
+        "ansible/roles/freshrss/tasks/main.yml::freshrss.service",
     ]
     .into_iter()
     .map(str::to_string)

@@ -6,5 +6,4 @@
     - role: freshrss
       vars:
         freshrss_domain: rss.example.com
-        freshrss_port: 8084
         freshrss_version: edge

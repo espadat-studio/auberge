@@ -369,7 +369,6 @@ pub const FLEET_UNIT_FILES: &[&str] = &[
     "forgejo/forgejo.service",
     "freshrss/freshrss-update.service",
     "freshrss/freshrss-update.timer",
-    "freshrss/freshrss.service",
     "gokapi/gokapi.service",
     "grimmory/grimmory.service",
     "headscale/headscale.service",

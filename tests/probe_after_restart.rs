@@ -67,10 +67,6 @@ const NOT_YET_PROBED: &[(&str, &str)] = &[
         "wait_for TCP `calibre_port` (8083), calibre-web's loopback listener",
     ),
     (
-        "freshrss",
-        "wait_for TCP `freshrss_port` (8084), the `php -S` loopback listener",
-    ),
-    (
         "gokapi",
         "wait_for TCP `gokapi_port` (53842), the binary's loopback listener",
     ),

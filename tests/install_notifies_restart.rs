@@ -403,7 +403,6 @@ const REPLACING_ROLES: &[&str] = &[
     "bichon",
     "blocky",
     "forgejo",
-    "freshrss",
     "gokapi",
     "grimmory",
     "headscale",
@@ -499,6 +498,15 @@ const DECLARED_ROLES: &[DeclaredRole] = &[
         why: "a timer-driven oneshot execs the artifact afresh at every activation, so \
               the replacement is live on the next firing with nothing to restart",
         notifies: &[],
+    },
+    DeclaredRole {
+        role: "freshrss",
+        why: "served by the system's php-fpm, installed by apt; the role templates no \
+              unit that runs the checkout",
+        notifies: &[
+            ("Clone FreshRSS repository", "Restart freshrss php-fpm"),
+            ("Update FreshRSS repository", "Restart freshrss php-fpm"),
+        ],
     },
     DeclaredRole {
         role: "hermes",

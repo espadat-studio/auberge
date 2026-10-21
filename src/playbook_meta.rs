@@ -547,7 +547,7 @@ mod tests {
     #[test]
     fn test_freshrss_meta_backup_recipe() {
         let backup = load_meta("freshrss").backup.unwrap();
-        assert_eq!(backup.systemd_services, vec!["freshrss"]);
+        assert_eq!(backup.systemd_services, vec!["freshrss-update.timer"]);
         assert_eq!(
             backup.paths,
             vec!["/var/lib/freshrss", "/opt/freshrss/data"]

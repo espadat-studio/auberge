@@ -1,7 +1,7 @@
 freshrss_install_path: /opt/freshrss
 freshrss_sys_user: freshrss
 freshrss_sys_group: freshrss
-freshrss_port: 8084
+freshrss_fpm_socket: /var/run/php/freshrss-fpm.sock
 freshrss_domain: "{{ freshrss_subdomain }}.{{ freshrss_parent_domain }}"
 freshrss_data_dir: /var/lib/freshrss
 freshrss_db_type: sqlite

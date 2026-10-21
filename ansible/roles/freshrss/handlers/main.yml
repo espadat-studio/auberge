@@ -1,6 +1,6 @@
-- name: Restart freshrss
+- name: Restart freshrss php-fpm
   ansible.builtin.systemd_service:
-    name: freshrss
+    name: "php{{ freshrss_php_fpm_version }}-fpm"
     state: restarted
 
 - name: Restart caddy
