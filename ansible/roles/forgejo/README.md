@@ -11,10 +11,10 @@ Forgejo's built-in SSH server listens on `forgejo_ssh_port` (default `2222`), bo
 Register a public key under **Settings → SSH / GPG Keys**, then from a tailnet node:
 
 ```sh
-git ls-remote ssh://git@<tailnet-ip>:2222/<owner>/<repo>.git
+git ls-remote ssh://forgejo@<tailnet-ip>:2222/<owner>/<repo>.git
 ```
 
-The clone URL Forgejo advertises uses `forgejo_ssh_domain`, which defaults to the Host's tailnet IPv4 (`forgejo_tailscale_ip`, discovered from `tailscale status` unless set in config). The forge's public name resolves to the public address, where the port is closed.
+The user is `forgejo`, the service user (`RUN_USER`); `git@` is refused. The clone URL Forgejo advertises uses `forgejo_ssh_domain`, which defaults to the Host's tailnet IPv4 (`forgejo_tailscale_ip`, discovered from `tailscale status` unless set in config). The forge's public name resolves to the public address, where the port is closed.
 
 The Host's admin sshd is untouched: no change to its allowed groups, no `authorized_keys` for `forgejo`. The deploy fails when the Host has no tailnet address, and ends with a probe that the port is listening.
 
