@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.20.1](https://github.com/espadat-studio/auberge/compare/v0.20.0...v0.20.1) - 2026-10-21
+
+### Fixed
+
+- *(freshrss)* serve from php-fpm so php upgrades reach the running app ([#1127](https://github.com/espadat-studio/auberge/pull/1127))
+
 ## [0.20.0](https://github.com/espadat-studio/auberge/compare/v0.19.16...v0.20.0) - 2026-10-21
 
 ### Added
