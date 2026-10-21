@@ -2,12 +2,9 @@
 	tls {
 		dns cloudflare {env.{{ freshrss_dns_api_token_env }}}
 	}
-	reverse_proxy 127.0.0.1:{{ freshrss_port }} {
-		header_up Host {host}
-		header_up X-Real-IP {remote_ip}
-		header_up X-Forwarded-For {remote_ip}
-		header_up X-Forwarded-Proto {scheme}
-	}
+	root * {{ freshrss_install_path }}/p
+	php_fastcgi unix/{{ freshrss_fpm_socket }}
+	file_server
 
 	request_body {
 		max_size 20M

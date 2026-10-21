@@ -5,6 +5,7 @@
         name:
           - php
           - php-cli
+          - php-fpm
           - php-curl
           - php-gmp
           - php-intl
@@ -15,6 +16,16 @@
           - git
         state: present
         update_cache: true
+
+    - name: Gather package facts
+      ansible.builtin.package_facts:
+        manager: apt
+
+    - name: Detect installed PHP-FPM version
+      ansible.builtin.set_fact:
+        freshrss_php_fpm_version: "{{ item.key | regex_replace('^php(\\d+\\.\\d+)-fpm$', '\\1') }}"
+      loop: "{{ ansible_facts.packages | dict2items }}"
+      when: item.key is match('^php\\d+\\.\\d+-fpm$')
 
     - name: Create system group for FreshRSS
       ansible.builtin.group:
@@ -61,7 +72,7 @@
         dest: "{{ freshrss_install_path }}"
         version: "{{ freshrss_version }}"
         depth: 1
-      notify: Restart freshrss
+      notify: Restart freshrss php-fpm
 
     - name: Check for local modifications in FreshRSS directory # noqa: command-instead-of-module
       when: freshrss_git_check.stat.exists
@@ -95,7 +106,7 @@
         update: true
       register: freshrss_update
       changed_when: freshrss_update.before != freshrss_update.after
-      notify: Restart freshrss
+      notify: Restart freshrss php-fpm
 
     - name: Link data directory to persistent location
       ansible.builtin.file:
@@ -106,21 +117,57 @@
         group: "{{ freshrss_sys_group }}"
         force: true
 
-    - name: Deploy FreshRSS systemd service file
+    - name: Stop and disable the retired FreshRSS php -S service
+      ansible.builtin.systemd_service:
+        name: freshrss
+        state: stopped
+        enabled: false
+      failed_when: false
+
+    - name: Remove the retired FreshRSS php -S unit file
+      ansible.builtin.file:
+        path: /etc/systemd/system/freshrss.service
+        state: absent
+
+    - name: Reload systemd after removing the retired unit
+      ansible.builtin.systemd_service:
+        daemon_reload: true
+
+    - name: Clear the failed state the retired FreshRSS unit may latch
+      ansible.builtin.command: systemctl reset-failed freshrss.service
+      register: freshrss_retired_reset
+      changed_when: freshrss_retired_reset.rc == 0
+      failed_when: false
+
+    - name: Deploy FreshRSS PHP-FPM pool configuration
       ansible.builtin.template:
-        src: templates/freshrss.service.j2
-        dest: /etc/systemd/system/freshrss.service
+        src: templates/freshrss-fpm.conf.j2
+        dest: /etc/php/{{ freshrss_php_fpm_version }}/fpm/pool.d/freshrss.conf
         owner: root
         group: root
         mode: "0644"
-      notify: Restart freshrss
+      register: freshrss_fpm_pool
 
-    - name: Enable and start FreshRSS service
+    - name: Check for the FreshRSS PHP-FPM socket
+      ansible.builtin.stat:
+        path: "{{ freshrss_fpm_socket }}"
+      register: freshrss_fpm_socket_probe
+
+    - name: Restart PHP-FPM to load the FreshRSS pool
+      when: >-
+        freshrss_fpm_pool is changed
+        or not (freshrss_fpm_socket_probe.stat.issock | default(false))
       ansible.builtin.systemd_service:
-        name: freshrss
-        enabled: true
-        state: started
-        daemon_reload: true
+        name: php{{ freshrss_php_fpm_version }}-fpm
+        state: restarted
+
+    - name: Flush handlers so a pending php-fpm restart lands before the probe
+      ansible.builtin.meta: flush_handlers
+
+    - name: Wait for the FreshRSS PHP-FPM socket
+      ansible.builtin.wait_for:
+        path: "{{ freshrss_fpm_socket }}"
+        timeout: 10
 
     - name: Deploy FreshRSS Caddyfile
       ansible.builtin.template:

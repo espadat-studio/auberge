@@ -386,22 +386,24 @@ const DECLARED_DIRECTORIES: &[DeclaredDirectory] = &[
         dir: "/opt/freshrss",
         kind: Kind::Install,
         writers: &[],
-        why: "the git checkout; the unit is denied its own install tree, data/ excepted",
+        why: "the git checkout; served by the shared php-fpm pool, which this scan does not model",
     },
     DeclaredDirectory {
         role: "freshrss",
         dir: "/opt/freshrss/data",
         kind: Kind::Data,
-        writers: &["freshrss.service"],
+        writers: &[],
         why: "FreshRSS state inside the checkout -- upstream's layout, not this repo's; \
-              the Recipe captures it where it lives",
+              written through the php-fpm pool, not a strict unit; the Recipe captures it \
+              where it lives",
     },
     DeclaredDirectory {
         role: "freshrss",
         dir: "/var/lib/freshrss",
         kind: Kind::Data,
-        writers: &["freshrss.service"],
-        why: "state outside the checkout, in the Recipe alongside data/",
+        writers: &[],
+        why: "state outside the checkout, written through the php-fpm pool; in the Recipe \
+              alongside data/",
     },
     DeclaredDirectory {
         role: "forgejo",
