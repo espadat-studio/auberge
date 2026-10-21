@@ -10,10 +10,15 @@ HTTP_PORT = {{ forgejo_port }}
 DOMAIN = {{ forgejo_domain }}
 ROOT_URL = https://{{ forgejo_domain }}/
 APP_DATA_PATH = {{ forgejo_data_dir }}/data
-; HTTPS only. No git system user, no authorized_keys, and nothing listening
-; beside the Host's hardened sshd. See the role README.
-DISABLE_SSH = true
-START_SSH_SERVER = false
+; Tailnet-only, built-in server. See ADR-0084.
+DISABLE_SSH = false
+START_SSH_SERVER = true
+SSH_CREATE_AUTHORIZED_KEYS_FILE = false
+SSH_ROOT_PATH = {{ forgejo_data_dir }}/ssh
+SSH_DOMAIN = {{ forgejo_ssh_domain }}
+SSH_LISTEN_HOST = {{ forgejo_tailscale_ip }}
+SSH_LISTEN_PORT = {{ forgejo_ssh_port }}
+SSH_PORT = {{ forgejo_ssh_port }}
 
 [repository]
 ROOT = {{ forgejo_data_dir }}/repos
