@@ -112,6 +112,7 @@ fn pin_output_format(cmd: &mut Command) {
 pub struct InventoryHost {
     pub name: String,
     pub route: crate::services::route::Route,
+    pub public_address: String,
     pub groups: Vec<String>,
 }
 
@@ -317,6 +318,10 @@ fn write_inventory_file(host: &InventoryHost) -> Result<tempfile::NamedTempFile>
     host_vars.insert(
         Value::String("ansible_host".into()),
         Value::String(host.route.address.clone()),
+    );
+    host_vars.insert(
+        Value::String("public_address".into()),
+        Value::String(host.public_address.clone()),
     );
     host_vars.insert(
         Value::String("ansible_port".into()),
@@ -560,6 +565,7 @@ mod tests {
                 key_path: None,
                 alias: name.to_string(),
             },
+            public_address: address.to_string(),
             groups: groups.iter().map(|g| g.to_string()).collect(),
         }
     }
@@ -753,6 +759,23 @@ mod tests {
         let host_entry = &parsed["all"]["children"]["vps"]["hosts"]["testhost"];
         assert_eq!(host_entry["ansible_host"].as_str().unwrap(), "198.51.100.1");
         assert_eq!(host_entry["ansible_port"].as_u64().unwrap(), 59865);
+    }
+
+    #[test]
+    fn test_write_inventory_file_keeps_the_public_address_apart_from_the_route() {
+        let mut host = inventory_host("testhost", "100.64.0.1", 22, "root", &[]);
+        host.public_address = "198.51.100.1".to_string();
+
+        let tmpfile = write_inventory_file(&host).unwrap();
+        let contents = std::fs::read_to_string(tmpfile.path()).unwrap();
+
+        let parsed: serde_yaml::Value = serde_yaml::from_str(&contents).unwrap();
+        let host_entry = &parsed["all"]["children"]["vps"]["hosts"]["testhost"];
+        assert_eq!(host_entry["ansible_host"].as_str().unwrap(), "100.64.0.1");
+        assert_eq!(
+            host_entry["public_address"].as_str().unwrap(),
+            "198.51.100.1"
+        );
     }
 
     #[test]

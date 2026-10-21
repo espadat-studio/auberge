@@ -885,6 +885,7 @@ fn run_apps_playbook(host: &Host, apps: &[String]) -> Result<AnsibleResult> {
     let inventory_host = crate::services::ansible_runner::InventoryHost {
         name: host.name.clone(),
         route: crate::services::route::resolve(host, None)?,
+        public_address: host.address.clone(),
         groups: host.tags.clone(),
     };
 
