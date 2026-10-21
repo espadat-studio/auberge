@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.20.0](https://github.com/espadat-studio/auberge/compare/v0.19.16...v0.20.0) - 2026-10-21
+
+### Added
+
+- *(forgejo)* serve git over ssh on the tailnet only ([#1121](https://github.com/espadat-studio/auberge/pull/1121))
+
+### Fixed
+
+- *(dns)* publish the host's public address, not its route ([#1125](https://github.com/espadat-studio/auberge/pull/1125))
+
+### Other
+
+- *(opencode)* bump to 1.19.3 ([#1122](https://github.com/espadat-studio/auberge/pull/1122))
+- *(deps)* update release-plz/action digest to 8b5bf23 ([#1119](https://github.com/espadat-studio/auberge/pull/1119))
+- *(deps)* update jdx/mise-action digest to 8418fed ([#1118](https://github.com/espadat-studio/auberge/pull/1118))
+
 ## [0.19.16](https://github.com/espadat-studio/auberge/compare/v0.19.15...v0.19.16) - 2026-10-21
 
 ### Other
