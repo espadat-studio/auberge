@@ -12,6 +12,13 @@ forgejo_config_file: "{{ forgejo_config_dir }}/app.ini"
 forgejo_sys_user: forgejo
 forgejo_sys_group: forgejo
 forgejo_port: 3043
+# Forgejo's built-in SSH server. Bound to the Host's tailnet address only, so
+# the public address never answers on it (ADR-0084).
+forgejo_ssh_port: 2222
+# What Forgejo advertises in clone URLs. The forge's public name resolves to the
+# public address, where this port is closed, so the default is the tailnet
+# address itself, which every tailnet client reaches without a resolver.
+forgejo_ssh_domain: "{{ forgejo_tailscale_ip }}"
 forgejo_domain: "{{ forgejo_subdomain }}.{{ forgejo_parent_domain }}"
 forgejo_admin_email: "{{ forgejo_admin_user }}@{{ domain }}"
 # Forgejo's own name, shown in the page title and the site header. A default for

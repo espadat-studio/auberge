@@ -4,6 +4,20 @@ Deploys [Forgejo](https://forgejo.org) — a Go single-binary, self-hosted git f
 
 The reason to run one is identity. A Forgejo account is not a github.com account, so someone can hold write access to a repository without one, and Decap CMS can authenticate an editor against this forge instead of GitHub.
 
+## Git over SSH
+
+Forgejo's built-in SSH server listens on `forgejo_ssh_port` (default `2222`), bound to the Host's tailnet IPv4 and nothing else ([ADR-0084](https://github.com/espadat-studio/auberge/blob/master/meta/adr/0084-git-over-ssh-is-the-forges-own-server-on-the-tailnet-only.md)). HTTPS stays public. The public address never answers on the SSH port, and no firewall rule opens it: UFW's default deny covers every interface but `tailscale0`.
+
+Register a public key under **Settings → SSH / GPG Keys**, then from a tailnet node:
+
+```sh
+git ls-remote ssh://git@<tailnet-ip>:2222/<owner>/<repo>.git
+```
+
+The clone URL Forgejo advertises uses `forgejo_ssh_domain`, which defaults to the Host's tailnet IPv4 (`forgejo_tailscale_ip`, discovered from `tailscale status` unless set in config). The forge's public name resolves to the public address, where the port is closed.
+
+The Host's admin sshd is untouched: no change to its allowed groups, no `authorized_keys` for `forgejo`. The deploy fails when the Host has no tailnet address, and ends with a probe that the port is listening.
+
 ## Shutdown
 
 Forgejo catches `SIGTERM`, runs a graceful shutdown and exits **0**, verified against 16.0.5. So it needs no `SuccessExitStatus=` ([ADR-0038](https://github.com/espadat-studio/auberge/blob/master/meta/adr/0038-clean-shutdown-exit-status-is-declared-per-runtime.md)), and the nightly Backup Recipe stop leaves the unit `inactive` instead of latching it `failed`.
@@ -12,7 +26,6 @@ Forgejo catches `SIGTERM`, runs a graceful shutdown and exits **0**, verified ag
 
 Deliberately not deployed:
 
-- **Git over SSH.** `DISABLE_SSH = true`, no `git` system user, no `authorized_keys`. Clone and push over HTTPS.
 - **Forgejo Actions.** `ENABLED = false`; upstream turns the subsystem on by default.
 - **Postgres, and any container.** One editor does not need either.
 
@@ -29,6 +42,9 @@ Deliberately not deployed:
 | `forgejo_app_name`           | `Forgejo`                                             | Site name in the header and page titles                |
 | `forgejo_admin_email`        | `{{ forgejo_admin_user }}@{{ domain }}`               | Email on the administrator account                     |
 | `forgejo_version`            | from `forgejo.meta.yml`                               | Pinned upstream release, tracked by Renovate           |
+| `forgejo_ssh_port`           | `2222`                                                | Built-in SSH server port, tailnet address only         |
+| `forgejo_ssh_domain`         | `{{ forgejo_tailscale_ip }}`                          | Host advertised in SSH clone URLs                      |
+| `forgejo_tailscale_ip`       | discovered from `tailscale status`                    | Tailnet IPv4 the SSH server binds                      |
 | `forgejo_cors_allow_origins` | `""` (CORS off)                                       | Comma-separated origins granted CORS access, see below |
 
 Required config keys: `forgejo_subdomain`, `forgejo_admin_user`, `forgejo_admin_password`.

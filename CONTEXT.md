@@ -76,6 +76,10 @@ _Avoid_: Private app, internal app, vpn-only app
 An App without `tailnet_only`. Caddy serves on the host's public address; DNS publication is a Cloudflare A record pointing at `ansible_host` (via the `dns_record` role).
 _Avoid_: External app, world-facing app
 
+**Forge SSH Endpoint**:
+Forgejo's built-in SSH server (`forgejo_ssh_port`, default 2222), bound to the Forgejo Host's tailnet IPv4 and nowhere else. A tailnet-only _port_ on an App that is otherwise a **Public App**: the forge's HTTPS stays on Caddy's public address because Decap editors authenticate against it, while git over SSH answers only on the tailnet. It is not a **Tailnet-only App** — the forge has no `tailnet_only` flag, publishes nothing to Blocky, and its public name never resolves to this port. The clone URL Forgejo advertises names the tailnet address itself (`forgejo_ssh_domain`), because a name that resolved to the public address would point at a closed port (ADR-0084). The Host's hardened admin sshd is a separate listener and is untouched.
+_Avoid_: Git SSH, forge sshd, SSH pass-through
+
 **Zone**:
 The DNS zone an App's public name lives in, named by the prefix its two config keys share: `<zone>_domain` and `<zone>_cloudflare_dns_api_token`. The fleet's Zone is the unnamed one (`domain`, `cloudflare_dns_api_token`). The **Key Registry** holds only the Zones the repo requires, the fleet's and `agents`; an operator's own Zone is set by key name. A Zone is a **pair**, never a domain alone — a Cloudflare token is zone-scoped, so holding the name without the token is a vhost that can never complete an ACME challenge (ADR-0068).
 

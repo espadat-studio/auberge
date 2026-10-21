@@ -1,5 +1,26 @@
 - name: Install and configure Forgejo
   block:
+    - name: Get Tailscale status
+      ansible.builtin.command: tailscale status --json
+      register: forgejo_tailscale_status_raw
+      changed_when: false
+      failed_when: false
+      when: forgejo_tailscale_ip is not defined
+
+    - name: Set Tailscale IPv4 fact
+      ansible.builtin.set_fact:
+        forgejo_tailscale_ip: "{{ (forgejo_tailscale_status_raw.stdout | from_json).Self.TailscaleIPs | select('match', '^[0-9]+\\.') | first }}"
+      when:
+        - forgejo_tailscale_ip is not defined
+        - forgejo_tailscale_status_raw.rc == 0
+        - (forgejo_tailscale_status_raw.stdout | from_json).BackendState | default('') == "Running"
+        - (forgejo_tailscale_status_raw.stdout | from_json).Self.TailscaleIPs | default([]) | select('match', '^[0-9]+\\.') | list | length > 0
+
+    - name: Fail if Tailscale not available
+      ansible.builtin.fail:
+        msg: "Tailscale is not running or no Tailscale IP available. Forgejo serves git over SSH on the tailnet only."
+      when: forgejo_tailscale_ip is not defined
+
     - name: Install git (Forgejo shells out to it for every repository operation)
       ansible.builtin.apt:
         name: git
@@ -263,3 +284,13 @@
         dns_record_subdomain: "{{ forgejo_subdomain }}"
         dns_record_domain: "{{ forgejo_parent_domain }}"
         dns_record_cloudflare_api_token: "{{ forgejo_dns_api_token }}"
+
+    - name: Flush handlers so a pending caddy restart lands before the SSH probe
+      ansible.builtin.meta: flush_handlers
+
+    - name: Wait for Forgejo's SSH server to listen on the tailnet address
+      ansible.builtin.wait_for:
+        host: "{{ forgejo_tailscale_ip }}"
+        port: "{{ forgejo_ssh_port }}"
+        timeout: 60
+      when: not ansible_check_mode
