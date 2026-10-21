@@ -104,6 +104,19 @@
         group: caddy
         mode: "0755"
 
+    # Tailnet vhosts `bind` the Host's tailnet IP, and Headscale (public vhost
+    # on this same Caddy) is what hands that IP out. Without this, a boot where
+    # Caddy starts first exits on "cannot assign requested address", takes
+    # Headscale down with it, and the Host can never log in to get the address.
+    - name: Let Caddy bind tailnet addresses before tailscale0 holds them
+      ansible.builtin.copy:
+        src: files/90-caddy-nonlocal-bind.conf
+        dest: /etc/sysctl.d/90-caddy-nonlocal-bind.conf
+        owner: root
+        group: root
+        mode: "0644"
+      notify: Reload sysctl
+
     - name: Deploy Caddy systemd service file
       ansible.builtin.copy:
         src: files/caddy.service

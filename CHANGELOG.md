@@ -7,6 +7,47 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.19.16](https://github.com/espadat-studio/auberge/compare/v0.19.15...v0.19.16) - 2026-10-21
+
+### Other
+
+- *(paperless)* bump to 3.3.2 ([#1117](https://github.com/espadat-studio/auberge/pull/1117))
+- *(bichon)* bump to 2.2.0 ([#1114](https://github.com/espadat-studio/auberge/pull/1114))
+- *(deps)* update jdx/hk to 2.8.0 ([#1116](https://github.com/espadat-studio/auberge/pull/1116))
+- *(opencode)* bump to 1.19.2 ([#1115](https://github.com/espadat-studio/auberge/pull/1115))
+- *(immich)* bump to 3.3.4 ([#1113](https://github.com/espadat-studio/auberge/pull/1113))
+- *(baikal)* bump to 0.13.0 ([#1109](https://github.com/espadat-studio/auberge/pull/1109))
+- *(deps)* update jdx/hk to 2.7.1 ([#1105](https://github.com/espadat-studio/auberge/pull/1105))
+- *(docs)* update dependency astro to v7.4.1 ([#1108](https://github.com/espadat-studio/auberge/pull/1108))
+- *(deps)* update jdx/mise-action digest to fc42bcc ([#1104](https://github.com/espadat-studio/auberge/pull/1104))
+- *(deps)* update release-plz/action digest to 6caa8d3 ([#1106](https://github.com/espadat-studio/auberge/pull/1106))
+
+## [0.19.15](https://github.com/espadat-studio/auberge/compare/v0.19.14...v0.19.15) - 2026-10-20
+
+### Fixed
+
+- *(caddy)* start without the tailnet IP to break boot deadlock ([#1103](https://github.com/espadat-studio/auberge/pull/1103))
+- *(build)* bump eyre to 0.6.14 to clear semicolon-in-macro warnings ([#1099](https://github.com/espadat-studio/auberge/pull/1099))
+
+### Other
+
+- *(uv)* bump to 0.13.1 ([#1102](https://github.com/espadat-studio/auberge/pull/1102))
+- *(paperless)* bump to 3.3.1 ([#1100](https://github.com/espadat-studio/auberge/pull/1100))
+
+## [0.19.14](https://github.com/espadat-studio/auberge/compare/v0.19.13...v0.19.14) - 2026-10-17
+
+### Added
+
+- *(stirling)* add a tailnet-only Stirling-PDF playbook ([#1095](https://github.com/espadat-studio/auberge/pull/1095))
+
+### Other
+
+- *(stirling)* list stirling-pdf in readme, index, intro and config keys
+- *(colporteur)* bump to 0.6.9 ([#1096](https://github.com/espadat-studio/auberge/pull/1096))
+- *(deps)* update taiki-e/install-action digest to 9252097 ([#1093](https://github.com/espadat-studio/auberge/pull/1093))
+- *(deps)* update jdx/mise-action digest to 9b200bc ([#1091](https://github.com/espadat-studio/auberge/pull/1091))
+- *(deps)* update jdx/hk to 2.7.0 ([#1092](https://github.com/espadat-studio/auberge/pull/1092))
+
 ## [0.19.13](https://github.com/espadat-studio/auberge/compare/v0.19.12...v0.19.13) - 2026-10-16
 
 ### Other
