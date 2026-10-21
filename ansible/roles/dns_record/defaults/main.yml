@@ -1,4 +1,4 @@
 ---
-dns_record_ip: "{{ ansible_host }}"
+dns_record_ip: "{{ public_address }}"
 dns_record_ttl: "{{ dns_default_ttl }}"
 dns_record_proxied: false

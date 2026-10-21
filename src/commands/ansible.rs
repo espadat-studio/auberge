@@ -279,6 +279,7 @@ fn run_auto_resolved(
         let inventory_host = InventoryHost {
             name: host.name.clone(),
             route: host.route(),
+            public_address: host.vars.public_address.clone(),
             groups: host.groups.clone(),
         };
 
@@ -385,6 +386,7 @@ fn run_single_playbook(
     let inventory_host = InventoryHost {
         name: host.name.clone(),
         route: host.route(),
+        public_address: host.vars.public_address.clone(),
         groups: host.groups.clone(),
     };
 
@@ -652,6 +654,7 @@ pub fn run_ansible_bootstrap(
     // yet in any trustworthy sense.
     let inventory_host = InventoryHost {
         name: host_name.clone(),
+        public_address: host_ip.clone(),
         route: crate::services::route::Route {
             address: host_ip,
             port,

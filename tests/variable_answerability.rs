@@ -129,7 +129,8 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::LazyLock;
 
-/// Ansible's own variables, which no file in the repo declares.
+/// Variables nothing in the repo declares: Ansible's own, plus
+/// `public_address`, which the CLI writes into every generated inventory.
 const BUILTIN_NAMES: &[&str] = &[
     "environment",
     "group_names",
@@ -143,6 +144,7 @@ const BUILTIN_NAMES: &[&str] = &[
     "omit",
     "play_hosts",
     "playbook_dir",
+    "public_address",
     "role_name",
     "role_path",
     "vars",

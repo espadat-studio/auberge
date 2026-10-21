@@ -510,6 +510,7 @@ pub fn run_deploy(cmd: DeployCmd) -> Result<()> {
     let inventory_host = InventoryHost {
         name: host.name.clone(),
         route: host.route(),
+        public_address: host.vars.public_address.clone(),
         groups: host.groups.clone(),
     };
 
