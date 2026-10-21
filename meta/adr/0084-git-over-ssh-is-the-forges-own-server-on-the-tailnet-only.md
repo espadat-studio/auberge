@@ -8,7 +8,7 @@ Accepted, 2026-10-21. Decided in #1120. Amends the `forgejo` role's former stanc
 
 **Forgejo's built-in SSH server listens on `forgejo_ssh_port` (default 2222), bound to the Host's tailnet IPv4.** `SSH_LISTEN_HOST` is that address, never a wildcard. The public address does not answer on the port because nothing listens there, and UFW's default-deny holds it closed besides.
 
-**No firewall rule and no ACL entry are added.** UFW already allows incoming traffic on `tailscale0` (the `tailscale` role) and denies everything else. The tailnet policy already gives `tag:trusted` `*:*`. A Host without the forge therefore changes nothing: the port exists only in the `forgejo` role's `app.ini`.
+**No firewall rule and no ACL entry are added.** When UFW runs, it already allows incoming traffic on `tailscale0` (the `tailscale` role) and denies everything else. The tailnet policy already gives `tag:trusted` `*:*`, pinned by `test_trusted_reaches_everything` in `tests/headscale_acl_policy.rs`. A Host without the forge therefore changes nothing: the port exists only in the `forgejo` role's `app.ini`.
 
 **The advertised clone host is the tailnet IPv4 literal** (`forgejo_ssh_domain`, defaulting to `forgejo_tailscale_ip`). Nothing has to resolve, so the clone URL works from any tailnet client with no resolver in the path.
 
@@ -25,8 +25,8 @@ The built-in server keeps git's SSH identity inside Forgejo. Keys live in its da
 ## Trade-off
 
 - **The clone URL names an address, not a host.** Re-enrolling the Host changes its tailnet IPv4. A redeploy rewrites `app.ini`, but remotes already cloned keep the old address.
-- **`forgejo` starts only when the tailnet address exists.** The unit orders after `tailscaled.service`. A Host whose tailscale is down at boot fails the unit instead of serving HTTPS without SSH.
-- **The SSH host key lives in `/var/lib/forgejo`**, which the Backup Recipe already covers. A restore without it changes the host key every client has pinned.
+- **`forgejo` starts only when the tailnet address exists.** The unit orders after `tailscaled.service` but does not require it. If the tailnet address is still missing, the SSH bind fails and takes the unit, and its HTTPS, down with it.
+- **The SSH host key lives in `/var/lib/forgejo/ssh`** (`SSH_ROOT_PATH`, set explicitly), which the Backup Recipe already covers. A restore without it changes the host key every client has pinned.
 
 ## Alternatives considered
 
