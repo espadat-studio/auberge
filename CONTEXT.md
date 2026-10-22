@@ -8,6 +8,10 @@ Self-hosted homelab provisioning: a Rust CLI that runs Ansible playbooks against
 An Ansible playbook (`ansible/playbooks/<name>.yml`) that deploys one app, one piece of infrastructure, or one **Composition** to a Host.
 _Avoid_: Role, recipe (Ansible-internal), task (Ansible-internal)
 
+**Built Release**:
+A `<app>/v<version>` release of this repo carrying a non-empty artifact (`grimmory-api.jar`), built by a manual `workflow_dispatch` because upstream publishes none. A tag alone does not count: a half-failed run can leave one. CI (`check-grimmory-release.sh`) and `auberge deploy` both refuse a pin with no Built Release; the failure prints the dispatch command rather than running it, so PR-controlled input never triggers a source build.
+_Avoid_: Upstream release, artifact
+
 **Composition**:
 A Playbook whose roster is several Apps rather than one — the set of things a Host is _for_, named so `auberge deploy <name>` can bring the whole Host up in one command. `ruche.yml` is the only one: the agent tier's machine-user identity, runtime and dashboard (ADR-0075). Every entry is `when:`-guarded on an ansible group, so the same Playbook pointed at another Host is a no-op rather than an incident — which is also why its Meta must declare its roles' `required_keys` itself: an untagged run demands no guarded entry's keys, so Preflight would otherwise demand nothing at all. A Composition owns no units and publishes no name of its own; those belong to the Apps on its roster, and the deploy's **DNS Publication** check and unit readout read the roster for them. It is a `deploy` target but not an **App**: no `subdomain:`, no **Backup Recipe**, no App Version.
 _Avoid_: Meta role (the Ansible `dependencies:` form, deliberately not used — see ADR-0075), bundle, stack

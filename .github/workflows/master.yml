@@ -85,6 +85,12 @@ jobs:
         shell: bash
         run: ./.github/scripts/check-adr-numbering.sh
 
+      - name: Grimmory pin has a Built Release
+        shell: bash
+        run: ./.github/scripts/check-grimmory-release.sh
+        env:
+          GH_TOKEN: ${{ github.token }}
+
       # In `check` rather than in `_test`: that job is gated on Rust and ansible
       # changes, and these cover the reference scripts under examples/ as well
       # as the bichon and immich roles' scripts.
