@@ -11,7 +11,6 @@ pub const FOLDER_LABEL: &str = "Agent memory";
 pub const SYNC_PORT: u16 = 22000;
 pub const HOST_SYNCTHING_USER: &str = "syncthing";
 const HOST_API: &str = "http://127.0.0.1:8384/rest";
-const DEFAULT_LOCAL_API: &str = "127.0.0.1:8384";
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(10);
 
 pub fn canonical_id(id: &str) -> String {
@@ -93,7 +92,7 @@ pub fn parse_local_credentials(config_xml: &str) -> Result<LocalCredentials> {
     let address = gui
         .captures(config_xml)
         .map(|c| c[1].to_string())
-        .unwrap_or_else(|| DEFAULT_LOCAL_API.to_string());
+        .ok_or_else(|| eyre::eyre!("no GUI <address> in the local Syncthing config"))?;
     Ok(LocalCredentials { api_key, address })
 }
 
@@ -117,11 +116,12 @@ pub struct Desired<'a> {
     pub folder_path: &'a Path,
 }
 
-fn expand_home(path: &str) -> PathBuf {
+fn expand_home(path: &str) -> Result<PathBuf> {
     let Some(rest) = path.strip_prefix("~/") else {
-        return PathBuf::from(path);
+        return Ok(PathBuf::from(path));
     };
-    dirs::home_dir().unwrap_or_default().join(rest)
+    let home = dirs::home_dir().ok_or_else(|| eyre::eyre!("could not determine home directory"))?;
+    Ok(home.join(rest))
 }
 
 fn device_key(device: &Value) -> String {
@@ -146,7 +146,7 @@ pub fn plan_pairing(config: &Value, local_id: &str, desired: &Desired) -> Result
         .collect();
 
     for folder in folders.iter().filter(|f| f["id"] != FOLDER_ID) {
-        let other = expand_home(folder["path"].as_str().unwrap_or_default());
+        let other = expand_home(folder["path"].as_str().unwrap_or_default())?;
         eyre::ensure!(
             !other.starts_with(desired.folder_path) && !desired.folder_path.starts_with(&other),
             "{} is nested in or contains the Syncthing folder '{}' ({}); sharing it would leak the memories to that folder's devices",
@@ -171,7 +171,7 @@ pub fn plan_pairing(config: &Value, local_id: &str, desired: &Desired) -> Result
 
     let current_folder = folders.iter().find(|f| f["id"] == FOLDER_ID);
     if let Some(folder) = current_folder {
-        let path = expand_home(folder["path"].as_str().unwrap_or_default());
+        let path = expand_home(folder["path"].as_str().unwrap_or_default())?;
         eyre::ensure!(
             path == desired.folder_path,
             "folder '{FOLDER_ID}' already exists at {}, and a folder ID is unique per machine; pass --path {} or remove it first",
@@ -483,8 +483,9 @@ mod tests {
     }
 
     #[test]
-    fn local_credentials_without_a_key_fail() {
+    fn local_credentials_without_a_key_or_address_fail() {
         assert!(parse_local_credentials("<configuration/>").is_err());
+        assert!(parse_local_credentials("<gui><apikey>k</apikey></gui>").is_err());
     }
 
     #[test]
