@@ -7,6 +7,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.20.2](https://github.com/espadat-studio/auberge/compare/v0.20.1...v0.20.2) - 2026-10-22
+
+### Added
+
+- *(ci)* add the standby runner role and billing-flip poller ([#1152](https://github.com/espadat-studio/auberge/pull/1152))
+- *(syncthing)* add device-id and pair for agent hosts ([#1151](https://github.com/espadat-studio/auberge/pull/1151))
+- *(grimmory)* refuse a pin with no built release ([#1146](https://github.com/espadat-studio/auberge/pull/1146))
+
+### Fixed
+
+- *(cli)* prompt for required args that clap rejects ([#1150](https://github.com/espadat-studio/auberge/pull/1150))
+
+### Other
+
+- *(agent_users)* bump to 2026.10.17 ([#1147](https://github.com/espadat-studio/auberge/pull/1147))
+- *(agents)* run the agent tier as an unprivileged user ([#1145](https://github.com/espadat-studio/auberge/pull/1145))
+- *(deps)* update dependency java-jdk to v25.0.5+8.0.lts ([#1143](https://github.com/espadat-studio/auberge/pull/1143))
+- *(deps)* update github/codeql-action digest to 9b32540 ([#1131](https://github.com/espadat-studio/auberge/pull/1131))
+- *(adr)* scope the standby runner group to the nine private repos
+- *(adr)* amend the standby runner record
+- *(stirling)* bump to 25.0.5+8 ([#1138](https://github.com/espadat-studio/auberge/pull/1138))
+- *(docs)* override postcss-selector-parser to 7.1.6+ ([#1139](https://github.com/espadat-studio/auberge/pull/1139))
+- *(adr)* record the standby runner for exhausted hosted minutes
+- *(stirling)* bump to 3.2.1 ([#1136](https://github.com/espadat-studio/auberge/pull/1136))
+- *(aoe)* bump to 1.21.0 ([#1135](https://github.com/espadat-studio/auberge/pull/1135))
+- *(deps)* update taiki-e/install-action digest to 19c7190 ([#1134](https://github.com/espadat-studio/auberge/pull/1134))
+- *(freshrss)* bump to 1.30.4 ([#1129](https://github.com/espadat-studio/auberge/pull/1129))
+- *(deps)* update rust-lang/crates-io-auth-action action to v1.0.6 ([#1133](https://github.com/espadat-studio/auberge/pull/1133))
+- *(immich)* bump to 3.3.5 ([#1132](https://github.com/espadat-studio/auberge/pull/1132))
+- *(docs)* update dependency astro to v7.4.2 ([#1130](https://github.com/espadat-studio/auberge/pull/1130))
+
 ## [0.20.1](https://github.com/espadat-studio/auberge/compare/v0.20.0...v0.20.1) - 2026-10-21
 
 ### Fixed
