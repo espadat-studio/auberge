@@ -6,9 +6,9 @@
       - standby_runner_user != agent_user_name
     fail_msg: "standby_runner_user must be neither admin_user_name nor agent_user_name"
 
-- name: Install the poller's script dependencies
+- name: Install the poller's and runner's dependencies
   ansible.builtin.apt:
-    name: [curl, jq, openssl]
+    name: [curl, jq, libicu76, openssl]
     state: present
     update_cache: false
 
