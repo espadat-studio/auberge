@@ -21,7 +21,7 @@ auberge ansible run --tags memsearch -H ruche
 | `memsearch_sync_device_id`   | Syncthing device ID of the peer that holds the off-box copy |
 | `memsearch_sync_device_name` | How that peer appears in the Host's device list             |
 
-The peer initiates the connection. The Host announces nowhere, so pair it from the peer's side using the Host's tailnet address and port 22000.
+The peer initiates the connection. The Host announces nowhere, so pair it from the peer's side using the Host's tailnet address and port 22000. [`auberge syncthing pair`](/cli-reference/syncthing/pair/) does this on the machine running `auberge`, and again after a rebuild gives the Host a new device ID.
 
 ## Notes
 

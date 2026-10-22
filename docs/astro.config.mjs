@@ -125,6 +125,13 @@ export default defineConfig({
               ],
             },
             {
+              label: "Syncthing",
+              items: [
+                { label: "device-id", slug: "cli-reference/syncthing/device-id" },
+                { label: "pair", slug: "cli-reference/syncthing/pair" },
+              ],
+            },
+            {
               label: "Sync",
               items: [
                 { label: "hermes", slug: "cli-reference/sync/hermes" },

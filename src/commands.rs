@@ -11,4 +11,5 @@ pub mod opml;
 pub mod select;
 pub mod ssh;
 pub mod sync;
+pub mod syncthing;
 pub mod versions;

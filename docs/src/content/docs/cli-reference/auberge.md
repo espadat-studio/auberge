@@ -32,6 +32,7 @@ auberge [GLOBAL OPTIONS] <COMMAND>
 | [ssh](/cli-reference/ssh/keygen/)                  | `ss`  | SSH key generation and deployment                        |
 | [sync](/cli-reference/sync/music/)                 | `sy`  | rsync media to the VPS                                   |
 | [headscale](/cli-reference/headscale/add-user/)    | `hs`  | Headscale users and nodes                                |
+| [syncthing](/cli-reference/syncthing/pair/)        | `st`  | Pair this machine's Syncthing with an agent Host         |
 | [bichon](/cli-reference/bichon/reconcile-folders/) | —     | Bichon folder reconciliation                             |
 | [config](/cli-reference/config/overview/)          | `c`   | Manage `config.toml`                                     |
 | [select](/cli-reference/select/host/)              | `se`  | Interactive host / playbook pickers                      |
