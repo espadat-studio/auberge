@@ -5,7 +5,7 @@ title: "auberge bichon verify-coverage"
 ## Synopsis
 
 ```bash
-auberge bichon verify-coverage [--host <HOST>] [--account <EMAIL>] [--folder <NAME>] --before <YYYY-MM-DD> [OPTIONS]
+auberge bichon verify-coverage [--host <HOST>] [--account <EMAIL>] [--folder <NAME>] [--before <YYYY-MM-DD>] [OPTIONS]
 ```
 
 ## Description
@@ -29,11 +29,11 @@ What this does **not** prove: that the live Upstream Mailbox holds nothing the s
 | -H, --host HOST     | Target host running Bichon                            | prompted                  |
 | --account EMAIL     | Account email; also names the Email Archive directory | prompted                  |
 | --folder NAME       | Folder whose coverage to verify (exact, case matters) | prompted                  |
-| --before YYYY-MM-DD | Verify messages dated strictly before this UTC date   | required                  |
+| --before YYYY-MM-DD | Verify messages dated strictly before this UTC date   | prompts if omitted        |
 | --archive-path PATH | Email Archive root on the host                        | `/var/lib/bichon-archive` |
 | -o, --output FORMAT | Output format (`human`, `json`)                       | `human`                   |
 
-Omit any of the first three on a terminal and a picker is drawn for it, each offering what the answer above it makes available: the hosts in the Inventory, then the accounts that host's Bichon reports, then that account's Synced Folders — the set [reconcile-folders](/cli-reference/bichon/reconcile-folders/) writes. `--before` has no list to pick from, so it stays required and its absence is a usage error.
+Omit any of the first three on a terminal and a picker is drawn for it, each offering what the answer above it makes available: the hosts in the Inventory, then the accounts that host's Bichon reports, then that account's Synced Folders — the set [reconcile-folders](/cli-reference/bichon/reconcile-folders/) writes. `--before` has no list to pick from, so it is a free-text prompt, validated as `YYYY-MM-DD` after the answer. Without a terminal, omitting it fails naming the flag.
 
 Pickers cannot hang a script. With no terminal a lone candidate is implied, and several fail naming the flag rather than waiting for an answer nobody can give.
 

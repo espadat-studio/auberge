@@ -5,7 +5,7 @@ title: "auberge backup export-opml"
 Export FreshRSS feed subscriptions to an OPML file. Alias: `auberge b eo`.
 
 ```bash
-auberge backup export-opml [OPTIONS] --output <FILE>
+auberge backup export-opml [OPTIONS]
 ```
 
 ## Options
@@ -13,7 +13,7 @@ auberge backup export-opml [OPTIONS] --output <FILE>
 | Option               | Description           | Default                           |
 | -------------------- | --------------------- | --------------------------------- |
 | `-H, --host HOST`    | Source host           | Interactive                       |
-| `-o, --output FILE`  | Output OPML file path | Required                          |
+| `-o, --output FILE`  | Output OPML file path | Prompts if omitted                |
 | `-k, --ssh-key PATH` | SSH private key       | `~/.ssh/identities/{host}/{user}` |
 | `--user USER`        | FreshRSS username     | `admin`                           |
 

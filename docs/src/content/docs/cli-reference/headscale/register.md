@@ -26,7 +26,7 @@ When run without `--user`, prompts with a picker over `list-users`.
 
 | Option             | Description                               | Default                   |
 | ------------------ | ----------------------------------------- | ------------------------- |
-| `<URL_OR_AUTH_ID>` | Register URL or bare `hskey-authreq-…` id | Required                  |
+| `<URL_OR_AUTH_ID>` | Register URL or bare `hskey-authreq-…` id | Prompts if omitted        |
 | `-u, --user`       | Existing username                         | Interactive prompt        |
 | `--host HOST`      | Target host running headscale             | Serving host, else prompt |
 

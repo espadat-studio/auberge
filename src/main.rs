@@ -696,6 +696,24 @@ mod tests {
         );
     }
 
+    /// #1149: these five used to be required clap args, so omitting one
+    /// hard-errored before any prompt could run. Pinned through the built tree
+    /// because the type change and the handler's prompt are separate edits.
+    #[test]
+    fn the_five_formerly_required_args_parse_when_omitted() {
+        for argv in [
+            ["auberge", "headscale", "register"].as_slice(),
+            ["auberge", "headscale", "tag-node"].as_slice(),
+            ["auberge", "backup", "export-opml"].as_slice(),
+            ["auberge", "backup", "import-opml"].as_slice(),
+            ["auberge", "bichon", "verify-coverage"].as_slice(),
+        ] {
+            Cli::command()
+                .try_get_matches_from(argv)
+                .unwrap_or_else(|err| panic!("{argv:?} must parse with the arg omitted: {err}"));
+        }
+    }
+
     /// The other direction: the pair is reachable under `auberge backup` and
     /// nowhere else. A second `#[command(flatten)]`, or a promotion to top
     /// level that forgot to drop the old one, leaves every assertion above
