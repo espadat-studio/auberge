@@ -703,6 +703,7 @@ mod tests {
         "memsearch",
         "opencode",
         "ruche",
+        "standby",
         "syncthing",
         "tgtg",
     ];

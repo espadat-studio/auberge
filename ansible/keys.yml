@@ -309,6 +309,24 @@ keys:
     secret: false
     doc: "SSH port to configure on the remote server during bootstrap"
 
+  standby_runner_app_id:
+    secret: false
+    doc: "App ID of the GitHub App the Standby Runner's Runner Flip authenticates as (ADR-0085), e.g. 1234567. Not secret."
+
+  standby_runner_app_private_key:
+    secret: true
+    doc: >-
+      PEM private key of that GitHub App (multi-line). The role writes it to a root-only file on
+      the Host that the agent user cannot read.
+
+  standby_runner_group_id:
+    secret: false
+    doc: "Numeric ID of the org runner group the Standby Runner registers into (ADR-0085), e.g. 4. The group is restricted to the repos allowed to use it."
+
+  standby_runner_org:
+    secret: false
+    doc: "GitHub organization that owns the Standby Runner's runner group, e.g. my-org."
+
   stirling_subdomain:
     secret: false
     doc: "Subdomain for the Stirling-PDF editor (default pdf)"

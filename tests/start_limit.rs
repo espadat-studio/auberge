@@ -61,6 +61,23 @@ static RESTARTING_APP: Regime = Regime {
           forever hides it there, so it retries generously and then reports",
 };
 
+/// A unit that restarts after every success. The Standby Runner is ephemeral:
+/// each job ends the process and the next start registers a fresh runner, so
+/// `StartLimitBurst` counts jobs and not only failures, and thirty an hour would
+/// latch a busy month-end `failed` at the one moment the standby is needed. At
+/// `RestartSec=10` a cycle cannot be shorter than 10s, so 360 starts an hour is
+/// the ceiling; 300 is reached only by cycles of 12s or less, which is a start
+/// loop that runs no job at all.
+static CYCLING_RUNNER: Regime = Regime {
+    name: "Cycling Runner",
+    limiter: Limiter::GivesUp {
+        interval_sec: 3600,
+        burst: 300,
+    },
+    why: "a unit that exits 0 and restarts by design, so its start count is its job \
+          count and the limiter has to sit above any real workload",
+};
+
 /// The one unit that must never stop trying. blocky is the Host's own resolver:
 /// every other unit resolves names through it, so does the deploy that would
 /// repair it, and so does the operator's own tooling. A terminal `failed` would
@@ -102,6 +119,7 @@ static START_LIMIT_REGIMES: &[(&str, &Regime)] = &[
     ("paperless/paperless-task-queue.service", &RESTARTING_APP),
     ("paperless/paperless-webserver.service", &RESTARTING_APP),
     ("radio/liquidsoap.service", &RESTARTING_APP),
+    ("standby/standby-runner.service", &CYCLING_RUNNER),
     ("stirling/stirling.service", &RESTARTING_APP),
     ("tgtg/tgtg.service", &RESTARTING_APP),
 ];

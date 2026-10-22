@@ -382,6 +382,43 @@ const DECLARED_DIRECTORIES: &[DeclaredDirectory] = &[
               record; a lost feed is regenerated on the next firing",
     },
     DeclaredDirectory {
+        role: "standby",
+        dir: "/etc/standby-runner",
+        kind: Kind::Install,
+        writers: &[],
+        why: "the root-only App private key, put back by every deploy; no unit writes it",
+    },
+    DeclaredDirectory {
+        role: "standby",
+        dir: "/usr/local/lib/standby-runner",
+        kind: Kind::Install,
+        writers: &[],
+        why: "the shared GitHub App library, put back by every deploy",
+    },
+    DeclaredDirectory {
+        role: "standby",
+        dir: "/opt/standby-runner",
+        kind: Kind::Expendable,
+        writers: &["standby-runner.service", "standby-runner-prune.service"],
+        why: "the runner seeds an empty box and then updates itself in place, and the work \
+              dir holds one job's checkout; a lost tree is re-seeded and re-registered",
+    },
+    DeclaredDirectory {
+        role: "standby",
+        dir: "/var/lib/standby-runner",
+        kind: Kind::Expendable,
+        writers: &["standby-runner.service", "standby-runner-prune.service"],
+        why: "the runner user's home: the cargo registry cache the weekly prune caps",
+    },
+    DeclaredDirectory {
+        role: "standby",
+        dir: "/var/lib/standby-runner-flip",
+        kind: Kind::Expendable,
+        writers: &["standby-runner-flip.service"],
+        why: "the list of runs already inspected; losing it re-reads the last 20 failed runs \
+              per repo, and a billing-failed one among them is re-run a second time",
+    },
+    DeclaredDirectory {
         role: "freshrss",
         dir: "/opt/freshrss",
         kind: Kind::Install,

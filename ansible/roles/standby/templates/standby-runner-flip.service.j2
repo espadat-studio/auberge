@@ -1,0 +1,21 @@
+[Unit]
+Description=Runner Flip - point CI at the Standby Runner when hosted minutes run out
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+Environment=STANDBY_RUNNER_APP_ID={{ standby_runner_app_id }}
+Environment=STANDBY_RUNNER_KEY_PATH={{ standby_runner_key_path }}
+Environment=STANDBY_RUNNER_LABEL={{ standby_runner_label }}
+Environment=STANDBY_RUNNER_STATE_DIR={{ standby_runner_flip_state_dir }}
+ExecStart={{ standby_runner_flip_script_path }}
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+ReadWritePaths={{ standby_runner_flip_state_dir }}
+UMask=0077

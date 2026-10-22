@@ -165,6 +165,9 @@ const FLEET_SERVICES: &[&str] = &[
     "paperless/paperless-task-queue.service",
     "paperless/paperless-webserver.service",
     "radio/liquidsoap.service",
+    "standby/standby-runner-flip.service",
+    "standby/standby-runner-prune.service",
+    "standby/standby-runner.service",
     "stirling/stirling.service",
     "tgtg/tgtg.service",
 ];
