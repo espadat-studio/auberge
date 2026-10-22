@@ -23,6 +23,7 @@
 //! pin this side only.
 
 use crate::hosts::{HOST_FLAG, select_or_arg};
+use crate::prompt::text_or_arg;
 use crate::services::ssh::{LiveSshSession, SshSession, resolve_ssh_key_path};
 use clap::Subcommand;
 use eyre::{Context, Result};
@@ -35,8 +36,8 @@ pub enum OpmlCommands {
     ExportOpml {
         #[arg(short = 'H', long, help = "Target host")]
         host: Option<String>,
-        #[arg(short, long, help = "Output OPML file path")]
-        output: PathBuf,
+        #[arg(short, long, help = "Output OPML file path (prompts if omitted)")]
+        output: Option<PathBuf>,
         #[arg(
             short = 'k',
             long,
@@ -50,8 +51,8 @@ pub enum OpmlCommands {
     ImportOpml {
         #[arg(short = 'H', long, help = "Target host")]
         host: Option<String>,
-        #[arg(short, long, help = "OPML file to import")]
-        input: PathBuf,
+        #[arg(short, long, help = "OPML file to import (prompts if omitted)")]
+        input: Option<PathBuf>,
         #[arg(
             short = 'k',
             long,
@@ -65,10 +66,11 @@ pub enum OpmlCommands {
 
 pub fn run_export_opml(
     host_arg: Option<String>,
-    output: PathBuf,
+    output: Option<PathBuf>,
     ssh_key: Option<PathBuf>,
     user: String,
 ) -> Result<()> {
+    let output = path_or_arg(output, "Output OPML file path", "--output")?;
     let host = select_or_arg(host_arg, HOST_FLAG)?;
     let ssh_key_path = resolve_ssh_key_path(&host, ssh_key)?;
     eprintln!("Using SSH key: {}", ssh_key_path.display());
@@ -93,10 +95,11 @@ pub fn run_export_opml(
 
 pub fn run_import_opml(
     host_arg: Option<String>,
-    input: PathBuf,
+    input: Option<PathBuf>,
     ssh_key: Option<PathBuf>,
     user: String,
 ) -> Result<()> {
+    let input = path_or_arg(input, "OPML file to import", "--input")?;
     let host = select_or_arg(host_arg, HOST_FLAG)?;
     let ssh_key_path = resolve_ssh_key_path(&host, ssh_key)?;
     eprintln!("Using SSH key: {}", ssh_key_path.display());
@@ -118,6 +121,13 @@ pub fn run_import_opml(
     eprintln!("✓ OPML imported successfully");
 
     Ok(())
+}
+
+fn path_or_arg(arg: Option<PathBuf>, prompt: &str, argument: &str) -> Result<PathBuf> {
+    match arg {
+        Some(path) => Ok(path),
+        None => Ok(PathBuf::from(text_or_arg(None, prompt, argument)?.trim())),
+    }
 }
 
 /// Where the upload lands on the Host. The name carries the user, so imports

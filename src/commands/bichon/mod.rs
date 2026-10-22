@@ -59,9 +59,9 @@ pub enum BichonCommands {
         #[arg(
             long,
             value_name = "YYYY-MM-DD",
-            help = "Verify messages dated strictly before this UTC date"
+            help = "Verify messages dated strictly before this UTC date (prompts if omitted)"
         )]
-        before: String,
+        before: Option<String>,
         #[arg(
             long,
             default_value = ARCHIVE_DIR,

@@ -5,7 +5,7 @@ title: "auberge backup import-opml"
 Import feed subscriptions from an OPML file into FreshRSS. Alias: `auberge b io`.
 
 ```bash
-auberge backup import-opml [OPTIONS] --input <FILE>
+auberge backup import-opml [OPTIONS]
 ```
 
 Uploads the OPML to `/tmp/` on the remote, runs the FreshRSS CLI import, then cleans up. Existing feeds are skipped (no duplicates). Categories are created if absent.
@@ -15,7 +15,7 @@ Uploads the OPML to `/tmp/` on the remote, runs the FreshRSS CLI import, then cl
 | Option               | Description         | Default                           |
 | -------------------- | ------------------- | --------------------------------- |
 | `-H, --host HOST`    | Target host         | Interactive                       |
-| `-i, --input FILE`   | OPML file to import | Required                          |
+| `-i, --input FILE`   | OPML file to import | Prompts if omitted                |
 | `-k, --ssh-key PATH` | SSH private key     | `~/.ssh/identities/{host}/{user}` |
 | `--user USER`        | FreshRSS username   | `admin`                           |
 

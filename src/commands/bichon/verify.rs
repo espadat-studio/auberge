@@ -16,7 +16,7 @@ pub async fn run_verify_coverage(
     host: Option<String>,
     account: Option<String>,
     folder: Option<String>,
-    before: String,
+    before: Option<String>,
     archive_path: String,
     output: OutputFormat,
 ) -> Result<i32> {
@@ -35,15 +35,20 @@ pub async fn run_verify_coverage(
 /// the Account roster from the Host's Bichon, the Synced Folders from the
 /// Account — which is why `connect` runs between them rather than after.
 ///
-/// `--before` has no candidates to offer, so clap keeps it required.
+/// `--before` has no candidates to offer, so it is a free-text prompt.
 async fn verify_inner(
     host_arg: Option<String>,
     account_arg: Option<String>,
     folder_arg: Option<String>,
-    before: String,
+    before: Option<String>,
     archive_path: String,
     output: OutputFormat,
 ) -> Result<i32> {
+    let before = crate::prompt::text_or_arg(
+        before,
+        "Verify messages before (YYYY-MM-DD, UTC)",
+        "--before",
+    )?;
     let cutoff = NaiveDate::parse_from_str(&before, "%Y-%m-%d")
         .wrap_err_with(|| format!("--before must be a YYYY-MM-DD date, got '{before}'"))?;
     validate_archive_path_for_shell(&archive_path)?;

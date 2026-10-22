@@ -22,11 +22,11 @@ The node is named, not numbered: the name is resolved against one `nodes list`, 
 
 ## Options
 
-| Option        | Description                                       | Default                   |
-| ------------- | ------------------------------------------------- | ------------------------- |
-| `NAME`        | Node name as `list-nodes` shows it                | Interactive picker        |
-| `-t, --tags`  | Tags the node ends up with (`tag:...`) — required | —                         |
-| `--host HOST` | Target host running headscale                     | Serving host, else prompt |
+| Option        | Description                                                                   | Default                   |
+| ------------- | ----------------------------------------------------------------------------- | ------------------------- |
+| `NAME`        | Node name as `list-nodes` shows it                                            | Interactive picker        |
+| `-t, --tags`  | Tags the node ends up with (`tag:...`) — prompts, comma-separated, if omitted | —                         |
+| `--host HOST` | Target host running headscale                                                 | Serving host, else prompt |
 
 ## Examples
 

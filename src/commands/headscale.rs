@@ -82,9 +82,9 @@ pub enum HeadscaleCommands {
     Register {
         #[arg(
             value_name = "URL_OR_AUTH_ID",
-            help = "Register URL shown by the enrolling device, or the bare hskey-authreq-… id"
+            help = "Register URL shown by the enrolling device, or the bare hskey-authreq-… id (prompts if omitted)"
         )]
-        auth: String,
+        auth: Option<String>,
         #[arg(
             short,
             long,
@@ -107,8 +107,7 @@ pub enum HeadscaleCommands {
             short,
             long,
             value_delimiter = ',',
-            required = true,
-            help = "ACL tags the node ends up with — this REPLACES the set it carries, it does not add to it (e.g. tag:server)"
+            help = "ACL tags the node ends up with — this REPLACES the set it carries, it does not add to it (e.g. tag:server; prompts if omitted)"
         )]
         tags: Vec<String>,
         #[arg(short = 'H', long, help = "Target host running headscale")]
@@ -390,6 +389,35 @@ fn validate_tags(tags: &[String]) -> Result<()> {
         validate_tag(tag)?;
     }
     Ok(())
+}
+
+/// The tag set for `tag-node`: the `--tags` given, else a comma-separated
+/// answer. Never empty, because the set REPLACES the node's tags and an empty
+/// one would strip them all.
+fn resolve_node_tags(tags: Vec<String>) -> Result<Vec<String>> {
+    if !tags.is_empty() {
+        return Ok(tags);
+    }
+    let answer = crate::prompt::text_or_arg(
+        None,
+        "ACL tags the node ends up with (comma-separated, e.g. tag:server)",
+        "--tags",
+    )?;
+    parse_tag_answer(&answer)
+}
+
+fn parse_tag_answer(answer: &str) -> Result<Vec<String>> {
+    let tags: Vec<String> = answer
+        .split(',')
+        .map(str::trim)
+        .filter(|tag| !tag.is_empty())
+        .map(str::to_string)
+        .collect();
+    eyre::ensure!(
+        !tags.is_empty(),
+        "At least one tag is required: the set replaces the node's tags"
+    );
+    Ok(tags)
 }
 
 fn validate_expiration(exp: &str) -> Result<()> {
@@ -1238,10 +1266,11 @@ pub fn run_headscale_add_key(
 /// it remotely, and a rename landing between the listing and the register is
 /// not closed out the way add-key's id-threading closes it.
 pub fn run_headscale_register(
-    auth: String,
+    auth: Option<String>,
     user: Option<String>,
     host: Option<String>,
 ) -> Result<()> {
+    let auth = crate::prompt::text_or_arg(auth, "Register URL or auth-id", "<URL_OR_AUTH_ID>")?;
     let auth_id = parse_auth_id(&auth)?;
 
     let (host_info, route) = resolve_headscale_host(host)?;
@@ -1316,6 +1345,7 @@ pub fn run_headscale_tag_node(
     tags: Vec<String>,
     host: Option<String>,
 ) -> Result<()> {
+    let tags = resolve_node_tags(tags)?;
     validate_tags(&tags)?;
 
     let (host_info, route) = resolve_headscale_host(host)?;
@@ -1437,6 +1467,21 @@ pub fn run_headscale_remove_user(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_tag_answer_splits_on_commas_and_trims() {
+        assert_eq!(
+            parse_tag_answer(" tag:agent , tag:infra ").unwrap(),
+            ["tag:agent", "tag:infra"]
+        );
+    }
+
+    #[test]
+    fn an_empty_tag_answer_is_refused_because_it_would_strip_every_tag() {
+        for answer in ["", "  ", ",, ,"] {
+            assert!(parse_tag_answer(answer).is_err(), "{answer:?} was accepted");
+        }
+    }
     use crate::services::ssh::{CommandResult, MockSshSession, SshOp};
 
     #[test]
