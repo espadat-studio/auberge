@@ -465,6 +465,13 @@ pub fn run_deploy(cmd: DeployCmd) -> Result<()> {
 
     let host = select_host(cmd.host)?;
 
+    let assets = AnsibleAssets::prepare()?;
+    tokio::task::block_in_place(|| {
+        tokio::runtime::Handle::current().block_on(
+            crate::commands::versions::require_built_releases(&apps, &assets.playbooks_dir()),
+        )
+    })?;
+
     let (playbooks, tags) = split_routes(&apps, &available_apps);
 
     let (resolved_runs, unknown_tags) = resolve_tags_to_playbook_runs(&tags)?;
@@ -483,7 +490,6 @@ pub fn run_deploy(cmd: DeployCmd) -> Result<()> {
     // Validate config and build preflights for all runs upfront so we fail
     // fast before executing any playbook.
     let config = Config::load()?;
-    let assets = AnsibleAssets::prepare()?;
     let preflights: Vec<_> = runs
         .iter()
         .map(|run| {

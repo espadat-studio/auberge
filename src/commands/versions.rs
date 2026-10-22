@@ -20,6 +20,13 @@ const FORGEJO_REGISTRY: &str = "https://code.forgejo.org";
 // Abbreviated packument: dist-tags without per-version metadata (~1% the size).
 const NPM_ABBREVIATED: &str = "application/vnd.npm.install-v1+json";
 
+pub const BUILT_RELEASE_REPO: &str = "espadat-studio/auberge";
+
+/// An App whose pinned artifact is built by this repo's `workflow_dispatch`,
+/// not published upstream: (app, release asset, build workflow).
+pub const BUILT_RELEASE_APPS: &[(&str, &str, &str)] =
+    &[("grimmory", "grimmory-api.jar", "build-grimmory.yml")];
+
 #[derive(Args)]
 pub struct VersionsCmd {
     #[arg(
@@ -386,6 +393,85 @@ impl UpstreamClient {
     }
 }
 
+#[derive(Deserialize)]
+struct ReleaseAssets {
+    #[serde(default)]
+    assets: Vec<ReleaseAsset>,
+}
+
+#[derive(Deserialize)]
+struct ReleaseAsset {
+    name: String,
+    size: u64,
+}
+
+async fn built_release_exists(
+    github_base: &str,
+    app: &str,
+    asset: &str,
+    version: &str,
+) -> Result<bool> {
+    let client = UpstreamClient::with_bases(
+        String::new(),
+        github_base.to_string(),
+        String::new(),
+        String::new(),
+    )?;
+    let url = format!("{github_base}/repos/{BUILT_RELEASE_REPO}/releases/tags/{app}/v{version}");
+    let mut request = client
+        .http
+        .get(&url)
+        .header(reqwest::header::ACCEPT, "application/vnd.github+json");
+    if let Ok(token) = std::env::var("GITHUB_TOKEN") {
+        request = request.bearer_auth(token);
+    }
+    let response = request.send().await?;
+    if response.status() == reqwest::StatusCode::NOT_FOUND {
+        return Ok(false);
+    }
+    let release: ReleaseAssets = response.error_for_status()?.json().await?;
+    Ok(release
+        .assets
+        .iter()
+        .any(|candidate| candidate.name == asset && candidate.size > 0))
+}
+
+async fn require_built_release_at(
+    github_base: &str,
+    app: &str,
+    asset: &str,
+    workflow: &str,
+    version: &str,
+) -> Result<()> {
+    if built_release_exists(github_base, app, asset, version).await? {
+        return Ok(());
+    }
+    eyre::bail!(
+        "{app} {version} has no built release: tag `{app}/v{version}` on {BUILT_RELEASE_REPO} \
+         lacks a non-empty `{asset}`.\nBuild it first:\n  \
+         gh workflow run {workflow} -f version={version}"
+    )
+}
+
+/// Refuse to deploy an App whose pinned version has no Built Release, before
+/// ansible's `get_url` 404s mid-playbook.
+pub async fn require_built_releases(
+    apps: &[String],
+    playbooks_dir: &std::path::Path,
+) -> Result<()> {
+    let pins = declared_app_versions(playbooks_dir)?;
+    for (app, asset, workflow) in BUILT_RELEASE_APPS {
+        if !apps.iter().any(|selected| selected == app) {
+            continue;
+        }
+        let Some((_, pin)) = pins.iter().find(|(name, _)| name == app) else {
+            continue;
+        };
+        require_built_release_at(GITHUB_API, app, asset, workflow, &pin.value).await?;
+    }
+    Ok(())
+}
+
 /// The newest version a release list yields through a pin's coordinates.
 fn latest_through_pin(releases: &[Release], version: &VersionPin) -> Result<String> {
     let extract = version
@@ -598,6 +684,64 @@ mod tests {
             draft: false,
             prerelease: false,
         }
+    }
+
+    async fn built_release_check(server: &MockServer, assets: serde_json::Value) -> Result<()> {
+        Mock::given(method("GET"))
+            .and(path(
+                "/repos/espadat-studio/auberge/releases/tags/grimmory/v2.3.0",
+            ))
+            .respond_with(ResponseTemplate::new(200).set_body_json(assets))
+            .mount(server)
+            .await;
+        require_built_release_at(
+            &server.uri(),
+            "grimmory",
+            "grimmory-api.jar",
+            "build-grimmory.yml",
+            "2.3.0",
+        )
+        .await
+    }
+
+    #[tokio::test]
+    async fn built_release_passes_with_a_non_empty_asset() -> Result<()> {
+        let server = MockServer::start().await;
+        let assets = serde_json::json!({"assets": [{"name": "grimmory-api.jar", "size": 10}]});
+        built_release_check(&server, assets).await
+    }
+
+    #[tokio::test]
+    async fn built_release_rejects_an_empty_asset_and_names_the_build_command() {
+        let server = MockServer::start().await;
+        let assets = serde_json::json!({"assets": [{"name": "grimmory-api.jar", "size": 0}]});
+        let err = built_release_check(&server, assets).await.unwrap_err();
+        assert!(
+            err.to_string()
+                .contains("gh workflow run build-grimmory.yml -f version=2.3.0")
+        );
+    }
+
+    #[tokio::test]
+    async fn built_release_rejects_a_tag_without_the_asset() {
+        let server = MockServer::start().await;
+        let assets = serde_json::json!({"assets": []});
+        assert!(built_release_check(&server, assets).await.is_err());
+    }
+
+    #[tokio::test]
+    async fn built_release_rejects_a_missing_tag() {
+        let server = MockServer::start().await;
+        let err = require_built_release_at(
+            &server.uri(),
+            "grimmory",
+            "grimmory-api.jar",
+            "build-grimmory.yml",
+            "2.3.0",
+        )
+        .await
+        .unwrap_err();
+        assert!(err.to_string().contains("no built release"));
     }
 
     #[test]
