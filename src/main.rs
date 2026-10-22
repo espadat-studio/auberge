@@ -32,6 +32,9 @@ use auberge::commands::opml::{OpmlCommands, run_export_opml, run_import_opml};
 use auberge::commands::select::{SelectCommands, run_select_host, run_select_playbook};
 use auberge::commands::ssh::{SshCommands, run_ssh_add_key, run_ssh_keygen};
 use auberge::commands::sync::{SyncCommands, run_sync_hermes, run_sync_music};
+use auberge::commands::syncthing::{
+    SyncthingCommands, run_syncthing_device_id, run_syncthing_pair,
+};
 use auberge::commands::versions::{VersionsCmd, run_versions};
 use auberge::services::route::{self, Via};
 use auberge::{output, signal};
@@ -108,6 +111,12 @@ enum Commands {
     Ssh(SshCommands),
     #[command(subcommand, visible_alias = "sy", about = "Sync files to remote hosts")]
     Sync(SyncCommands),
+    #[command(
+        subcommand,
+        visible_alias = "st",
+        about = "Pair this machine's Syncthing with an agent Host"
+    )]
+    Syncthing(SyncthingCommands),
     #[command(
         subcommand,
         visible_alias = "d",
@@ -398,6 +407,16 @@ async fn main() -> Result<()> {
             }
             Ok(())
         }
+        Commands::Syncthing(cmd) => match cmd {
+            SyncthingCommands::DeviceId { host } => run_syncthing_device_id(host),
+            SyncthingCommands::Pair {
+                host,
+                path,
+                config_xml,
+                dry_run,
+                yes,
+            } => run_syncthing_pair(host, path, config_xml, dry_run, yes).await,
+        },
         Commands::Versions(cmd) => std::process::exit(run_versions(cmd).await),
         Commands::Completions { shell } => {
             clap_complete::generate(
@@ -470,6 +489,7 @@ mod tests {
             "host",
             "ssh",
             "sync",
+            "syncthing",
             "dns",
             "config",
             "bichon",
@@ -486,7 +506,9 @@ mod tests {
     #[test]
     fn bash_completion_covers_aliases() {
         let script = generate_bash_script();
-        for alias in ["dp", "se", "a", "b", "hs", "h", "ss", "sy", "d", "c", "v"] {
+        for alias in [
+            "dp", "se", "a", "b", "hs", "h", "ss", "sy", "st", "d", "c", "v",
+        ] {
             assert!(
                 script.contains(&format!("auberge,{alias})")),
                 "bash completion misses alias {alias}"

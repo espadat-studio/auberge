@@ -1180,7 +1180,7 @@ fn the_walk_reaches_the_whole_command_surface() {
             found.len(),
             selectors
         ),
-        (13, 64, 160, 66, 44),
+        (14, 67, 166, 68, 46),
         "the command surface moved: {} Subcommand enums, {} variants, {} arguments, {} of \
          them Subject Nouns, {} of those Selectors ({} excused or relabelled by name).\n\
          Enums: {:?}",

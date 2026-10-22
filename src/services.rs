@@ -13,5 +13,6 @@ pub mod route;
 pub mod rsync;
 pub mod ssh;
 pub mod ssh_include;
+pub mod syncthing;
 pub mod unit_state;
 pub mod zone;
