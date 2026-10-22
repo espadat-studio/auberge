@@ -54,6 +54,7 @@ set_variable() {
   body="$(jq -n --arg name "${VARIABLE}" --arg value "${STANDBY_RUNNER_LABEL}" '{name: $name, value: $value}')"
   gh_api PATCH "/repos/${repo}/actions/variables/${VARIABLE}" "${body}"
   gh_succeeded && return 0
+  [[ "${GH_STATUS}" == 404 ]] || die "setting ${VARIABLE} in ${repo} answered HTTP ${GH_STATUS}"
   gh_call POST "/repos/${repo}/actions/variables" "${body}" >/dev/null
 }
 
