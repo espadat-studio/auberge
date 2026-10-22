@@ -96,7 +96,7 @@
 
 - name: Deploy the GitHub App private key
   ansible.builtin.copy:
-    src: "{{ standby_runner_app_private_key_file | expanduser }}"
+    content: "{{ standby_runner_app_private_key | trim }}\n"
     dest: "{{ standby_runner_key_path }}"
     owner: root
     group: root

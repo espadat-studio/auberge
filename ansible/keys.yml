@@ -313,11 +313,11 @@ keys:
     secret: false
     doc: "App ID of the GitHub App the Standby Runner's Runner Flip authenticates as (ADR-0085), e.g. 1234567. Not secret."
 
-  standby_runner_app_private_key_file:
-    secret: false
+  standby_runner_app_private_key:
+    secret: true
     doc: >-
-      Path on the controller to the PEM private key of that GitHub App, e.g. ~/keys/standby-runner-app.pem.
-      The role copies it to a root-owned file on the Host; the PEM itself never goes into config.toml.
+      PEM private key of that GitHub App (multi-line). The role writes it to a root-only file on
+      the Host that the agent user cannot read.
 
   standby_runner_group_id:
     secret: false
