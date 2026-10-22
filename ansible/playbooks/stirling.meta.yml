@@ -4,7 +4,7 @@ subdomain: pdf
 memory:
   stirling: { high: 1400M, max: 1800M }
 version:
-  value: "3.2.0"
+  value: "3.2.1"
   datasource: github-releases
   depName: "Stirling-Tools/Stirling-PDF"
   extractVersion: "^v(?<version>.+)$"
