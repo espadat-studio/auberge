@@ -21,6 +21,7 @@
   ansible.builtin.apt:
     name: "{{ agent_users_packages }}"
     state: present
+    update_cache: true
 
 - name: Read installed mise version
   ansible.builtin.command: "{{ agent_users_mise_path }} --version"
@@ -28,25 +29,13 @@
   changed_when: false
   failed_when: false
 
-- name: Download the pinned mise binary
+- name: Install the pinned mise binary
   when: agent_users_mise_version not in agent_users_mise_output.stdout | default('')
   ansible.builtin.get_url:
     url: "{{ agent_users_mise_url }}"
-    dest: "{{ agent_users_mise_download_path }}"
-    checksum: "sha256:{{ agent_users_mise_checksums_url }}"
-    mode: "0644"
-
-- name: Install the pinned mise binary
-  when: agent_users_mise_version not in agent_users_mise_output.stdout | default('')
-  ansible.builtin.copy:
-    src: "{{ agent_users_mise_download_path }}"
     dest: "{{ agent_users_mise_path }}"
-    remote_src: true
+    checksum: "sha256:{{ agent_users_mise_checksums_url }}"
     owner: root
     group: root
     mode: "0755"
-
-- name: Remove the downloaded mise binary
-  ansible.builtin.file:
-    path: "{{ agent_users_mise_download_path }}"
-    state: absent
+    force: true

@@ -1,6 +1,4 @@
 ---
-# systemd-journal reads the system journal and nothing else. `adm` is left out
-# on purpose: it opens /var/log, which nothing the agents do needs yet.
 agent_users_groups:
   - systemd-journal
   - "{{ agent_syncthing_user_name }}"
@@ -18,10 +16,6 @@ agent_users_packages:
 
 # renovate: datasource=github-releases depName=jdx/mise extractVersion=^v(?<version>.+)$
 agent_users_mise_version: "2026.10.15"
-agent_users_mise_asset: "mise-v{{ agent_users_mise_version }}-linux-x64"
-agent_users_mise_url: "https://github.com/jdx/mise/releases/download/v{{ agent_users_mise_version }}/{{ agent_users_mise_asset }}"
+agent_users_mise_url: "https://github.com/jdx/mise/releases/download/v{{ agent_users_mise_version }}/mise-v{{ agent_users_mise_version }}-linux-x64"
 agent_users_mise_checksums_url: "https://github.com/jdx/mise/releases/download/v{{ agent_users_mise_version }}/SHASUMS256.txt"
 agent_users_mise_path: /usr/local/bin/mise
-# Version in the name: `get_url` with a version-agnostic dest is a conditional
-# GET, and a bumped pin would fetch nothing (ADR-0027).
-agent_users_mise_download_path: "/tmp/{{ agent_users_mise_asset }}"

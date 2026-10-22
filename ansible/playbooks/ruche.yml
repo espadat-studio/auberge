@@ -3,12 +3,10 @@
   hosts: vps
   become: true
   roles:
-    # Users first: every role below runs as the agent user, which has to exist
-    # before any of them reaches for it.
     - role: agent_users
       tags: [ruche, agent_users]
       when: "'agent' in group_names"
-    # Identity next: a runtime that starts before git knows who it is commits
+    # Identity first: a runtime that starts before git knows who it is commits
     # as whoever the box's fallback author happens to be.
     - role: github_identity
       tags: [ruche, github_identity]
