@@ -82,6 +82,11 @@ const NOT_YET_PROBED: &[(&str, &str)] = &[
          returns, e.g. /api/server/ping",
     ),
     (
+        "standby_runner",
+        "the runner holds no socket and registers after ExecStartPre returns, so the \
+         probe reads the org's runner list for the `ci-selfhosted` label",
+    ),
+    (
         "navidrome",
         "wait_for TCP `navidrome_port` (4533), the deb-packaged server's \
          loopback listener",

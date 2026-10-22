@@ -309,6 +309,16 @@ keys:
     secret: false
     doc: "SSH port to configure on the remote server during bootstrap"
 
+  standby_runner_app_id:
+    secret: false
+    doc: "App ID of the GitHub App the Standby Runner's Runner Flip authenticates as (ADR-0085), e.g. 1234567. Not secret."
+
+  standby_runner_app_private_key_file:
+    secret: false
+    doc: >-
+      Path on the controller to the PEM private key of that GitHub App, e.g. ~/keys/standby-runner-app.pem.
+      The role copies it to a root-owned file on the Host; the PEM itself never goes into config.toml.
+
   stirling_subdomain:
     secret: false
     doc: "Subdomain for the Stirling-PDF editor (default pdf)"

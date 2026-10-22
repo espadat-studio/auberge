@@ -1,0 +1,48 @@
+[Unit]
+Description=Standby Runner - ephemeral GitHub Actions runner (ADR-0085)
+After=network-online.target
+Wants=network-online.target
+StartLimitIntervalSec=3600
+StartLimitBurst=300
+
+[Service]
+Type=simple
+User={{ standby_runner_user }}
+Group={{ standby_runner_group }}
+WorkingDirectory={{ standby_runner_install_dir }}
+RuntimeDirectory=standby-runner
+RuntimeDirectoryMode=0700
+Environment=HOME={{ standby_runner_home }}
+Environment=STANDBY_RUNNER_APP_ID={{ standby_runner_app_id }}
+Environment=STANDBY_RUNNER_KEY_PATH={{ standby_runner_key_path }}
+Environment=STANDBY_RUNNER_ORG={{ standby_runner_org }}
+Environment=STANDBY_RUNNER_GROUP_ID={{ standby_runner_group_id }}
+Environment=STANDBY_RUNNER_LABEL={{ standby_runner_label }}
+Environment=STANDBY_RUNNER_JIT_ENV=/run/standby-runner/jit.env
+# `+` runs the registration as root: it reads the App key the runner user cannot.
+# The JIT config lands in a root-only file that systemd reads, so the runner gets
+# it as ACTIONS_RUNNER_INPUT_JITCONFIG and no file of it is readable by the job.
+# systemd loads the file before every command, ExecStartPre included, so the dash
+# is what lets the first registration run; a runner started without a config
+# exits at once and Restart= retries.
+ExecStartPre=+{{ standby_runner_register_script_path }}
+EnvironmentFile=-/run/standby-runner/jit.env
+ExecStart={{ standby_runner_run_script }}
+# The runner exits after its one job; the next start registers a fresh one.
+Restart=always
+RestartSec=10
+MemoryMax={{ standby_runner_memory_max }}
+CPUQuota={{ standby_runner_cpu_quota }}
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+ReadWritePaths={{ standby_runner_install_dir }} {{ standby_runner_home }}
+StandardOutput=journal
+StandardError=journal
+UMask=0027
+
+[Install]
+WantedBy=multi-user.target

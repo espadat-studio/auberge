@@ -1,0 +1,8 @@
+---
+- name: Deploy the Standby Runner and its Runner Flip poller
+  hosts: vps
+  become: true
+  roles:
+    - role: standby_runner
+      tags: [standby_runner]
+      when: "'agent' in group_names"

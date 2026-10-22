@@ -384,6 +384,11 @@ pub const FLEET_UNIT_FILES: &[&str] = &[
     "paperless/paperless-webserver.service",
     "radio/icecast2.service.d/memory.conf",
     "radio/liquidsoap.service",
+    "standby_runner/standby-runner-flip.service",
+    "standby_runner/standby-runner-flip.timer",
+    "standby_runner/standby-runner-prune.service",
+    "standby_runner/standby-runner-prune.timer",
+    "standby_runner/standby-runner.service",
     "stirling/stirling.service",
     "tgtg/tgtg.service",
 ];

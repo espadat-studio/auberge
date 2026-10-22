@@ -1,0 +1,31 @@
+---
+standby_runner_user: standby-runner
+standby_runner_group: standby-runner
+standby_runner_home: /var/lib/standby-runner
+
+standby_runner_org: espadat-studio
+standby_runner_group_id: 4
+standby_runner_label: ci-selfhosted
+
+standby_runner_install_dir: /opt/standby-runner
+standby_runner_run_script: "{{ standby_runner_install_dir }}/run.sh"
+standby_runner_work_dir: "{{ standby_runner_install_dir }}/_work"
+standby_runner_archive_name: "actions-runner-linux-x64-{{ standby_runner_version }}.tar.gz"
+standby_runner_archive_url: "https://github.com/actions/runner/releases/download/v{{ standby_runner_version }}/{{ standby_runner_archive_name }}"
+standby_runner_archive_download_path: "/tmp/{{ standby_runner_archive_name }}"
+
+standby_runner_memory_max: 4G
+standby_runner_cpu_quota: 200%
+
+standby_runner_conf_dir: /etc/standby-runner
+standby_runner_key_path: "{{ standby_runner_conf_dir }}/app.pem"
+standby_runner_lib_dir: /usr/local/lib/standby-runner
+standby_runner_lib_path: "{{ standby_runner_lib_dir }}/lib.sh"
+standby_runner_register_script_path: /usr/local/bin/standby-runner-register
+standby_runner_flip_script_path: /usr/local/bin/standby-runner-flip
+standby_runner_prune_script_path: /usr/local/bin/standby-runner-prune
+standby_runner_flip_state_dir: /var/lib/standby-runner-flip
+
+standby_runner_cargo_registry_dir: "{{ standby_runner_home }}/.cargo/registry"
+standby_runner_cache_cap_mb: 2048
+standby_runner_work_retention_days: 7

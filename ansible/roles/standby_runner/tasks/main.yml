@@ -1,0 +1,208 @@
+---
+- name: Refuse to run the Standby Runner as the admin or agent user
+  ansible.builtin.assert:
+    that:
+      - standby_runner_user != admin_user_name
+      - standby_runner_user != agent_user_name
+    fail_msg: "standby_runner_user must be neither admin_user_name nor agent_user_name"
+
+- name: Install the poller's script dependencies
+  ansible.builtin.apt:
+    name: [curl, jq, openssl]
+    state: present
+    update_cache: false
+
+- name: Create the Standby Runner group
+  ansible.builtin.group:
+    name: "{{ standby_runner_group }}"
+    system: true
+    state: present
+
+- name: Create the Standby Runner user
+  ansible.builtin.user:
+    name: "{{ standby_runner_user }}"
+    group: "{{ standby_runner_group }}"
+    comment: "Standby Runner"
+    home: "{{ standby_runner_home }}"
+    shell: /usr/sbin/nologin
+    create_home: true
+    system: true
+    state: present
+
+- name: Close the Standby Runner home to other users
+  ansible.builtin.file:
+    path: "{{ standby_runner_home }}"
+    state: directory
+    owner: "{{ standby_runner_user }}"
+    group: "{{ standby_runner_group }}"
+    mode: "0700"
+
+- name: Stat the agent user's home
+  ansible.builtin.stat:
+    path: "/home/{{ agent_user_name }}"
+  register: standby_runner_agent_home
+
+- name: Refuse an agent home the Standby Runner could read
+  ansible.builtin.assert:
+    that:
+      - not standby_runner_agent_home.stat.exists or not standby_runner_agent_home.stat.roth
+    fail_msg: "/home/{{ agent_user_name }} is world-readable, so the Standby Runner could read it"
+
+- name: Create the runner install directory
+  ansible.builtin.file:
+    path: "{{ standby_runner_install_dir }}"
+    state: directory
+    owner: "{{ standby_runner_user }}"
+    group: "{{ standby_runner_group }}"
+    mode: "0750"
+
+- name: Stat the runner entrypoint
+  ansible.builtin.stat:
+    path: "{{ standby_runner_run_script }}"
+  register: standby_runner_entrypoint
+
+# The runner updates itself on every start (ADR-0085), so the pinned version
+# only seeds a fresh box and is never compared against what is installed.
+- name: Download the runner release archive
+  when: not standby_runner_entrypoint.stat.exists
+  ansible.builtin.get_url:
+    url: "{{ standby_runner_archive_url }}"
+    dest: "{{ standby_runner_archive_download_path }}"
+    mode: "0644"
+
+- name: Install the runner
+  when: not standby_runner_entrypoint.stat.exists
+  ansible.builtin.unarchive:
+    src: "{{ standby_runner_archive_download_path }}"
+    dest: "{{ standby_runner_install_dir }}"
+    remote_src: true
+    owner: "{{ standby_runner_user }}"
+    group: "{{ standby_runner_group }}"
+    mode: "0750"
+  notify: Restart standby-runner
+
+- name: Remove the downloaded runner archive
+  ansible.builtin.file:
+    path: "{{ standby_runner_archive_download_path }}"
+    state: absent
+
+- name: Create the root-only credentials directory
+  ansible.builtin.file:
+    path: "{{ standby_runner_conf_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0700"
+
+- name: Deploy the GitHub App private key
+  ansible.builtin.copy:
+    src: "{{ standby_runner_app_private_key_file | expanduser }}"
+    dest: "{{ standby_runner_key_path }}"
+    owner: root
+    group: root
+    mode: "0600"
+  no_log: true
+
+- name: Create the shared library directory
+  ansible.builtin.file:
+    path: "{{ standby_runner_lib_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Deploy the GitHub App library
+  ansible.builtin.copy:
+    src: standby-runner-lib.sh
+    dest: "{{ standby_runner_lib_path }}"
+    owner: root
+    group: root
+    mode: "0644"
+  notify:
+    - Restart standby-runner
+    - Restart standby-runner-flip timer
+
+- name: Deploy the registration script
+  ansible.builtin.copy:
+    src: standby-runner-register.sh
+    dest: "{{ standby_runner_register_script_path }}"
+    owner: root
+    group: root
+    mode: "0755"
+  notify: Restart standby-runner
+
+- name: Deploy the Runner Flip script
+  ansible.builtin.copy:
+    src: standby-runner-flip.sh
+    dest: "{{ standby_runner_flip_script_path }}"
+    owner: root
+    group: root
+    mode: "0755"
+  notify: Restart standby-runner-flip timer
+
+- name: Deploy the prune script
+  ansible.builtin.copy:
+    src: standby-runner-prune.sh
+    dest: "{{ standby_runner_prune_script_path }}"
+    owner: root
+    group: root
+    mode: "0755"
+  notify: Restart standby-runner-prune timer
+
+- name: Create the Runner Flip state directory
+  ansible.builtin.file:
+    path: "{{ standby_runner_flip_state_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0700"
+
+- name: Deploy the Standby Runner unit
+  ansible.builtin.template:
+    src: standby-runner.service.j2
+    dest: /etc/systemd/system/standby-runner.service
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Restart standby-runner
+
+- name: Deploy the Runner Flip units
+  ansible.builtin.template:
+    src: "{{ item }}.j2"
+    dest: "/etc/systemd/system/{{ item }}"
+    owner: root
+    group: root
+    mode: "0644"
+  loop:
+    - standby-runner-flip.service
+    - standby-runner-flip.timer
+  notify: Restart standby-runner-flip timer
+
+- name: Deploy the prune units
+  ansible.builtin.template:
+    src: "{{ item }}.j2"
+    dest: "/etc/systemd/system/{{ item }}"
+    owner: root
+    group: root
+    mode: "0644"
+  loop:
+    - standby-runner-prune.service
+    - standby-runner-prune.timer
+  notify: Restart standby-runner-prune timer
+
+- name: Enable and start the Standby Runner
+  ansible.builtin.systemd_service:
+    name: standby-runner
+    enabled: true
+    state: started
+    daemon_reload: true
+
+- name: Enable and start the timers
+  ansible.builtin.systemd_service:
+    name: "{{ item }}"
+    enabled: true
+    state: started
+    daemon_reload: true
+  loop:
+    - standby-runner-flip.timer
+    - standby-runner-prune.timer

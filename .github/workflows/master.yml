@@ -103,6 +103,7 @@ jobs:
           ./tests/forgejo-onboard.test.sh
           ./tests/immich-b2-prune.test.sh
           ./tests/immich-backup.test.sh
+          ./tests/standby-runner-flip.test.sh
 
       # Ungated like the shell tests, for a different reason: the suites live
       # under ansible/, so `_test`'s gate would cover them, but that job is the
