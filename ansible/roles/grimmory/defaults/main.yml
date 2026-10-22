@@ -20,7 +20,7 @@ grimmory_jar_url: "https://github.com/espadat-studio/auberge/releases/download/g
 grimmory_jvm_opts: "-Xmx768m -XX:+UseShenandoahGC -XX:+ExitOnOutOfMemoryError"
 
 # renovate: datasource=github-releases depName=adoptium/temurin25-binaries extractVersion=^jdk-(?<version>[\d.+]+)$
-grimmory_java_version: "25.0.4.1+1"
+grimmory_java_version: "25.0.5+8"
 grimmory_java_home: "/opt/java/temurin-{{ grimmory_java_version }}-jre"
 grimmory_java_release: "jdk-{{ grimmory_java_version }}"
 grimmory_java_archive: "OpenJDK25U-jre_x64_linux_hotspot_{{ grimmory_java_version | replace('+', '_') }}.tar.gz"
