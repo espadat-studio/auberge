@@ -319,6 +319,14 @@ keys:
       Path on the controller to the PEM private key of that GitHub App, e.g. ~/keys/standby-runner-app.pem.
       The role copies it to a root-owned file on the Host; the PEM itself never goes into config.toml.
 
+  standby_runner_group_id:
+    secret: false
+    doc: "Numeric ID of the org runner group the Standby Runner registers into (ADR-0085), e.g. 4. The group is restricted to the repos allowed to use it."
+
+  standby_runner_org:
+    secret: false
+    doc: "GitHub organization that owns the Standby Runner's runner group, e.g. my-org."
+
   stirling_subdomain:
     secret: false
     doc: "Subdomain for the Stirling-PDF editor (default pdf)"

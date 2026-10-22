@@ -17,7 +17,7 @@ set -euo pipefail
 SUITE_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(dirname -- "${SUITE_DIR}")"
 readonly SUITE_DIR REPO_ROOT
-readonly ROLE_FILES="${REPO_ROOT}/ansible/roles/standby_runner/files"
+readonly ROLE_FILES="${REPO_ROOT}/ansible/roles/standby/files"
 
 # shellcheck source=./assert.sh disable=SC1091
 source "${SUITE_DIR}/assert.sh"

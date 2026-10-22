@@ -541,7 +541,7 @@ const DECLARED_ROLES: &[DeclaredRole] = &[
         notifies: &[],
     },
     DeclaredRole {
-        role: "standby_runner",
+        role: "standby",
         why: "the install only seeds an empty box: the runner updates itself in place on \
               every start (ADR-0085), so what the unit execs after the first deploy is \
               not what this role installed",

@@ -3,6 +3,6 @@
   hosts: vps
   become: true
   roles:
-    - role: standby_runner
-      tags: [standby_runner]
+    - role: standby
+      tags: [standby]
       when: "'agent' in group_names"

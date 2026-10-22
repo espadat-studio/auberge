@@ -82,7 +82,7 @@ const NOT_YET_PROBED: &[(&str, &str)] = &[
          returns, e.g. /api/server/ping",
     ),
     (
-        "standby_runner",
+        "standby",
         "the runner holds no socket and registers after ExecStartPre returns, so the \
          probe reads the org's runner list for the `ci-selfhosted` label",
     ),

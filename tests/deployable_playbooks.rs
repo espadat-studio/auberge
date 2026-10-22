@@ -45,7 +45,7 @@ const DEPLOYABLE: &[&str] = &[
     "memsearch",
     "opencode",
     "ruche",
-    "standby_runner",
+    "standby",
     "stirling",
 ];
 

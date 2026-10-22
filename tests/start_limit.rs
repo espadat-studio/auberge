@@ -119,7 +119,7 @@ static START_LIMIT_REGIMES: &[(&str, &Regime)] = &[
     ("paperless/paperless-task-queue.service", &RESTARTING_APP),
     ("paperless/paperless-webserver.service", &RESTARTING_APP),
     ("radio/liquidsoap.service", &RESTARTING_APP),
-    ("standby_runner/standby-runner.service", &CYCLING_RUNNER),
+    ("standby/standby-runner.service", &CYCLING_RUNNER),
     ("stirling/stirling.service", &RESTARTING_APP),
     ("tgtg/tgtg.service", &RESTARTING_APP),
 ];
