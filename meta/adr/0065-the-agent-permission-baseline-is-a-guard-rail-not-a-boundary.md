@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted, 2026-09-01. Decided in #741, under the ruche epic (#747). **Implements ADR-0054's** "permission config of `"*": "allow"` plus an explicit deny list" by deciding where that config lives and what may be claimed for it.
+Accepted, 2026-09-01. Decided in #741, under the ruche epic (#747). **Amended by #1142**: the "sudoers password" boundary below never held, and is replaced by an agent user with no sudo ([ADR-0086](./0086-the-agent-tier-runs-as-its-own-unprivileged-user.md)). **Implements ADR-0054's** "permission config of `"*": "allow"` plus an explicit deny list" by deciding where that config lives and what may be claimed for it.
 
 ## Decision
 
@@ -34,7 +34,7 @@ So the honest reading of the deny list is: it stops the agent doing these things
 | Harm                    | What holds it                                                                                                                                                                                            |
 | ----------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Reaching the data fleet | the tailnet ACL, `tag:agent` (ADR-0055) — enforced in the mesh, not on the box                                                                                                                           |
-| Root on the box         | the admin user's sudoers entry requires a password the agent does not hold                                                                                                                               |
+| Root on the box         | the agent user holds no sudo, no `docker` and no `adm` (ADR-0086). Until then this row claimed a sudoers password the agent did not hold; the admin user has `NOPASSWD`, so the claim was false          |
 | Losing the box          | it is disposable by construction (ADR-0054); a rebuild is the recovery                                                                                                                                   |
 | Rewriting `master`      | the repo's `main` ruleset — `non_fast_forward`, `deletion`, `required_linear_history`, PR-only with squash. Bypass is admin-only and the machine user is invited at `push` (#745), so it does not bypass |
 
@@ -52,7 +52,7 @@ The managed tier is still the right place to deploy, for the reason that survive
 
 ## Trade-off
 
-- **`sudo` is denied on a box built for unattended work.** An agent that genuinely needs a package has to stop and say so. Accepted, and cheap: the sudoers password requirement is the real control, so this rail costs little and removes the most common accidental path to editing `/etc/opencode`.
+- **`sudo` is denied on a box built for unattended work.** An agent that genuinely needs a package has to stop and say so. Accepted, and cheap: the agent user having no sudo is the real control, so this rail costs little and removes the most common accidental path to editing `/etc/opencode`.
 - **Root-anchored `rm -rf /*` is denied as a class**, which also stops a legitimate `rm -rf /home/agent/workspace/repo/node_modules`. Accepted: the denied call is recoverable by re-issuing it relative to the worktree, and the pattern that would allow it is the pattern that allows `rm -rf /etc`.
 - **`external_directory` is set to `allow`.** Its default is `ask`, and nobody is present to answer; a worktree-per-agent layout crosses directory boundaries constantly. This widens what the agent may touch on a box where that is already assumed.
 - **No checksum on the download.** Upstream publishes `sha512` only for the desktop artifacts; the CLI tarball has none and its filename is version-agnostic, so integrity rests on HTTPS to the release URL. A pinned literal hash was rejected: Renovate bumps the version in the Playbook Meta and would leave the hash stale, turning every bump into a failed deploy.

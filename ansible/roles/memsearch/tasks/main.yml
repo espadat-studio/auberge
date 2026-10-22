@@ -69,16 +69,16 @@
     path: "{{ memsearch_store_dir }}"
     state: directory
     owner: "{{ memsearch_user }}"
-    group: "{{ memsearch_user }}"
-    mode: "0750"
+    group: "{{ memsearch_store_group }}"
+    mode: "{{ memsearch_store_mode }}"
 
 - name: Create the box-global memory directory
   ansible.builtin.file:
     path: "{{ memsearch_memory_dir }}"
     state: directory
     owner: "{{ memsearch_user }}"
-    group: "{{ memsearch_user }}"
-    mode: "0750"
+    group: "{{ memsearch_store_group }}"
+    mode: "{{ memsearch_store_mode }}"
 
 - name: Create the memsearch state directory
   ansible.builtin.file:

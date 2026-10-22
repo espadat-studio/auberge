@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted, 2026-08-31. Decided in #747. **Amended 2026-09-01 by #743**, which drops the second runtime and records the `claude_code` role's deletion; everything else below stands. [ADR-0075](./0075-the-agent-tier-deploys-as-one-guarded-composition.md) builds the composition this ADR calls "a dependency list".
+Accepted, 2026-08-31. Decided in #747. **Amended 2026-10-22 by #1142**: the isolation bullet below claimed structure while the agents ran as a user with passwordless sudo; they now run as their own user ([ADR-0086](./0086-the-agent-tier-runs-as-its-own-unprivileged-user.md)). **Amended 2026-09-01 by #743**, which drops the second runtime and records the `claude_code` role's deletion; everything else below stands. [ADR-0075](./0075-the-agent-tier-deploys-as-one-guarded-composition.md) builds the composition this ADR calls "a dependency list".
 
 ## Decision
 
@@ -13,7 +13,7 @@ Accepted, 2026-08-31. Decided in #747. **Amended 2026-09-01 by #743**, which dro
 - **Git identity**: a GitHub machine user with a per-repo allowlist; no credential on the box acts as the owner.
 - **Memory**: agent transcripts leave the box via syncthing to lechuck; memsearch indexes them on-box. The index is rebuildable, the transcripts survive box death — state disposable by construction.
 - **No `backup:` section** in `ruche.meta.yml`, held there by a test (the immich precedent). A rebuild means re-auth and re-clone, nothing more.
-- **Isolation**: enrolled as `tag:agent` under the tailnet ACL policy (ADR-0055). The box is assumed compromisable.
+- **Isolation**: enrolled as `tag:agent` under the tailnet ACL policy (ADR-0055). The box is assumed compromisable. The runtimes run as an unprivileged `agent` user with no sudo (ADR-0086); the admin user stays the Ansible and SSH identity.
 
 ## Why
 

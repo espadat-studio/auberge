@@ -183,6 +183,7 @@ mod tests {
         assert_eq!(
             variables,
             [
+                "agent_users_mise_version",
                 "blocky_lego_version",
                 "caddy_cloudflare_plugin_version",
                 "caddy_l4_version",

@@ -28,7 +28,6 @@ auberge deploy ruche -H ruche    # the whole agent tier
 | `aoe_subdomain`                   | the label, and the agent tier's serving gate — **host-scope it**       |
 | `aoe_tailscale_ip`                | the Host's tailnet IPv4: what Caddy binds and what Blocky publishes    |
 | `aoe_passphrase`                  | the login passphrase, minimum 8 characters                             |
-| `admin_user_name`                 | the user the dashboard runs as, in that user's own systemd manager     |
 
 `aoe_tailscale_ip` is **fleet-wide, never host-scoped**: the Blocky that publishes the name runs on another Host and cannot read a value scoped to this one ([ADR-0059](https://github.com/espadat-studio/auberge/blob/master/meta/adr/0059-a-tailnet-only-apps-address-is-per-app.md)). `aoe_subdomain` is the opposite — host-scope it, because it also decides which Host's Caddy holds the agent tier's ACME token ([ADR-0072](https://github.com/espadat-studio/auberge/blob/master/meta/adr/0072-the-agent-tiers-caddy-answers-for-its-own-zone.md)).
 
@@ -116,7 +115,7 @@ Push subscriptions are bound to the bearer token and dropped when it rotates pas
 
 ## Notes
 
-Sessions survive both a client detach and an SSH disconnect: the dashboard runs in the admin user's own systemd manager with lingering enabled, so nothing is torn down at logout.
+Sessions survive both a client detach and an SSH disconnect: the dashboard runs in the unprivileged `agent` user's own systemd manager with lingering enabled, so nothing is torn down at logout.
 
 ```bash
 ssh ruche 'systemctl --user status aoe'

@@ -19,10 +19,9 @@ auberge deploy ruche -H ruche    # the whole agent tier
 
 ## Required config
 
-| Key                           | Purpose                                                            |
-| ----------------------------- | ------------------------------------------------------------------ |
-| `opencode_openrouter_api_key` | OpenRouter API key — the only model credential on the Host         |
-| `admin_user_name`             | The user agents run as; the workspace root resolves under its home |
+| Key                           | Purpose                                                    |
+| ----------------------------- | ---------------------------------------------------------- |
+| `opencode_openrouter_api_key` | OpenRouter API key — the only model credential on the Host |
 
 Mint the key at [openrouter.ai/keys](https://openrouter.ai/keys) and store it the way every other secret is stored — a `!` command reference in `config.toml`, never a literal.
 
@@ -38,7 +37,7 @@ The role deploys `/etc/opencode/opencode.json`: allow-all per tool plus an expli
 | reading `*.env` and `/etc/opencode/*`             | keeps credentials out of transcripts by default  |
 
 :::caution
-**This is a guard rail, not a boundary.** It stops an agent doing these things in the course of its work; it does not stop one that is trying. A config source the agent can write which names a deny pattern verbatim hoists that key above its block's catch-all and inverts it — measured against 1.18.25 and recorded in ADR-0065. The boundaries that hold are the tailnet ACL (`tag:agent`), the sudoers password requirement, the box being disposable, and — for `master` — this repo's `main` ruleset (`non_fast_forward`, admin-only bypass, machine user invited at `push`). Force-pushing a _non-default_ branch, or any branch in a repo with no rules of its own, is covered by nothing but the rail above.
+**This is a guard rail, not a boundary.** It stops an agent doing these things in the course of its work; it does not stop one that is trying. A config source the agent can write which names a deny pattern verbatim hoists that key above its block's catch-all and inverts it — measured against 1.18.25 and recorded in ADR-0065. The boundaries that hold are the tailnet ACL (`tag:agent`), the agent user holding no sudo (it is not the admin user), the box being disposable, and — for `master` — this repo's `main` ruleset (`non_fast_forward`, admin-only bypass, machine user invited at `push`). Force-pushing a _non-default_ branch, or any branch in a repo with no rules of its own, is covered by nothing but the rail above.
 :::
 
 `bash` is allow-all, so the `read` denies do **not** stop `cat` reaching `.env` or the key file. They keep those out of context by default, which matters because transcripts leave the box.

@@ -301,7 +301,10 @@ mod tests {
             // unattended runtime on a Host that did not ask for one (ADR-0075).
             ("aoe.yml", vec!["aoe"]),
             ("opencode.yml", vec!["opencode"]),
-            ("ruche.yml", vec!["github_identity", "opencode", "aoe"]),
+            (
+                "ruche.yml",
+                vec!["agent_users", "github_identity", "opencode", "aoe"],
+            ),
         ] {
             let path = std::fs::canonicalize(playbooks_dir.join(playbook)).unwrap();
             let guarded: Vec<String> = parse_roster(&path)

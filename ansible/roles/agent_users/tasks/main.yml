@@ -1,0 +1,41 @@
+---
+- name: Create the syncthing user, which replicates the memory store
+  ansible.builtin.user:
+    name: "{{ agent_syncthing_user_name }}"
+    comment: "Syncthing"
+    shell: /usr/sbin/nologin
+    create_home: true
+    state: present
+
+- name: Create the agent user, with no sudo and no docker
+  ansible.builtin.user:
+    name: "{{ agent_user_name }}"
+    comment: "Agent tier"
+    shell: /bin/bash
+    create_home: true
+    groups: "{{ agent_users_groups }}"
+    append: false
+    state: present
+
+- name: Install the build baseline the agents rarely need to extend
+  ansible.builtin.apt:
+    name: "{{ agent_users_packages }}"
+    state: present
+    update_cache: true
+
+- name: Read installed mise version
+  ansible.builtin.command: "{{ agent_users_mise_path }} --version"
+  register: agent_users_mise_output
+  changed_when: false
+  failed_when: false
+
+- name: Install the pinned mise binary
+  when: agent_users_mise_version not in agent_users_mise_output.stdout | default('')
+  ansible.builtin.get_url:
+    url: "{{ agent_users_mise_url }}"
+    dest: "{{ agent_users_mise_path }}"
+    checksum: "sha256:{{ agent_users_mise_checksums_url }}"
+    owner: root
+    group: root
+    mode: "0755"
+    force: true

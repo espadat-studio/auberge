@@ -27,16 +27,18 @@ Two seams belong to the roles that own the files:
 
 ## Variables
 
-| Variable                    | Default                               | Description                                              |
-| --------------------------- | ------------------------------------- | -------------------------------------------------------- |
-| `memsearch_user`            | `admin_user_name` / `ansible_user`    | User the tool is installed for and the store is owned by |
-| `memsearch_store_dir`       | `/srv/agent-memory/.memsearch`        | Box-global store root                                    |
-| `memsearch_memory_dir`      | `{{ memsearch_store_dir }}/memory`    | The dated markdown; the Syncthing folder                 |
-| `memsearch_state_dir`       | `~/.memsearch`                        | Config and index; never replicated                       |
-| `memsearch_index_uri`       | `{{ memsearch_state_dir }}/milvus.db` | Milvus Lite file                                         |
-| `memsearch_collection`      | `agent_memory`                        | The operator's collection over the whole corpus          |
-| `memsearch_embedding_model` | `gpahal/bge-m3-onnx-int8`             | Local ONNX model; no API key                             |
-| `memsearch_uv_version`      | pinned in defaults                    | Tool Version, renovate-annotated                         |
+| Variable                    | Default                                                                    | Description                                              |
+| --------------------------- | -------------------------------------------------------------------------- | -------------------------------------------------------- |
+| `memsearch_user`            | `admin_user_name` / `ansible_user`; `agent_user_name` on the `agent` group | User the tool is installed for and the store is owned by |
+| `memsearch_store_group`     | `memsearch_user`; `agent_syncthing_user_name` on the `agent` group         | Group of the store directories, shared with Syncthing    |
+| `memsearch_store_mode`      | `0750`; `2770` on the `agent` group                                        | Mode of the store directories                            |
+| `memsearch_store_dir`       | `/srv/agent-memory/.memsearch`                                             | Box-global store root                                    |
+| `memsearch_memory_dir`      | `{{ memsearch_store_dir }}/memory`                                         | The dated markdown; the Syncthing folder                 |
+| `memsearch_state_dir`       | `~/.memsearch`                                                             | Config and index; never replicated                       |
+| `memsearch_index_uri`       | `{{ memsearch_state_dir }}/milvus.db`                                      | Milvus Lite file                                         |
+| `memsearch_collection`      | `agent_memory`                                                             | The operator's collection over the whole corpus          |
+| `memsearch_embedding_model` | `gpahal/bge-m3-onnx-int8`                                                  | Local ONNX model; no API key                             |
+| `memsearch_uv_version`      | pinned in defaults                                                         | Tool Version, renovate-annotated                         |
 
 ## Rebuilding the index
 
