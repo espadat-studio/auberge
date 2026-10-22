@@ -1,6 +1,8 @@
 ---
 memsearch_user: "{{ admin_user_name | default(ansible_user | default(ansible_ssh_user)) }}"
 memsearch_home: "/home/{{ memsearch_user }}"
+memsearch_store_group: "{{ memsearch_user }}"
+memsearch_store_mode: "0750"
 
 memsearch_store_dir: /srv/agent-memory/.memsearch
 memsearch_memory_dir: "{{ memsearch_store_dir }}/memory"

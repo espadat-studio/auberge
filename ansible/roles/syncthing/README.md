@@ -22,18 +22,21 @@ Device IDs are compared dash-stripped and upper-cased. Syncthing canonicalizes a
 
 ## Variables
 
-| Variable                          | Default                            | Description                                                               |
-| --------------------------------- | ---------------------------------- | ------------------------------------------------------------------------- |
-| `syncthing_user`                  | `admin_user_name` / `ansible_user` | User to run Syncthing as                                                  |
-| `syncthing_config_path`           | `~/.config/syncthing`              | Syncthing configuration directory (`config.xml`)                          |
-| `syncthing_listen_all_interfaces` | `false`                            | `true` = bind the web UI to 0.0.0.0; `false` leaves the address untouched |
-| `syncthing_discovery_enabled`     | unset                              | `false` = announce nowhere, no relays, no NAT mapping; unset = untouched  |
-| `syncthing_configure_workspace`   | `false`                            | Auto-configure a workspace folder                                         |
-| `syncthing_workspace_id`          | `""`                               | Folder ID in Syncthing                                                    |
-| `syncthing_workspace_label`       | `""`                               | Folder label                                                              |
-| `syncthing_workspace_path`        | `""`                               | Path to sync                                                              |
-| `syncthing_device_id`             | `""`                               | Device ID to share folder with (optional)                                 |
-| `syncthing_device_name`           | `""`                               | Display name for that device                                              |
+| Variable                          | Default                                                                              | Description                                                               |
+| --------------------------------- | ------------------------------------------------------------------------------------ | ------------------------------------------------------------------------- |
+| `syncthing_user`                  | `admin_user_name` / `ansible_user`; `agent_syncthing_user_name` on the `agent` group | User to run Syncthing as                                                  |
+| `syncthing_workspace_owner`       | `syncthing_user`                                                                     | Owner of the workspace directory                                          |
+| `syncthing_workspace_group`       | `syncthing_user`                                                                     | Group of the workspace directory                                          |
+| `syncthing_workspace_mode`        | `0750`                                                                               | Mode of the workspace directory                                           |
+| `syncthing_config_path`           | `~/.config/syncthing`                                                                | Syncthing configuration directory (`config.xml`)                          |
+| `syncthing_listen_all_interfaces` | `false`                                                                              | `true` = bind the web UI to 0.0.0.0; `false` leaves the address untouched |
+| `syncthing_discovery_enabled`     | unset                                                                                | `false` = announce nowhere, no relays, no NAT mapping; unset = untouched  |
+| `syncthing_configure_workspace`   | `false`                                                                              | Auto-configure a workspace folder                                         |
+| `syncthing_workspace_id`          | `""`                                                                                 | Folder ID in Syncthing                                                    |
+| `syncthing_workspace_label`       | `""`                                                                                 | Folder label                                                              |
+| `syncthing_workspace_path`        | `""`                                                                                 | Path to sync                                                              |
+| `syncthing_device_id`             | `""`                                                                                 | Device ID to share folder with (optional)                                 |
+| `syncthing_device_name`           | `""`                                                                                 | Display name for that device                                              |
 
 ## Usage
 

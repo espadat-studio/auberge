@@ -1,0 +1,12 @@
+---
+# The agent group's memory store belongs to the unprivileged agent user and is
+# shared with the unprivileged syncthing user through its group. Hosts outside
+# the group keep the roles' own defaults.
+memsearch_user: "{{ agent_user_name }}"
+memsearch_store_group: "{{ agent_syncthing_user_name }}"
+memsearch_store_mode: "2770"
+
+syncthing_user: "{{ agent_syncthing_user_name }}"
+syncthing_workspace_owner: "{{ agent_user_name }}"
+syncthing_workspace_group: "{{ agent_syncthing_user_name }}"
+syncthing_workspace_mode: "2770"

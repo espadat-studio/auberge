@@ -1,4 +1,4 @@
-required_keys: [admin_user_name, opencode_openrouter_api_key]
+required_keys: [opencode_openrouter_api_key]
 version:
   value: "1.19.3"
   datasource: github-releases

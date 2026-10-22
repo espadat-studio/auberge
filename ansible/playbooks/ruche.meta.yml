@@ -1,5 +1,4 @@
 required_keys:
-  - admin_user_name
   - agents_cloudflare_dns_api_token
   - agents_domain
   - aoe_passphrase

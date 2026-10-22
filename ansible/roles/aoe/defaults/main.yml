@@ -1,6 +1,6 @@
 ---
-aoe_user: "{{ admin_user_name }}"
-aoe_group: "{{ admin_user_name }}"
+aoe_user: "{{ agent_user_name }}"
+aoe_group: "{{ agent_user_name }}"
 aoe_home: "/home/{{ aoe_user }}"
 
 aoe_domain: "{{ aoe_subdomain }}.{{ aoe_parent_domain }}"

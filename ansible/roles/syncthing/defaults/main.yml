@@ -7,6 +7,9 @@ syncthing_configure_workspace: false
 syncthing_workspace_id: ""
 syncthing_workspace_label: ""
 syncthing_workspace_path: ""
+syncthing_workspace_owner: "{{ syncthing_user }}"
+syncthing_workspace_group: "{{ syncthing_user }}"
+syncthing_workspace_mode: "0750"
 syncthing_device_id: ""
 syncthing_device_name: ""
 

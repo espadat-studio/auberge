@@ -45,9 +45,9 @@
       ansible.builtin.file:
         path: "{{ syncthing_workspace_path }}"
         state: directory
-        owner: "{{ syncthing_user }}"
-        group: "{{ syncthing_user }}"
-        mode: "0750"
+        owner: "{{ syncthing_workspace_owner }}"
+        group: "{{ syncthing_workspace_group }}"
+        mode: "{{ syncthing_workspace_mode }}"
       when: syncthing_configure_workspace | default(false)
 
     # config.xml is Syncthing's file, not ansible's: it re-serializes the whole

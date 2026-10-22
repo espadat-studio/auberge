@@ -11,6 +11,7 @@ use common::{all_roles, playbooks_dir, repo, role_dir};
 /// (declare it in the App's `<app>.meta.yml` `version:` block instead) or
 /// be added here as a deliberate Tool Version decision (ADR-0017).
 const TOOL_VERSIONS: &[&str] = &[
+    "agent_users_mise_version",
     "blocky_lego_version",
     "caddy_cloudflare_plugin_version",
     "caddy_l4_version",
