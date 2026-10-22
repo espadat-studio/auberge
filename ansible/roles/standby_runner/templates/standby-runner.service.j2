@@ -21,7 +21,8 @@ Environment=STANDBY_RUNNER_LABEL={{ standby_runner_label }}
 Environment=STANDBY_RUNNER_JIT_ENV=/run/standby-runner/jit.env
 # `+` runs the registration as root: it reads the App key the runner user cannot.
 # The JIT config lands in a root-only file that systemd reads, so the runner gets
-# it as ACTIONS_RUNNER_INPUT_JITCONFIG and no file of it is readable by the job.
+# it as ACTIONS_RUNNER_INPUT_JITCONFIG. No file holds it for the job, though its
+# own environment does; the config is single-use, so that exposes nothing lasting.
 # systemd loads the file before every command, ExecStartPre included, so the dash
 # is what lets the first registration run; a runner started without a config
 # exits at once and Restart= retries.
