@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.20.3](https://github.com/espadat-studio/auberge/compare/v0.20.2...v0.20.3) - 2026-10-22
+
+### Fixed
+
+- *(standby)* install libicu so the runner can start ([#1155](https://github.com/espadat-studio/auberge/pull/1155))
+
+### Other
+
+- *(standby)* list Checks read among the flip App's permissions ([#1157](https://github.com/espadat-studio/auberge/pull/1157))
+
 ## [0.20.2](https://github.com/espadat-studio/auberge/compare/v0.20.1...v0.20.2) - 2026-10-22
 
 ### Added
