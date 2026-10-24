@@ -27,4 +27,4 @@ headscale_fallback_nameservers:
   - 1.1.1.1
   - 1.0.0.1
 headscale_release_url: "https://github.com/juanfont/headscale/releases/download/v{{ headscale_version }}/headscale_{{ headscale_version }}_linux_amd64"
-headscale_release_checksum: "sha256:e979d27fe17d924d33bb6ab7504f6338d0635989a0cfdcfbc0ceb637dbcbe980"
+headscale_release_checksum: "sha256:7477c374949eea6fb7cf3cbff14dbef49e4d118d9a33557d6764a77ece617e53"
