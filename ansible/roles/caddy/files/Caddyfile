@@ -1,5 +1,5 @@
 {
-	debug
+	admin unix//run/caddy/admin.sock
 	email me@sripwoud.xyz
 }
 

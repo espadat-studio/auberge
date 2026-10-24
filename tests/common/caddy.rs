@@ -36,6 +36,38 @@ pub const RESTART_HANDLER: &str = "Restart caddy";
 /// the tree spells one `Caddyfile.j2` and half `<app>.caddyfile.j2`.
 pub const SITES_DIR: &str = "/etc/caddy/sites/";
 
+/// Caddy's own config: the `import` glob and the global options block live
+/// here.
+pub const MAIN_CONFIG: &str = "/etc/caddy/Caddyfile";
+
+/// The bytes the caddy role installs as [`MAIN_CONFIG`], found through the
+/// task that installs them.
+///
+/// Through the task, not by path, for the reason [`vhosts`] is: the role
+/// `copy`s a static file today and a `template` would read identically, so
+/// hard-coding either leaves a fence able to read a file that is not the one
+/// deployed.
+pub fn main_config() -> String {
+    for task in role_tasks("caddy") {
+        let Some(args) = ["ansible.builtin.copy", "ansible.builtin.template"]
+            .iter()
+            .find_map(|module| field(&task.body, module))
+            .and_then(Value::as_mapping)
+        else {
+            continue;
+        };
+        if field(args, "dest").and_then(Value::as_str) != Some(MAIN_CONFIG) {
+            continue;
+        }
+        let src = field(args, "src")
+            .and_then(Value::as_str)
+            .unwrap_or_else(|| panic!("the task installing {MAIN_CONFIG} must name a src"));
+        let path = role_dir("caddy").join(src);
+        return fs::read_to_string(&path).unwrap_or_else(|e| panic!("{}: {e}", relative(&path)));
+    }
+    panic!("no task in the caddy role installs {MAIN_CONFIG}")
+}
+
 /// One site the tree deploys.
 pub struct Vhost {
     pub role: String,
