@@ -134,37 +134,39 @@
   changed_when: true
 
 - name: Create the aoe config directory
+  become: true
+  become_user: "{{ aoe_user }}"
   ansible.builtin.file:
     path: "{{ aoe_config_dir }}"
     state: directory
-    owner: "{{ aoe_user }}"
-    group: "{{ aoe_group }}"
+    follow: false
     mode: "0700"
 
 - name: Deploy the aoe serve environment file
+  become: true
+  become_user: "{{ aoe_user }}"
   ansible.builtin.template:
     src: serve.env.j2
     dest: "{{ aoe_env_path }}"
-    owner: "{{ aoe_user }}"
-    group: "{{ aoe_group }}"
     mode: "0600"
   no_log: true
   notify: Restart aoe
 
 - name: Create the systemd user unit directory
+  become: true
+  become_user: "{{ aoe_user }}"
   ansible.builtin.file:
     path: "{{ aoe_systemd_user_dir }}"
     state: directory
-    owner: "{{ aoe_user }}"
-    group: "{{ aoe_group }}"
+    follow: false
     mode: "0755"
 
 - name: Deploy the aoe systemd user unit
+  become: true
+  become_user: "{{ aoe_user }}"
   ansible.builtin.template:
     src: aoe.service.j2
     dest: "{{ aoe_systemd_user_dir }}/aoe.service"
-    owner: "{{ aoe_user }}"
-    group: "{{ aoe_group }}"
     mode: "0644"
   notify:
     - Reload aoe systemd user

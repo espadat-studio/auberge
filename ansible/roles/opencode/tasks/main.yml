@@ -67,17 +67,18 @@
     mode: "0644"
 
 - name: Create the agent workspace root
+  become: true
+  become_user: "{{ opencode_user }}"
   ansible.builtin.file:
     path: "{{ opencode_workspace_dir }}"
     state: directory
-    owner: "{{ opencode_user }}"
-    group: "{{ opencode_group }}"
+    follow: false
     mode: "0755"
 
 - name: Deploy the AGENTS.md baseline to the workspace root
+  become: true
+  become_user: "{{ opencode_user }}"
   ansible.builtin.copy:
     src: AGENTS.md
     dest: "{{ opencode_agents_md_path }}"
-    owner: root
-    group: root
     mode: "0644"
