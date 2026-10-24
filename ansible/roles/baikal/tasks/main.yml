@@ -106,15 +106,13 @@
 
     - name: Set proper permissions on Baikal directories
       ansible.builtin.file:
-        path: "{{ item }}"
+        path: "{{ baikal_install_dir }}"
         state: directory
         owner: "{{ baikal_sys_user }}"
         group: "{{ baikal_sys_user }}"
-        mode: "0755"
+        mode: "u=rwX,go=rX"
         recurse: true
-      loop:
-        - "{{ baikal_install_dir }}"
-        - "{{ baikal_data_dir }}"
+        follow: false
 
     - name: Ensure Specific directory is writable
       ansible.builtin.file:
@@ -122,7 +120,9 @@
         state: directory
         owner: "{{ baikal_sys_user }}"
         group: "{{ baikal_sys_user }}"
-        mode: "0770"
+        mode: "u=rwX,g=rwX,o="
+        recurse: true
+        follow: false
 
     - name: Deploy PHP-FPM pool configuration
       ansible.builtin.template:

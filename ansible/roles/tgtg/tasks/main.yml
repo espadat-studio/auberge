@@ -91,6 +91,7 @@
     owner: "{{ tgtg_sys_user }}"
     group: "{{ tgtg_sys_group }}"
     recurse: true
+    follow: false
 
 - name: Create Python venv
   ansible.builtin.command: /usr/local/bin/uv venv {{ tgtg_venv_dir }} --python 3.11
@@ -114,6 +115,7 @@
     owner: "{{ tgtg_sys_user }}"
     group: "{{ tgtg_sys_group }}"
     recurse: true
+    follow: false
 
 - name: Validate required secrets
   ansible.builtin.assert:

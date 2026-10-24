@@ -67,8 +67,9 @@
         state: directory
         owner: "{{ navidrome_sys_user }}"
         group: "{{ navidrome_sys_group }}"
-        mode: "0755"
+        mode: "u=rwX,g=rX,o="
         recurse: true
+        follow: false
 
     - name: Deploy Navidrome configuration file
       ansible.builtin.template:
