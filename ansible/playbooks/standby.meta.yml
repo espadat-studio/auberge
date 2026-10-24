@@ -5,7 +5,7 @@ required_keys:
   - standby_runner_group_id
   - standby_runner_org
 version:
-  value: "2.338.0"
+  value: "2.338.1"
   datasource: github-releases
   depName: "actions/runner"
   extractVersion: "^v(?<version>.+)$"
