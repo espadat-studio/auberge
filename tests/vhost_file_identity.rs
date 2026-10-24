@@ -49,22 +49,18 @@
 //! that pattern unable to match a live site.
 
 use std::collections::{BTreeMap, BTreeSet};
-use std::fs;
 
 use serde_yaml::Value;
 
 mod common;
 
 use common::apps::app_of;
-use common::caddy::{SITES_DIR, Vhost, roles_that_restart_caddy, vhosts};
-use common::{field, relative, role_dir, role_tasks};
+use common::caddy::{MAIN_CONFIG, SITES_DIR, Vhost, main_config, roles_that_restart_caddy, vhosts};
+use common::{field, role_tasks};
 
 /// The extension caddy's own `import` globs for. A vhost written under any
 /// other name is deployed, owned, and never read.
 const EXTENSION: &str = ".caddyfile";
-
-/// Caddy's own config, where the glob every assertion below argues from lives.
-const MAIN_CONFIG: &str = "/etc/caddy/Caddyfile";
 
 /// The one role that restarts caddy without serving a site of its own: it
 /// owns the process and the `import` line, and the Ingress Gate is its probe.
@@ -100,36 +96,6 @@ fn stem(vhost: &Vhost) -> String {
 }
 
 // ── The premise ───────────────────────────────────────────────────────────
-
-/// The bytes the caddy role installs as [`MAIN_CONFIG`], found through the
-/// task that installs them.
-///
-/// Through the task, not by path, for the reason [`vhosts`] is: the role
-/// `copy`s a static file today, a `template` would read identically, and its
-/// own `templates/Caddyfile.j2` is referenced by nothing. Hard-coding either
-/// leaves this fence able to read the file that is not the one deployed.
-fn main_config() -> String {
-    for task in role_tasks("caddy") {
-        let Some(args) = ["ansible.builtin.copy", "ansible.builtin.template"]
-            .iter()
-            .find_map(|module| field(&task.body, module))
-            .and_then(Value::as_mapping)
-        else {
-            continue;
-        };
-        if field(args, "dest").and_then(Value::as_str) != Some(MAIN_CONFIG) {
-            continue;
-        }
-        let src = field(args, "src")
-            .and_then(Value::as_str)
-            .unwrap_or_else(|| panic!("the task installing {MAIN_CONFIG} must name a src"));
-        let path = role_dir("caddy").join(src);
-        return fs::read_to_string(&path).unwrap_or_else(|e| panic!("{}: {e}", relative(&path)));
-    }
-    panic!(
-        "no task in the caddy role installs {MAIN_CONFIG}; every assertion in this file argues from what that file imports"
-    )
-}
 
 /// Everything below reads a filename and argues about whether caddy will serve
 /// it. That argument rests on one line of caddy's own config, and the whole
