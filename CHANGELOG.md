@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.20.4](https://github.com/espadat-studio/auberge/compare/v0.20.3...v0.20.4) - 2026-10-24
+
+### Fixed
+
+- *(caddy)* serve the admin API on a private unix socket and drop debug ([#1170](https://github.com/espadat-studio/auberge/pull/1170))
+
+### Other
+
+- *(agent_users)* bump to 2026.10.19 ([#1169](https://github.com/espadat-studio/auberge/pull/1169))
+- *(deps)* update jdx/mise-action digest to 82a612c ([#1166](https://github.com/espadat-studio/auberge/pull/1166))
+- *(deps)* update release-plz/action digest to b2baf30 ([#1168](https://github.com/espadat-studio/auberge/pull/1168))
+- *(deps)* update taiki-e/install-action digest to eaa248e ([#1165](https://github.com/espadat-studio/auberge/pull/1165))
+- *(headscale)* bump to 0.29.6 ([#1167](https://github.com/espadat-studio/auberge/pull/1167))
+- *(paperless)* bump to 3.3.3 ([#1171](https://github.com/espadat-studio/auberge/pull/1171))
+- *(stirling)* bump to 3.2.2 ([#1172](https://github.com/espadat-studio/auberge/pull/1172))
+- *(standby)* bump to 2.338.1 ([#1153](https://github.com/espadat-studio/auberge/pull/1153))
+- *(deps)* update jdx/hk to 2.8.1 ([#1163](https://github.com/espadat-studio/auberge/pull/1163))
+- *(docs)* update dependency @astrojs/starlight to v0.42.7 ([#1164](https://github.com/espadat-studio/auberge/pull/1164))
+- *(deps)* update release-plz/action digest to 7ef5e4d ([#1159](https://github.com/espadat-studio/auberge/pull/1159))
+- *(agent_users)* bump to 2026.10.18 ([#1162](https://github.com/espadat-studio/auberge/pull/1162))
+- *(memsearch)* bump to 0.4.22 ([#1160](https://github.com/espadat-studio/auberge/pull/1160))
+
 ## [0.20.3](https://github.com/espadat-studio/auberge/compare/v0.20.2...v0.20.3) - 2026-10-22
 
 ### Fixed
