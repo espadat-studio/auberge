@@ -12,8 +12,8 @@ aoe_archive_url: "https://github.com/agent-of-empires/agent-of-empires/releases/
 # Both paths carry the version because the release asset's name does not:
 # `get_url` with a version-agnostic dest degrades to a conditional GET, and a
 # bumped pin then fetches nothing at all (ADR-0027).
-aoe_archive_path: "/tmp/{{ aoe_asset_name }}-{{ aoe_version }}.tar.gz"
-aoe_staging_dir: "/tmp/aoe-{{ aoe_version }}"
+aoe_archive_path: "{{ root_download_dir }}/{{ aoe_asset_name }}-{{ aoe_version }}.tar.gz"
+aoe_staging_dir: "{{ root_download_dir }}/aoe-{{ aoe_version }}"
 # The tarball holds one file, named after the release target rather than after
 # the command, so the install is an unpack into staging and a copy onto the
 # path the unit execs.

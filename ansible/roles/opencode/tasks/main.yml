@@ -9,11 +9,21 @@
   ansible.builtin.set_fact:
     opencode_installed_version: "{{ opencode_version_output.stdout | default('') | trim }}"
 
+- name: Create the root-private download directory
+  ansible.builtin.file:
+    path: "{{ root_download_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0700"
+
 - name: Download OpenCode release archive
   when: opencode_installed_version != opencode_version
   ansible.builtin.get_url:
     url: "{{ opencode_archive_url }}"
     dest: "{{ opencode_archive_download_path }}"
+    owner: root
+    group: root
     mode: "0644"
 
 - name: Install OpenCode binary

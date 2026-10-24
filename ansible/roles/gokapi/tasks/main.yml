@@ -77,18 +77,28 @@
              if gokapi_version_file.stat.exists and gokapi_binary_stat.stat.exists
              else '' }}
 
+    - name: Create the root-private download directory
+      ansible.builtin.file:
+        path: "{{ root_download_dir }}"
+        state: directory
+        owner: root
+        group: root
+        mode: "0700"
+
     - name: Download Gokapi release archive
       when: gokapi_installed_version != gokapi_version
       ansible.builtin.get_url:
         url: "{{ gokapi_archive_url }}"
-        dest: "/tmp/gokapi-{{ gokapi_version }}.zip"
+        dest: "{{ root_download_dir }}/gokapi-{{ gokapi_version }}.zip"
+        owner: root
+        group: root
         checksum: "sha256:{{ gokapi_archive_sha256 }}"
         mode: "0644"
 
     - name: Extract Gokapi binary
       when: gokapi_installed_version != gokapi_version
       ansible.builtin.unarchive:
-        src: "/tmp/gokapi-{{ gokapi_version }}.zip"
+        src: "{{ root_download_dir }}/gokapi-{{ gokapi_version }}.zip"
         dest: "{{ gokapi_install_path }}"
         remote_src: true
         owner: root
@@ -99,7 +109,7 @@
     - name: Remove downloaded Gokapi archive
       when: gokapi_installed_version != gokapi_version
       ansible.builtin.file:
-        path: "/tmp/gokapi-{{ gokapi_version }}.zip"
+        path: "{{ root_download_dir }}/gokapi-{{ gokapi_version }}.zip"
         state: absent
 
     - name: Ensure Gokapi binary is executable

@@ -63,11 +63,21 @@
 
 # The runner updates itself on every start (ADR-0085), so the pinned version
 # only seeds a fresh box and is never compared against what is installed.
+- name: Create the root-private download directory
+  ansible.builtin.file:
+    path: "{{ root_download_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0700"
+
 - name: Download the runner release archive
   when: not standby_runner_entrypoint.stat.exists
   ansible.builtin.get_url:
     url: "{{ standby_runner_archive_url }}"
     dest: "{{ standby_runner_archive_download_path }}"
+    owner: root
+    group: root
     mode: "0644"
 
 - name: Install the runner

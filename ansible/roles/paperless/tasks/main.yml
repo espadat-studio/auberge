@@ -202,10 +202,20 @@
     - name: Stop the services and replace the Paperless-ngx release
       when: paperless_installed_version != paperless_version
       block:
+        - name: Create the root-private download directory
+          ansible.builtin.file:
+            path: "{{ root_download_dir }}"
+            state: directory
+            owner: root
+            group: root
+            mode: "0700"
+
         - name: Download release tarball
           ansible.builtin.get_url:
             url: "{{ paperless_release_url }}"
-            dest: /tmp/paperless-ngx.tar.xz
+            dest: "{{ root_download_dir }}/paperless-ngx.tar.xz"
+            owner: root
+            group: root
             mode: "0644"
 
         - name: Stop everything that runs out of the source tree
@@ -234,7 +244,7 @@
 
         - name: Extract release tarball
           ansible.builtin.unarchive:
-            src: /tmp/paperless-ngx.tar.xz
+            src: "{{ root_download_dir }}/paperless-ngx.tar.xz"
             dest: "{{ paperless_install_path }}"
             remote_src: true
             extra_opts:
@@ -244,7 +254,7 @@
 
         - name: Remove tarball
           ansible.builtin.file:
-            path: /tmp/paperless-ngx.tar.xz
+            path: "{{ root_download_dir }}/paperless-ngx.tar.xz"
             state: absent
 
     - name: Create Python virtual environment
