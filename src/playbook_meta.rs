@@ -193,7 +193,11 @@ pub struct BackupRecipe {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct DbRecipe {
     pub name: String,
-    pub dump_path: String,
+    /// The Postgres role a restore connects as, over peer auth: an OS user of
+    /// the same name that owns `name` and nothing else. A restore never runs
+    /// as the `postgres` superuser, since the dump came from another Host.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pg_role: Option<String>,
     #[serde(default, skip_serializing_if = "DbEngine::is_postgres")]
     pub engine: DbEngine,
 }
@@ -238,7 +242,7 @@ impl BackupRecipe {
             owner: self.owner.map(|(user, group)| (sub(user), sub(group))),
             db: self.db.map(|db| DbRecipe {
                 name: sub(db.name),
-                dump_path: sub(db.dump_path),
+                pg_role: db.pg_role.map(sub),
                 engine: db.engine,
             }),
             post_restore_command: self.post_restore_command.map(sub),
@@ -714,7 +718,6 @@ mod tests {
         let db = backup.db.expect("yourls declares db");
         assert_eq!(db.name, "yourls");
         assert_eq!(db.engine, DbEngine::Mariadb);
-        assert_eq!(db.dump_path, "/tmp/yourls_db.dump");
     }
 
     #[test]
@@ -737,7 +740,6 @@ mod tests {
         let db = backup.db.expect("grimmory declares db");
         assert_eq!(db.name, "grimmory");
         assert_eq!(db.engine, DbEngine::Mariadb);
-        assert_eq!(db.dump_path, "/tmp/grimmory_db.dump");
     }
 
     #[test]
@@ -759,7 +761,17 @@ mod tests {
         let db = backup.db.expect("paperless declares db");
         assert_eq!(db.name, "paperless");
         assert_eq!(db.engine, DbEngine::Postgres);
-        assert_eq!(db.dump_path, "/tmp/paperless_db.dump");
+        let role = db.pg_role.expect("a postgres restore needs a pg_role");
+        assert_eq!(
+            role,
+            role_default("paperless", "paperless_db_user"),
+            "the restore role must be the one the paperless role creates"
+        );
+        assert_eq!(
+            role,
+            role_default("paperless", "paperless_sys_user"),
+            "peer auth maps the OS user to the role of the same name"
+        );
         let cmd = backup
             .post_restore_command
             .expect("paperless declares post_restore_command");
@@ -1037,7 +1049,7 @@ backup:
   owner: [paperless, paperless]
   db:
     name: paperless
-    dump_path: /tmp/paperless_db.dump
+    pg_role: paperless
   post_restore_command: "sudo -u paperless bash -c 'cd /opt/paperless/src && ./manage.py migrate'"
   restore_advice: "confirm the consumer picked the inbox back up"
 "#;
@@ -1053,7 +1065,7 @@ backup:
         );
         let db = backup.db.unwrap();
         assert_eq!(db.name, "paperless");
-        assert_eq!(db.dump_path, "/tmp/paperless_db.dump");
+        assert_eq!(db.pg_role.as_deref(), Some("paperless"));
         assert_eq!(
             db.engine,
             DbEngine::Postgres,
@@ -1079,7 +1091,7 @@ required_keys: []
 backup:
   systemd_services: [grimmory]
   paths: [/srv/grimmory]
-  db: { name: grimmory, engine: mariadb, dump_path: /tmp/grimmory_db.dump }
+  db: { name: grimmory, engine: mariadb }
 "#;
         let meta: PlaybookMeta = serde_yaml::from_str(yaml).unwrap();
         let db = meta.backup.unwrap().db.unwrap();
@@ -1091,7 +1103,7 @@ backup:
         let yaml = r#"
 required_keys: []
 backup:
-  db: { name: app, engine: sqlite, dump_path: /tmp/app.dump }
+  db: { name: app, engine: sqlite }
 "#;
         let result: Result<PlaybookMeta, _> = serde_yaml::from_str(yaml);
         assert!(
@@ -1108,7 +1120,7 @@ backup:
             owner: None,
             db: Some(DbRecipe {
                 name: "paperless".to_string(),
-                dump_path: "/tmp/paperless_db.dump".to_string(),
+                pg_role: Some("paperless".to_string()),
                 engine: DbEngine::Postgres,
             }),
             post_restore_command: None,
@@ -1267,7 +1279,7 @@ backup:
             owner: Some(("grimmory".to_string(), "grimmory".to_string())),
             db: Some(DbRecipe {
                 name: "grimmory".to_string(),
-                dump_path: "/tmp/grimmory_db.dump".to_string(),
+                pg_role: None,
                 engine: DbEngine::Mariadb,
             }),
             post_restore_command: None,

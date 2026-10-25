@@ -52,28 +52,28 @@ impl<'a, S: SshSession + ?Sized> RecipeExecutor<'a, S> {
             self.arm_deadman(app, Operation::Backup, recipe, progress);
         }
 
+        let mut staging: Option<String> = None;
         let result = (|| -> Result<()> {
+            let mut dump_path = None;
             if let Some(db) = &recipe.db {
+                let path = format!("{}/db.dump", staging.insert(self.session.private_dir()?));
                 let (tool, cmd) = match db.engine {
                     DbEngine::Postgres => (
                         "pg_dump",
-                        format!(
-                            "sudo -u postgres pg_dump -Fc -Z0 {} > {}",
-                            db.name, db.dump_path
-                        ),
+                        format!("sudo -u postgres pg_dump -Fc -Z0 {} > {path}", db.name),
                     ),
                     DbEngine::Mariadb => (
                         "mariadb-dump",
                         format!(
-                            "sudo mariadb-dump --single-transaction {} > {}",
-                            db.name, db.dump_path
+                            "sudo mariadb-dump --single-transaction {} > {path}",
+                            db.name
                         ),
                     ),
                 };
+                dump_path = Some(path);
                 progress.task_started(&format!("{tool} {}", db.name));
                 let dump = self.session.run(&cmd)?;
                 if !dump.success {
-                    let _ = self.session.run(&format!("rm -f {}", db.dump_path));
                     eyre::bail!(
                         "{tool} failed for {}: {}",
                         db.name,
@@ -94,15 +94,14 @@ impl<'a, S: SshSession + ?Sized> RecipeExecutor<'a, S> {
                 self.session.rsync_from(path, dest_dir)?;
             }
 
-            if let Some(db) = &recipe.db {
+            if let Some(path) = &dump_path {
                 progress.task_started("Fetching database dump");
-                let local_dump = dest_dir.join("db.dump");
-                self.session.scp_from(&db.dump_path, &local_dump)?;
-                let _ = self.session.run(&format!("rm -f {}", db.dump_path));
+                self.session.scp_from(path, &dest_dir.join("db.dump"))?;
             }
 
             Ok(())
         })();
+        self.remove_staging(staging.as_deref());
 
         // Re-arm at the restart step boundary, then disarm once the units are
         // back up — every exit path from here, success or failure, leaves the
@@ -203,6 +202,17 @@ impl<'a, S: SshSession + ?Sized> RecipeExecutor<'a, S> {
         source_dir: &Path,
         progress: &mut dyn Progress,
     ) -> Result<()> {
+        if let Some(db) = &recipe.db
+            && db.engine == DbEngine::Postgres
+            && db.pg_role.is_none()
+            && source_dir.join("db.dump").exists()
+        {
+            eyre::bail!(
+                "{app}: a postgres restore needs `db.pg_role` in the Playbook Meta; it never runs \
+                 as the postgres superuser"
+            );
+        }
+
         // A deadman only guards a quiesce window, so an App with nothing to
         // quiesce has nothing for it to protect (ADR-0066).
         let guarded = !recipe.systemd_services.is_empty();
@@ -224,6 +234,7 @@ impl<'a, S: SshSession + ?Sized> RecipeExecutor<'a, S> {
             stopped.push(service);
         }
 
+        let mut staging: Option<String> = None;
         let result = (|| -> Result<()> {
             let paths = staged_paths(recipe, source_dir);
             for path in &paths {
@@ -253,24 +264,32 @@ impl<'a, S: SshSession + ?Sized> RecipeExecutor<'a, S> {
                     if guarded {
                         self.arm_deadman(app, Operation::Restore, recipe, progress);
                     }
-                    let (tool, cmd) = match db.engine {
-                        DbEngine::Postgres => (
+                    let path = format!("{}/db.dump", staging.insert(self.session.private_dir()?));
+                    // The dump may come from another Host, so it is replayed
+                    // with no more reach than the App's own database: the
+                    // shell's redirect hands the client a private file, the
+                    // MariaDB client runs with shell escapes off, and
+                    // pg_restore connects as the database's owner role.
+                    let (tool, cmd) = match (db.engine, &db.pg_role) {
+                        (DbEngine::Postgres, Some(role)) => (
                             "pg_restore",
                             format!(
-                                "sudo -u postgres pg_restore --clean --if-exists -d {} {} 2>&1",
-                                db.name, db.dump_path
+                                "sudo -u {role} pg_restore --clean --if-exists --no-owner \
+                                 --no-privileges -d {} < {path} 2>&1",
+                                db.name
                             ),
                         ),
-                        DbEngine::Mariadb => (
+                        (DbEngine::Postgres, None) => {
+                            eyre::bail!("postgres restore needs db.pg_role")
+                        }
+                        (DbEngine::Mariadb, _) => (
                             "mariadb",
-                            format!("sudo mariadb {} < {} 2>&1", db.name, db.dump_path),
+                            format!("sudo mariadb --sandbox {} < {path} 2>&1", db.name),
                         ),
                     };
                     progress.task_started(&format!("{tool} {}", db.name));
-                    self.session.scp_to(&local_dump, &db.dump_path)?;
-                    self.session.run(&format!("chmod 644 {}", db.dump_path))?;
+                    self.session.scp_to(&local_dump, &path)?;
                     let restore = self.session.run(&cmd)?;
-                    let _ = self.session.run(&format!("rm -f {}", db.dump_path));
                     let warnings_only = db.engine == DbEngine::Postgres
                         && pg_restore_warnings_only(&restore.stdout_str());
                     if !restore.success && !warnings_only {
@@ -292,6 +311,7 @@ impl<'a, S: SshSession + ?Sized> RecipeExecutor<'a, S> {
 
             Ok(())
         })();
+        self.remove_staging(staging.as_deref());
 
         // Re-arm at the restart step boundary, then disarm once the restart
         // has been attempted — including when a unit failed to come back. That
@@ -344,6 +364,14 @@ impl<'a, S: SshSession + ?Sized> RecipeExecutor<'a, S> {
                  recovery if the driver dies before finishing it",
                 operation.as_str()
             ));
+        }
+    }
+
+    /// Best effort: a failure here leaves a 0700 dir only the ssh user can
+    /// read, and must not mask the operation's own outcome.
+    fn remove_staging(&self, dir: Option<&str>) {
+        if let Some(dir) = dir {
+            let _ = self.session.run(&format!("rm -rf {dir}"));
         }
     }
 
@@ -438,7 +466,7 @@ fn pg_restore_warnings_only(text: &str) -> bool {
 mod tests {
     use super::*;
     use crate::playbook_meta::{BackupParameter, DbEngine, DbRecipe};
-    use crate::services::ssh::{MockSshSession, SshOp};
+    use crate::services::ssh::{MOCK_PRIVATE_DIR, MockSshSession, SshOp};
 
     fn baikal_recipe() -> BackupRecipe {
         BackupRecipe {
@@ -560,7 +588,7 @@ mod tests {
             owner: Some(("paperless".to_string(), "paperless".to_string())),
             db: Some(DbRecipe {
                 name: "paperless".to_string(),
-                dump_path: "/tmp/paperless_db.dump".to_string(),
+                pg_role: Some("paperless".to_string()),
                 engine: DbEngine::Postgres,
             }),
             post_restore_command: Some("sudo -u paperless ./manage.py migrate".to_string()),
@@ -577,7 +605,7 @@ mod tests {
             owner: Some(("grimmory".to_string(), "grimmory".to_string())),
             db: Some(DbRecipe {
                 name: "grimmory".to_string(),
-                dump_path: "/tmp/grimmory_db.dump".to_string(),
+                pg_role: None,
                 engine: DbEngine::Mariadb,
             }),
             post_restore_command: None,
@@ -830,25 +858,21 @@ mod tests {
                 service: "paperless-webserver".to_string(),
             }
         );
-        match &calls[1] {
-            SshOp::Run(cmd) => {
-                assert!(cmd.contains("pg_dump -Fc -Z0"));
-                assert!(cmd.contains("paperless"));
-                assert!(cmd.contains("/tmp/paperless_db.dump"));
-            }
-            other => panic!("expected pg_dump Run, got {other:?}"),
-        }
-        assert!(matches!(&calls[2], SshOp::RsyncFrom { .. }));
-        assert!(matches!(
-            &calls[3],
-            SshOp::ScpFrom { remote, .. } if remote == "/tmp/paperless_db.dump"
-        ));
-        match &calls[4] {
-            SshOp::Run(cmd) => assert!(cmd.contains("rm -f /tmp/paperless_db.dump")),
-            other => panic!("expected rm -f Run, got {other:?}"),
-        }
+        assert_eq!(calls[1], SshOp::PrivateDir);
         assert_eq!(
-            calls[5],
+            calls[2],
+            SshOp::Run(format!(
+                "sudo -u postgres pg_dump -Fc -Z0 paperless > {MOCK_PRIVATE_DIR}/db.dump"
+            ))
+        );
+        assert!(matches!(&calls[3], SshOp::RsyncFrom { .. }));
+        assert!(matches!(
+            &calls[4],
+            SshOp::ScpFrom { remote, .. } if *remote == format!("{MOCK_PRIVATE_DIR}/db.dump")
+        ));
+        assert_eq!(calls[5], SshOp::Run(format!("rm -rf {MOCK_PRIVATE_DIR}")));
+        assert_eq!(
+            calls[6],
             SshOp::Systemctl {
                 action: "start".to_string(),
                 service: "paperless-webserver".to_string(),
@@ -873,16 +897,15 @@ mod tests {
             .unwrap();
 
         let calls = without_deadman_ops(mock.calls());
-        match &calls[1] {
-            SshOp::Run(cmd) => assert_eq!(
-                cmd,
-                "sudo mariadb-dump --single-transaction grimmory > /tmp/grimmory_db.dump"
-            ),
-            other => panic!("expected mariadb-dump Run, got {other:?}"),
-        }
+        assert_eq!(
+            calls[2],
+            SshOp::Run(format!(
+                "sudo mariadb-dump --single-transaction grimmory > {MOCK_PRIVATE_DIR}/db.dump"
+            ))
+        );
         assert!(matches!(
-            &calls[3],
-            SshOp::ScpFrom { remote, .. } if remote == "/tmp/grimmory_db.dump"
+            &calls[4],
+            SshOp::ScpFrom { remote, .. } if *remote == format!("{MOCK_PRIVATE_DIR}/db.dump")
         ));
         assert!(progress.events().iter().any(|e| matches!(
             e,
@@ -891,7 +914,7 @@ mod tests {
     }
 
     #[test]
-    fn test_restore_with_mariadb_db_pipes_dump_into_mariadb() {
+    fn test_restore_with_mariadb_db_pipes_dump_into_a_sandboxed_mariadb() {
         use crate::services::progress::ProgressEvent;
         let tmp = tempfile::tempdir().unwrap();
         std::fs::write(tmp.path().join("db.dump"), b"-- dump").unwrap();
@@ -906,7 +929,8 @@ mod tests {
         let calls = mock.calls();
         assert!(calls.iter().any(|c| matches!(
             c,
-            SshOp::Run(cmd) if cmd == "sudo mariadb grimmory < /tmp/grimmory_db.dump 2>&1"
+            SshOp::Run(cmd)
+                if *cmd == format!("sudo mariadb --sandbox grimmory < {MOCK_PRIVATE_DIR}/db.dump 2>&1")
         )));
         assert!(
             !calls
@@ -927,10 +951,9 @@ mod tests {
 
         let mock = MockSshSession::new();
         // The deadman's fire-check is the first `run()` call for a guarded
-        // recipe; stage its "no marker" answer so the results below land on
-        // the `chmod` and the restore itself (ADR-0066).
+        // recipe; stage its "no marker" answer so the result below lands on
+        // the restore itself (ADR-0066).
         no_marker(&mock);
-        mock.stage_run_result(crate::services::ssh::CommandResult::ok());
         mock.stage_run_result(crate::services::ssh::CommandResult {
             success: false,
             exit_code: Some(1),
@@ -1068,7 +1091,7 @@ mod tests {
         let scp_to_idx = calls
             .iter()
             .position(
-                |c| matches!(c, SshOp::ScpTo { remote, .. } if remote == "/tmp/paperless_db.dump"),
+                |c| matches!(c, SshOp::ScpTo { remote, .. } if *remote == format!("{MOCK_PRIVATE_DIR}/db.dump")),
             )
             .expect("should scp dump to remote");
         let pg_restore_idx = calls
@@ -1102,10 +1125,10 @@ mod tests {
             "should not run pg_restore when dump file missing"
         );
         assert!(
-            !calls.iter().any(
-                |c| matches!(c, SshOp::ScpTo { remote, .. } if remote == "/tmp/paperless_db.dump")
-            ),
-            "should not scp dump when missing"
+            !calls
+                .iter()
+                .any(|c| matches!(c, SshOp::ScpTo { .. } | SshOp::PrivateDir)),
+            "should not stage a dump when missing"
         );
     }
 
@@ -1293,6 +1316,91 @@ mod tests {
     fn test_staged_parameters_is_empty_for_a_recipe_without_parameters() {
         let backup = staged_backup(&["/opt/baikal/Specific"]);
         assert!(staged_parameters(&baikal_recipe(), backup.path()).is_empty());
+    }
+
+    fn failed_run(stderr: &[u8]) -> crate::services::ssh::CommandResult {
+        crate::services::ssh::CommandResult {
+            success: false,
+            exit_code: Some(1),
+            stdout: Vec::new(),
+            stderr: stderr.to_vec(),
+        }
+    }
+
+    #[test]
+    fn test_backup_removes_the_private_dir_when_the_dump_fails() {
+        let mock = MockSshSession::new();
+        no_marker(&mock);
+        mock.stage_run_result(failed_run(b"connection refused"));
+
+        assert!(backup_with(&paperless_recipe(), &mock).is_err());
+        assert!(
+            mock.calls()
+                .contains(&SshOp::Run(format!("rm -rf {MOCK_PRIVATE_DIR}"))),
+            "a failed dump must not leave its staging dir behind"
+        );
+    }
+
+    #[test]
+    fn test_restore_removes_the_private_dir_when_the_database_restore_fails() {
+        let source = staged_backup(&["/opt/paperless/data"]);
+        std::fs::write(source.path().join("db.dump"), b"-- dump").unwrap();
+        let mock = MockSshSession::new();
+        no_marker(&mock);
+        mock.stage_run_result(crate::services::ssh::CommandResult {
+            stdout: b"pg_restore: error: could not execute query".to_vec(),
+            ..failed_run(b"")
+        });
+        let executor = RecipeExecutor::new(&mock);
+        let mut progress = crate::services::progress::MockProgress::new();
+
+        let result = executor.restore(
+            "paperless",
+            &paperless_recipe(),
+            source.path(),
+            &mut progress,
+        );
+
+        assert!(result.is_err());
+        assert!(
+            mock.calls()
+                .contains(&SshOp::Run(format!("rm -rf {MOCK_PRIVATE_DIR}"))),
+            "a failed restore must not leave the dump behind"
+        );
+    }
+
+    #[test]
+    fn test_postgres_restore_without_a_role_is_refused_before_anything_is_stopped() {
+        let source = staged_backup(&["/opt/paperless/data"]);
+        std::fs::write(source.path().join("db.dump"), b"-- dump").unwrap();
+        let mut recipe = paperless_recipe();
+        recipe.db.as_mut().unwrap().pg_role = None;
+        let mock = MockSshSession::new();
+        let executor = RecipeExecutor::new(&mock);
+        let mut progress = crate::services::progress::MockProgress::new();
+
+        let result = executor.restore("paperless", &recipe, source.path(), &mut progress);
+
+        assert!(result.is_err());
+        assert!(
+            mock.calls().is_empty(),
+            "the refusal must cost no service bounce: {:?}",
+            mock.calls()
+        );
+    }
+
+    #[test]
+    fn test_postgres_restore_without_a_role_still_restores_a_backup_holding_no_dump() {
+        let source = staged_backup(&["/opt/paperless/data"]);
+        let mut recipe = paperless_recipe();
+        recipe.db.as_mut().unwrap().pg_role = None;
+        let mock = MockSshSession::new();
+        let executor = RecipeExecutor::new(&mock);
+        let mut progress = crate::services::progress::MockProgress::new();
+
+        executor
+            .restore("paperless", &recipe, source.path(), &mut progress)
+            .unwrap();
     }
 
     #[test]
@@ -1751,13 +1859,13 @@ mod tests {
                 "arm restore",
                 "chown /opt/paperless/data",
                 "arm restore",
-                "scp-to /tmp/paperless_db.dump",
-                "run chmod 644 /tmp/paperless_db.dump",
-                "run sudo -u postgres pg_restore --clean --if-exists -d paperless \
-                 /tmp/paperless_db.dump 2>&1",
-                "run rm -f /tmp/paperless_db.dump",
+                "PrivateDir",
+                "scp-to /tmp/tmp.mock/db.dump",
+                "run sudo -u paperless pg_restore --clean --if-exists --no-owner \
+                 --no-privileges -d paperless < /tmp/tmp.mock/db.dump 2>&1",
                 "arm restore",
                 "run sudo -u paperless ./manage.py migrate",
+                "run rm -rf /tmp/tmp.mock",
                 "arm restore",
                 "systemctl start paperless-webserver",
                 "disarm",
@@ -1872,7 +1980,6 @@ mod tests {
         let source = staged_paperless_backup();
         let mock = MockSshSession::new();
         no_marker(&mock);
-        mock.stage_run_result(crate::services::ssh::CommandResult::ok());
         mock.stage_run_result(crate::services::ssh::CommandResult {
             success: false,
             exit_code: Some(1),

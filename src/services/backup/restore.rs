@@ -466,7 +466,7 @@ mod tests {
         let mut paperless = recipe(&["/opt/paperless/data"]);
         paperless.db = Some(DbRecipe {
             name: "paperless".to_string(),
-            dump_path: "/tmp/paperless_db.dump".to_string(),
+            pg_role: Some("paperless".to_string()),
             engine: DbEngine::Postgres,
         });
         vec![target("paperless", paperless)]
