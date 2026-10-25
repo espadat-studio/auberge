@@ -1,4 +1,4 @@
-required_keys: []
+required_keys: [syncthing_gui_password]
 backup:
   systemd_services: ["syncthing@{admin_user}"]
   paths:

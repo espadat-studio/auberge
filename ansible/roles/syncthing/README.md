@@ -8,6 +8,7 @@ Installs and configures [Syncthing](https://syncthing.net/) for file synchroniza
 - Enables and starts Syncthing as a systemd service instance (running under the `syncthing_user` account)
 - Optionally configures a workspace folder, and the remote device it is shared with
 - Optionally turns off peer discovery, for a node its peer must dial
+- Requires a GUI login on every Host, so no local process controls Syncthing without credentials
 - Supports remote web UI access (optional)
 
 ## How it configures Syncthing
@@ -17,6 +18,8 @@ Through the REST API on `127.0.0.1:8384`, keyed by the API key Syncthing generat
 Every write compares against the running configuration first and is skipped when it matches, so a converged Host reports no change — a `PUT` answers 200 whether or not it changed anything, so an unguarded write would report `changed` forever. Every field the folder write sends is compared before it is sent, `paused` included: a folder someone pauses in the web UI must not read as converged while replication is stopped.
 
 Device IDs are compared dash-stripped and upper-cased. Syncthing canonicalizes an ID on parse, so the text pasted into `config.toml` is not necessarily the text `/rest/config` reports back, and a verbatim comparison would make a write that worked look like one that never converged.
+
+The web UI requires a login as `syncthing_user` with `syncthing_gui_password` on every Host. Without a GUI user, Syncthing hands a CSRF cookie to any client that loads `/` and accepts it in place of the API key, so any local process that reaches the loopback reads the API key and rewrites folders and devices. The stored password is a bcrypt hash re-salted on every write, so the role logs in with the declared credentials and writes them only when that login fails. A password set by hand in the web UI is overwritten on the next deploy.
 
 `ansible.builtin.uri` declares no check mode, so the whole API block is skipped under `--check` — the reads would otherwise be skipped while the guards that dereference them still ran.
 
@@ -28,6 +31,7 @@ Device IDs are compared dash-stripped and upper-cased. Syncthing canonicalizes a
 | `syncthing_workspace_owner`       | `syncthing_user`                                                                     | Owner of the workspace directory                                          |
 | `syncthing_workspace_group`       | `syncthing_user`                                                                     | Group of the workspace directory                                          |
 | `syncthing_workspace_mode`        | `0750`                                                                               | Mode of the workspace directory                                           |
+| `syncthing_gui_password`          | required (Key Registry)                                                              | Web UI login password, set on every Host                                  |
 | `syncthing_config_path`           | `~/.config/syncthing`                                                                | Syncthing configuration directory (`config.xml`)                          |
 | `syncthing_listen_all_interfaces` | `false`                                                                              | `true` = bind the web UI to 0.0.0.0; `false` leaves the address untouched |
 | `syncthing_discovery_enabled`     | unset                                                                                | `false` = announce nowhere, no relays, no NAT mapping; unset = untouched  |
@@ -64,10 +68,7 @@ If SSH tunneling is not practical, you can expose the GUI on all interfaces:
     syncthing_listen_all_interfaces: true
 ```
 
-**Security warning:** Exposing the Syncthing GUI on all interfaces without authentication allows anyone who can reach port 8384 to control your Syncthing instance. If you must use this option:
-
-1. Configure GUI authentication (username/password) in the Syncthing web UI immediately
-2. Restrict access with a firewall rule (e.g., `ufw allow from YOUR_IP to any port 8384`)
+**Security warning:** the GUI login is then the only thing between port 8384 and your Syncthing instance. Restrict access with a firewall rule as well (e.g., `ufw allow from YOUR_IP to any port 8384`).
 
 ### Peer-initiated replication
 
@@ -79,7 +80,7 @@ If SSH tunneling is not practical, you can expose the GUI on all interfaces:
 
 After installation:
 
-1. Access web UI (http://localhost:8384 or via SSH tunnel)
+1. Access web UI (http://localhost:8384 or via SSH tunnel) and log in as `syncthing_user` with `syncthing_gui_password`
 2. Note the device ID shown in web UI
 3. Install Syncthing on desktop/mobile
 4. Add VPS as remote device (use device ID)

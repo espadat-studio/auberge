@@ -22,7 +22,7 @@ Access the web UI via SSH tunnel:
 ssh -L 8384:localhost:8384 user@vps
 ```
 
-Then open http://localhost:8384.
+Then open http://localhost:8384 and log in as the account Syncthing runs as, with `syncthing_gui_password`.
 
 Optional workspace sync (per-host config):
 

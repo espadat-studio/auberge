@@ -92,6 +92,38 @@
           changed_when: false
           no_log: true
 
+        # With no GUI user, Syncthing hands a CSRF cookie to any client that
+        # loads `/` and accepts it in place of the API key, so every local UID
+        # that can reach the loopback controls the instance. The stored
+        # password is a bcrypt hash re-salted on every write, so whether the
+        # declared one is current is a login, not a comparison.
+        - name: Log in with the declared Syncthing GUI credentials
+          ansible.builtin.uri:
+            url: "{{ syncthing_api }}/noauth/auth/password"
+            method: POST
+            body_format: json
+            body:
+              username: "{{ syncthing_user }}"
+              password: "{{ syncthing_gui_password }}"
+              stayLoggedIn: false
+            status_code: [204, 403, 404]
+          register: syncthing_gui_login
+          changed_when: false
+          no_log: true
+
+        - name: Require the declared credentials on the Syncthing web UI
+          ansible.builtin.uri:
+            url: "{{ syncthing_api }}/config/gui"
+            method: PATCH
+            headers:
+              X-API-Key: "{{ syncthing_api_key }}"
+            body_format: json
+            body:
+              user: "{{ syncthing_user }}"
+              password: "{{ syncthing_gui_password }}"
+          no_log: true
+          when: not (syncthing_gui_auth_is_current | bool)
+
         - name: Read the running Syncthing configuration
           ansible.builtin.uri:
             url: "{{ syncthing_api }}/config"
