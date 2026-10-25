@@ -21,6 +21,7 @@ jobs:
         with:
           files: |
             .github/workflows/master.yml
+            .github/workflows/renovate-checksums.yml
             src/**/*.rs
             tests/**
             Cargo.toml

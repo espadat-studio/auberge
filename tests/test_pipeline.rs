@@ -391,3 +391,99 @@ fn test_the_gate_covers_the_file_the_task_lives_in() {
         );
     }
 }
+
+/// `renovate-checksums` mints a contents:write token for the release App, so
+/// nothing the PR head controls may run while that token exists. The branch
+/// prefix alone is chosen by whoever pushes, so the job binds the author and
+/// the head repository; the head checkout keeps no credential; the script
+/// comes from the base ref; and the token is minted after it has run. The
+/// script is matched by the forms allowed to name it, so any other path to it
+/// (the head tree, relative or not) fails rather than slipping past a needle.
+#[test]
+fn test_renovate_checksums_runs_no_head_code_with_the_app_token() {
+    let workflow = repo_root().join(".github/workflows/renovate-checksums.yml");
+    let parsed: serde_yaml::Value = serde_yaml::from_str(&read(&workflow))
+        .unwrap_or_else(|e| panic!("{}: {e}", workflow.display()));
+    let job = parsed
+        .get("jobs")
+        .and_then(|jobs| jobs.get("recompute"))
+        .unwrap_or_else(|| panic!("{}: no `recompute` job", workflow.display()));
+
+    let gate = job.get("if").and_then(|v| v.as_str()).unwrap_or_default();
+    assert!(
+        !gate.contains("||"),
+        "{}: the `recompute` gate `{gate}` has an `||`, so one branch can skip the bindings",
+        workflow.display()
+    );
+    for clause in [
+        "github.event.sender.login == 'renovate[bot]'",
+        "github.event.pull_request.user.login == 'renovate[bot]'",
+        "github.event.pull_request.head.repo.full_name == github.repository",
+    ] {
+        assert!(
+            gate.contains(clause),
+            "{}: the `recompute` gate `{gate}` lacks `{clause}`",
+            workflow.display()
+        );
+    }
+
+    let steps = job
+        .get("steps")
+        .and_then(|steps| steps.as_sequence())
+        .unwrap_or_else(|| panic!("{}: `recompute` has no steps", workflow.display()));
+    fn uses(step: &serde_yaml::Value, action: &str) -> bool {
+        step.get("uses")
+            .and_then(|v| v.as_str())
+            .is_some_and(|v| v.starts_with(action))
+    }
+    fn runs(step: &serde_yaml::Value) -> &str {
+        step.get("run").and_then(|v| v.as_str()).unwrap_or("")
+    }
+
+    for step in steps.iter().filter(|step| uses(step, "actions/checkout@")) {
+        assert_eq!(
+            step.get("with").and_then(|w| w.get("persist-credentials")),
+            Some(&serde_yaml::Value::Bool(false)),
+            "{}: a checkout in `recompute` persists its credential into git config",
+            workflow.display()
+        );
+    }
+
+    let recompute = steps
+        .iter()
+        .position(|step| runs(step).contains("recompute-checksums.sh"))
+        .unwrap_or_else(|| {
+            panic!(
+                "{}: no step runs recompute-checksums.sh",
+                workflow.display()
+            )
+        });
+    let script = runs(&steps[recompute]);
+    let fetched = r#"git show "origin/${BASE_REF}:.github/scripts/recompute-checksums.sh" >"${RUNNER_TEMP}/recompute-checksums.sh""#;
+    let invoked = r#"bash "${RUNNER_TEMP}/recompute-checksums.sh""#;
+    assert!(
+        script.contains(fetched) && script.contains(invoked),
+        "{}: recompute-checksums.sh must be read from the base ref and run from \
+         RUNNER_TEMP — expected:\n    {fetched}\n    {invoked}",
+        workflow.display()
+    );
+    assert!(
+        !script
+            .replace(fetched, "")
+            .replace(invoked, "")
+            .contains("recompute-checksums.sh"),
+        "{}: recompute-checksums.sh is named outside the base-ref fetch — the head tree's \
+         copy may run with the job's secrets in reach",
+        workflow.display()
+    );
+
+    let mint = steps
+        .iter()
+        .position(|step| uses(step, "actions/create-github-app-token@"))
+        .unwrap_or_else(|| panic!("{}: no App token step", workflow.display()));
+    assert!(
+        mint > recompute,
+        "{}: the App token is minted before recompute-checksums.sh runs",
+        workflow.display()
+    );
+}

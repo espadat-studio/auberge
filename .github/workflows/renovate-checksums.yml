@@ -12,10 +12,46 @@ on:
 
 jobs:
   recompute:
-    if: startsWith(github.head_ref, 'renovate/')
+    # The branch prefix is chosen by whoever pushes it, so the PR author, the
+    # pusher of this event and the head repository are what make this a
+    # Renovate push. The App's own digest push is not one, and skips.
+    if: >-
+      startsWith(github.head_ref, 'renovate/')
+      && github.event.pull_request.user.login == 'renovate[bot]'
+      && github.event.sender.login == 'renovate[bot]'
+      && github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ github.head_ref }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      # The base-ref copy of the script reads the head tree as data; the
+      # head copy never runs.
+      - name: Recompute co-pinned checksums
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          git show "origin/${BASE_REF}:.github/scripts/recompute-checksums.sh" >"${RUNNER_TEMP}/recompute-checksums.sh"
+          bash "${RUNNER_TEMP}/recompute-checksums.sh" "origin/${BASE_REF}"
+
+      - name: Detect digest changes
+        id: diff
+        run: |
+          if git diff --quiet; then
+            echo "digests unchanged"
+            echo "changed=false" >>"${GITHUB_OUTPUT}"
+          else
+            echo "changed=true" >>"${GITHUB_OUTPUT}"
+          fi
+
+      # An app token rather than GITHUB_TOKEN: pushes made with GITHUB_TOKEN
+      # trigger no workflows, so the digest commit would sit on the PR with no
+      # CI runs on it. Minted only after the script has run.
       - name: Generate GitHub App token
+        if: steps.diff.outputs.changed == 'true'
         id: app-token
         uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3
         with:
@@ -23,29 +59,16 @@ jobs:
           private-key: ${{ secrets.GH_APP_PRIVATE_KEY }}
           permission-contents: write
 
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-        with:
-          ref: ${{ github.head_ref }}
-          fetch-depth: 0
-          # An app token rather than GITHUB_TOKEN: pushes made with
-          # GITHUB_TOKEN trigger no workflows, so the digest commit would
-          # sit on the PR with no CI runs on it.
-          token: ${{ steps.app-token.outputs.token }}
-
-      - name: Recompute co-pinned checksums
-        env:
-          BASE_REF: ${{ github.base_ref }}
-        run: ./.github/scripts/recompute-checksums.sh "origin/${BASE_REF}"
-
       - name: Push updated digests
+        if: steps.diff.outputs.changed == 'true'
         env:
           HEAD_REF: ${{ github.head_ref }}
+          TOKEN: ${{ steps.app-token.outputs.token }}
         run: |
-          if git diff --quiet; then
-            echo "digests unchanged"
-            exit 0
-          fi
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git commit -am "build(deps): recompute co-pinned sha256 digests"
-          git push origin "HEAD:${HEAD_REF}"
+          auth="$(printf 'x-access-token:%s' "${TOKEN}" | base64 -w0)"
+          echo "::add-mask::${auth}"
+          git -c "http.https://github.com/.extraheader=AUTHORIZATION: basic ${auth}" \
+            push origin "HEAD:${HEAD_REF}"
