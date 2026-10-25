@@ -4,14 +4,7 @@ required_keys:
   - standby_runner_app_private_key
   - standby_runner_group_id
   - standby_runner_org
-version:
-  value: "2.338.1"
-  datasource: github-releases
-  depName: "actions/runner"
-  extractVersion: "^v(?<version>.+)$"
 units:
   - standby-runner
   - standby-runner-flip
   - standby-runner-flip.timer
-  - standby-runner-prune
-  - standby-runner-prune.timer
