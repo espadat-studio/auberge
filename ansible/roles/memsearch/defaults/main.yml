@@ -20,7 +20,7 @@ memsearch_uv_bin: "{{ memsearch_bin_dir }}/uv"
 memsearch_path_link: /usr/local/bin/memsearch
 
 # renovate: datasource=github-releases depName=astral-sh/uv
-memsearch_uv_version: "0.13.3"
+memsearch_uv_version: "0.13.4"
 memsearch_uv_url: "https://github.com/astral-sh/uv/releases/download/{{ memsearch_uv_version }}/uv-x86_64-unknown-linux-gnu.tar.gz"
 memsearch_uv_sha256: "e4f169ec380f1793b898a6f1fcbacd22db25cf7ca0349a6e96ffb85b69998d04"
 

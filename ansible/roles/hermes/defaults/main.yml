@@ -1,6 +1,6 @@
 ---
 # renovate: datasource=github-releases depName=astral-sh/uv
-hermes_uv_version: "0.13.3"
+hermes_uv_version: "0.13.4"
 hermes_uv_url: "https://github.com/astral-sh/uv/releases/download/{{ hermes_uv_version }}/uv-x86_64-unknown-linux-gnu.tar.gz"
 hermes_uv_sha256: "e4f169ec380f1793b898a6f1fcbacd22db25cf7ca0349a6e96ffb85b69998d04"
 hermes_user: hermes
