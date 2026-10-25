@@ -17,14 +17,18 @@ blocky_lego_sha256: "2a35505089e7772c92e1e9ac144df91151ef2eca8568630db0ff91fca06
 # minimum (1800s on Cloudflare) can never clear inside lego's 2m poll window,
 # which wedged issuance behind the recursors in netcup's /etc/resolv.conf. The
 # authoritative-NS check still runs, and Cloudflare's NS see the record at once.
-blocky_lego_run_cmd: >-
-  /usr/local/bin/lego run
+blocky_lego_run_args: >-
+  run
   --domains '{{ blocky_domain }}'
   --email {{ blocky_letsencrypt_email }}
   --dns cloudflare
   --dns.propagation.disable-rns
   --accept-tos
   --path {{ blocky_config_path }}
+blocky_lego_run_cmd: "{{ blocky_lego_binary_path }} {{ blocky_lego_run_args }}"
+
+blocky_lego_binary_path: /usr/local/bin/lego
+blocky_lego_env_path: /etc/lego-renew.env
 
 blocky_dot_port: 853
 
