@@ -4,7 +4,8 @@
 //! the drop-ins in place. A drop-in read before the hardening directives
 //! therefore decides them. The rendered config must read every hardening
 //! directive before the Include, and the deploy must check what sshd
-//! actually resolved.
+//! actually resolved. `sshd -T` prints global values only, so the deploy
+//! also refuses drop-ins that open a `Match` block.
 
 use std::collections::{BTreeMap, HashMap};
 use std::fs;
@@ -13,7 +14,12 @@ use serde_yaml::Value;
 
 mod common;
 
-use common::{field, role_dir, role_tasks};
+use serde_yaml::Mapping;
+
+use common::{Task, field, role_dir, role_tasks, strings};
+
+const DROP_IN_DIR: &str = "/etc/ssh/sshd_config.d";
+const ALIAS_SSHD_T_OMITS: &str = "challengeresponseauthentication";
 
 const HOSTILE_DROP_IN: &str = "\
 PasswordAuthentication yes
@@ -102,35 +108,64 @@ fn test_hardening_wins_over_a_hostile_drop_in() {
     }
 }
 
+fn assert_conditions(tasks: &[Task]) -> Vec<String> {
+    tasks
+        .iter()
+        .filter_map(|task| field(&task.body, "ansible.builtin.assert"))
+        .flat_map(|assert| strings(assert.as_mapping().and_then(|m| field(m, "that"))))
+        .collect()
+}
+
+fn registered_by<'a>(
+    tasks: &'a [Task],
+    module: &str,
+    matches: impl Fn(&Mapping) -> bool,
+) -> &'a str {
+    tasks
+        .iter()
+        .find(|task| {
+            field(&task.body, module)
+                .and_then(Value::as_mapping)
+                .is_some_and(&matches)
+        })
+        .and_then(|task| field(&task.body, "register"))
+        .and_then(Value::as_str)
+        .unwrap_or_else(|| panic!("the ssh role must register a matching `{module}` task"))
+}
+
 #[test]
 fn test_the_deploy_asserts_the_effective_auth_settings() {
     let tasks = role_tasks("ssh");
-    let probe = tasks
-        .iter()
-        .find(|task| {
-            field(&task.body, "ansible.builtin.command")
-                .and_then(|module| field(module.as_mapping()?, "cmd"))
-                .and_then(Value::as_str)
-                .is_some_and(|cmd| cmd.contains("sshd -T"))
-        })
-        .expect("the ssh role must read the effective config with `sshd -T`");
-    let register = field(&probe.body, "register")
-        .and_then(Value::as_str)
-        .expect("the `sshd -T` probe must register its output");
-
-    let asserted: String = tasks
-        .iter()
-        .filter_map(|task| field(&task.body, "ansible.builtin.assert"))
-        .map(|assert| serde_yaml::to_string(assert).expect("assert serialises"))
-        .filter(|assert| assert.contains(register))
-        .collect();
-    for line in [
-        "passwordauthentication no",
-        "kbdinteractiveauthentication no",
-    ] {
+    let register = registered_by(&tasks, "ansible.builtin.command", |module| {
+        field(module, "cmd")
+            .and_then(Value::as_str)
+            .is_some_and(|cmd| cmd.contains("sshd -T"))
+    });
+    let conditions = assert_conditions(&tasks);
+    for (keyword, value) in HARDENED
+        .into_iter()
+        .filter(|(k, _)| *k != ALIAS_SSHD_T_OMITS)
+    {
+        let expected = format!("'{keyword} {value}' in {register}.stdout_lines");
         assert!(
-            asserted.contains(line),
-            "the ssh role must assert `{register}` reports `{line}`"
+            conditions.contains(&expected),
+            "the ssh role must assert `{expected}`"
         );
     }
+}
+
+#[test]
+fn test_the_deploy_refuses_match_blocks_in_drop_ins() {
+    let tasks = role_tasks("ssh");
+    let register = registered_by(&tasks, "ansible.builtin.find", |module| {
+        field(module, "paths").and_then(Value::as_str) == Some(DROP_IN_DIR)
+            && field(module, "contains")
+                .and_then(Value::as_str)
+                .is_some_and(|pattern| pattern.contains("match"))
+    });
+    let expected = format!("{register}.matched == 0");
+    assert!(
+        assert_conditions(&tasks).contains(&expected),
+        "the ssh role must assert `{expected}`: sshd -T cannot see Match-scoped overrides"
+    );
 }
