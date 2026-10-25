@@ -660,7 +660,7 @@ mod tests {
     #[test]
     fn test_syncthing_meta_backup_recipe() {
         let meta = load_meta("syncthing");
-        assert!(meta.required_keys.is_empty());
+        assert_eq!(meta.required_keys, vec!["syncthing_gui_password"]);
         assert!(meta.version.is_none());
         let backup = meta
             .backup
