@@ -93,6 +93,7 @@ One number, one file. Every file in `meta/adr/` is listed here; a number that ap
 | 0083 | [A guarded role's Zone follows its serving gate](./adr/0083-a-guarded-roles-zone-follows-its-serving-gate.md)                                                   |
 | 0084 | [Git over SSH is the forge's own server, on the tailnet only](./adr/0084-git-over-ssh-is-the-forges-own-server-on-the-tailnet-only.md)                          |
 | 0085 | [CI falls back to a Standby Runner when hosted minutes run out](./adr/0085-ci-falls-back-to-a-standby-runner-when-hosted-minutes-run-out.md)                    |
+| 0086 | [The agent tier runs as its own unprivileged user](./adr/0086-the-agent-tier-runs-as-its-own-unprivileged-user.md)                                              |
 
 ## Native systemd by default
 
