@@ -42,6 +42,39 @@
         validate: "/usr/sbin/sshd -t -f %s"
       notify: Restart sshd
 
+    - name: Read effective sshd config
+      ansible.builtin.command:
+        cmd: /usr/sbin/sshd -T
+      register: ssh_effective_config
+      changed_when: false
+      when: not ansible_check_mode
+
+    - name: Assert drop-ins did not weaken sshd auth
+      ansible.builtin.assert:
+        that:
+          - "'passwordauthentication no' in ssh_effective_config.stdout_lines"
+          - "'kbdinteractiveauthentication no' in ssh_effective_config.stdout_lines"
+          - "'permitemptypasswords no' in ssh_effective_config.stdout_lines"
+          - "'permitrootlogin no' in ssh_effective_config.stdout_lines"
+          - "'pubkeyauthentication yes' in ssh_effective_config.stdout_lines"
+        fail_msg: "sshd -T reports weakened auth; check /etc/ssh/sshd_config.d"
+      when: not ansible_check_mode
+
+    - name: Find Match blocks in sshd drop-ins
+      ansible.builtin.find:
+        paths: /etc/ssh/sshd_config.d
+        patterns: "*.conf"
+        contains: '(?i)^\s*match\s'
+      register: ssh_match_drop_ins
+
+    - name: Refuse Match blocks in sshd drop-ins
+      ansible.builtin.assert:
+        that:
+          - ssh_match_drop_ins.matched == 0
+        fail_msg: >-
+          sshd -T cannot see Match-scoped overrides, so drop-ins must not open Match blocks:
+          {{ ssh_match_drop_ins.files | map(attribute='path') | join(', ') }}
+
     - name: Output configured SSH port
       ansible.builtin.debug:
         msg: "SSH port configured: {{ ssh_port }}"
