@@ -13,9 +13,26 @@ memsearch_collection: agent_memory
 
 memsearch_embedding_model: gpahal/bge-m3-onnx-int8
 
-memsearch_bin: "{{ memsearch_home }}/.local/bin/memsearch"
-memsearch_uv_bin: "{{ memsearch_home }}/.local/bin/uv"
+memsearch_install_dir: /opt/memsearch
+memsearch_bin_dir: "{{ memsearch_install_dir }}/bin"
+memsearch_bin: "{{ memsearch_bin_dir }}/memsearch"
+memsearch_uv_bin: "{{ memsearch_bin_dir }}/uv"
 memsearch_path_link: /usr/local/bin/memsearch
 
 # renovate: datasource=github-releases depName=astral-sh/uv
 memsearch_uv_version: "0.13.3"
+memsearch_uv_url: "https://github.com/astral-sh/uv/releases/download/{{ memsearch_uv_version }}/uv-x86_64-unknown-linux-gnu.tar.gz"
+memsearch_uv_sha256: "e4f169ec380f1793b898a6f1fcbacd22db25cf7ca0349a6e96ffb85b69998d04"
+
+memsearch_uv_environment:
+  UV_TOOL_DIR: "{{ memsearch_install_dir }}/tools"
+  UV_TOOL_BIN_DIR: "{{ memsearch_bin_dir }}"
+  UV_PYTHON_INSTALL_DIR: "{{ memsearch_install_dir }}/python"
+  UV_CACHE_DIR: "{{ memsearch_install_dir }}/cache"
+  UV_COMPILE_BYTECODE: "1"
+
+memsearch_legacy_paths:
+  - .local/bin/memsearch
+  - .local/bin/uv
+  - .local/bin/uvx
+  - .local/share/uv/tools/memsearch

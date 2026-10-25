@@ -4,9 +4,9 @@ Semantic memory for the agent Host: a box-global markdown store, an on-box vecto
 
 ## What it installs
 
-- `uv` under the target user's home (a Tool Version, pinned in defaults)
-- `memsearch[onnx]` as a `uv` tool, pinned to the App Version in `memsearch.meta.yml`
-- `/usr/local/bin/memsearch`, a symlink, so `which memsearch` answers for any process regardless of how its PATH was assembled — which is what the OpenCode plugin's CLI detection does before falling back to an unpinned `uvx`
+- `uv` under `/opt/memsearch/bin`, root-owned (a Tool Version, pinned with its sha256 in defaults)
+- `memsearch[onnx]` as a root-owned `uv` tool under `/opt/memsearch`, pinned to the App Version in `memsearch.meta.yml`
+- `/usr/local/bin/memsearch`, a symlink, so `which memsearch` answers for any process regardless of how its PATH was assembled — which is what the OpenCode plugin's CLI detection does before falling back to an unpinned `uvx`. Every user runs this one copy, so no user can rewrite it; the target user owns only its config, index and model cache
 - `~/.memsearch/config.toml`, pinning the index location, the operator's collection, and local ONNX embedding (no API key)
 - `/srv/agent-memory/.memsearch/memory`, the box-global store
 

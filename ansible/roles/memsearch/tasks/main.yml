@@ -7,15 +7,22 @@
       - python3
     state: present
 
+# Everything memsearch executes is root's: any user runs it through
+# /usr/local/bin, so a copy its user could rewrite would run that user's code
+# under whoever calls it. The user keeps only its config, index and model cache.
+- name: Create the memsearch install directory
+  ansible.builtin.file:
+    path: "{{ memsearch_bin_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
 - name: Read installed uv version
-  become: true
-  become_user: "{{ memsearch_user }}"
   ansible.builtin.command: "{{ memsearch_uv_bin }} --version"
   register: memsearch_uv_check
   changed_when: false
   failed_when: false
-  environment:
-    HOME: "{{ memsearch_home }}"
 
 - name: Set installed uv version fact
   ansible.builtin.set_fact:
@@ -24,40 +31,37 @@
          | regex_search('(?<=uv )\S+')
          | default('', true) }}
 
-- name: Create secure temp directory for uv installer
-  become: true
-  become_user: "{{ memsearch_user }}"
-  ansible.builtin.tempfile:
-    state: directory
-    suffix: _uv_install
-  register: memsearch_uv_tmpdir
+- name: Install the pinned uv release
   when: memsearch_uv_installed_version != memsearch_uv_version
+  block:
+    - name: Create a private staging directory for uv
+      ansible.builtin.tempfile:
+        state: directory
+        suffix: _uv
+      register: memsearch_uv_tmpdir
 
-- name: Download uv install script
-  become: true
-  become_user: "{{ memsearch_user }}"
-  ansible.builtin.get_url:
-    url: "https://astral.sh/uv/{{ memsearch_uv_version }}/install.sh"
-    dest: "{{ memsearch_uv_tmpdir.path }}/install.sh"
-    mode: "0755"
-  when: memsearch_uv_installed_version != memsearch_uv_version
+    - name: Download the uv release
+      ansible.builtin.get_url:
+        url: "{{ memsearch_uv_url }}"
+        dest: "{{ memsearch_uv_tmpdir.path }}/uv.tar.gz"
+        checksum: "sha256:{{ memsearch_uv_sha256 }}"
+        mode: "0600"
 
-- name: Install uv package manager
-  become: true
-  become_user: "{{ memsearch_user }}"
-  ansible.builtin.command: "{{ memsearch_uv_tmpdir.path }}/install.sh"
-  when: memsearch_uv_installed_version != memsearch_uv_version
-  changed_when: true
-  environment:
-    HOME: "{{ memsearch_home }}"
-
-- name: Clean up uv installer
-  become: true
-  become_user: "{{ memsearch_user }}"
-  ansible.builtin.file:
-    path: "{{ memsearch_uv_tmpdir.path }}"
-    state: absent
-  when: memsearch_uv_tmpdir.path is defined
+    - name: Unpack uv
+      ansible.builtin.unarchive:
+        src: "{{ memsearch_uv_tmpdir.path }}/uv.tar.gz"
+        dest: "{{ memsearch_bin_dir }}"
+        remote_src: true
+        extra_opts: [--strip-components=1]
+        owner: root
+        group: root
+        mode: "0755"
+  always:
+    - name: Remove the uv staging directory
+      ansible.builtin.file:
+        path: "{{ memsearch_uv_tmpdir.path }}"
+        state: absent
+      when: memsearch_uv_tmpdir.path is defined
 
 # The store root is created in its own right, not left to the implicit parent
 # `state: directory` would make: an implicit parent lands root-owned, and
@@ -92,14 +96,10 @@
     mode: "0750"
 
 - name: Read installed memsearch version
-  become: true
-  become_user: "{{ memsearch_user }}"
   ansible.builtin.command: "{{ memsearch_bin }} --version"
   register: memsearch_check
   changed_when: false
   failed_when: false
-  environment:
-    HOME: "{{ memsearch_home }}"
 
 - name: Set installed memsearch version fact
   ansible.builtin.set_fact:
@@ -109,15 +109,22 @@
          | default('', true) }}
 
 - name: Install memsearch with the local ONNX embedder
-  become: true
-  become_user: "{{ memsearch_user }}"
   ansible.builtin.command: >
     {{ memsearch_uv_bin }} tool install --force
     memsearch[onnx]=={{ memsearch_version }}
   when: memsearch_installed_version != memsearch_version
   changed_when: true
-  environment:
-    HOME: "{{ memsearch_home }}"
+  environment: "{{ memsearch_uv_environment }}"
+
+# The per-user install this replaces sits earlier on the user's PATH and would
+# shadow every later version bump.
+- name: Remove the per-user memsearch install
+  become: true
+  become_user: "{{ memsearch_user }}"
+  ansible.builtin.file:
+    path: "{{ memsearch_home }}/{{ item }}"
+    state: absent
+  loop: "{{ memsearch_legacy_paths }}"
 
 - name: Put memsearch on every PATH
   ansible.builtin.file:

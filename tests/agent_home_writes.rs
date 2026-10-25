@@ -12,7 +12,9 @@
 //! - none of them names an `owner` or `group`: the writer is the owner;
 //! - every directory among them refuses to follow a link;
 //! - a directory root still has to hand to the agent, because its group is one
-//!   the agent cannot chown to, refuses to follow a link too.
+//!   the agent cannot chown to, refuses to follow a link too;
+//! - no root task takes its `src` from the agent's home: a link or copy out of
+//!   it hands every other user, root included, a file the agent can rewrite.
 //!
 //! Each role is read on the agent host's terms: its defaults under
 //! `group_vars/agent.yml`, which is where memsearch and syncthing learn that
@@ -31,7 +33,7 @@ use common::{defaults, field, parse_yaml, repo, resolve, role_tasks, task_name};
 const AGENT_HOST_ROLES: &[(&str, usize)] = &[
     ("opencode", 2),
     ("aoe", 4),
-    ("memsearch", 2),
+    ("memsearch", 3),
     ("syncthing", 0),
     ("github_identity", 0),
 ];
@@ -152,4 +154,34 @@ fn test_root_directories_handed_to_the_agent_refuse_links() {
         }
     }
     assert_eq!(seen, ROOT_DIRECTORIES_HANDED_TO_THE_AGENT);
+}
+
+#[test]
+fn test_root_never_sources_a_file_from_the_agent_home() {
+    let home = format!("/home/{AGENT_USER}/");
+    let mut sources = 0;
+    for (role, _) in AGENT_HOST_ROLES {
+        let vars = agent_host_vars(role);
+        for task in role_tasks(role) {
+            let Some((args, _)) = target(&task.body) else {
+                continue;
+            };
+            let Some(src) = field(args, "src").and_then(Value::as_str) else {
+                continue;
+            };
+            sources += 1;
+            if runs_as(&task.body, &vars).is_some() {
+                continue;
+            }
+            assert!(
+                !resolve(src, &vars).starts_with(&home),
+                "{role}: `{}` hands out {src} as root; the agent can rewrite it",
+                task_name(&task.body)
+            );
+        }
+    }
+    assert!(
+        sources > 0,
+        "no task names a `src`; the fence reads nothing"
+    );
 }
