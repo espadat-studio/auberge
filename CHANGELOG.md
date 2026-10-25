@@ -7,6 +7,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.21.0](https://github.com/espadat-studio/auberge/compare/v0.20.4...v0.21.0) - 2026-10-25
+
+### Fixed
+
+- *(hermes)* run the gateway as its own unprivileged user ([#1197](https://github.com/espadat-studio/auberge/pull/1197))
+- *(ansible)* bind every release download to a co-pinned digest ([#1195](https://github.com/espadat-studio/auberge/pull/1195))
+- *(ansible)* install actual unprivileged, keep colporteur on loopback ([#1194](https://github.com/espadat-studio/auberge/pull/1194))
+- *(host)* revoke the tailnet node and flag stale records on host removal ([#1193](https://github.com/espadat-studio/auberge/pull/1193))
+- *(standby)* reset the runner's state before every job ([#1192](https://github.com/espadat-studio/auberge/pull/1192))
+- *(forgejo)* declare the outbound fetch policy and cap repo creation ([#1191](https://github.com/espadat-studio/auberge/pull/1191))
+- *(paperless)* serve redis on a group-only socket ([#1190](https://github.com/espadat-studio/auberge/pull/1190))
+- *(backup)* stage dumps privately and restore them least-privileged ([#1189](https://github.com/espadat-studio/auberge/pull/1189))
+- *(caddy)* read zone tokens from a root-only env file ([#1188](https://github.com/espadat-studio/auberge/pull/1188))
+- *(ssh)* let hardening win over sshd_config.d drop-ins ([#1187](https://github.com/espadat-studio/auberge/pull/1187))
+- *(bichon)* bind archive dedup to body content ([#1184](https://github.com/espadat-studio/auberge/pull/1184))
+- *(syncthing)* require gui login and deny the runner loopback ([#1183](https://github.com/espadat-studio/auberge/pull/1183))
+- *(headscale)* validate minted pre-auth keys and pass extra vars as JSON ([#1181](https://github.com/espadat-studio/auberge/pull/1181))
+- *(ansible)* stop recursive file tasks from following symlinks ([#1176](https://github.com/espadat-studio/auberge/pull/1176))
+- *(agent)* keep root off paths the agent user controls ([#1179](https://github.com/espadat-studio/auberge/pull/1179))
+- *(blocky)* keep the zone token and root-run binaries out of blocky's reach ([#1180](https://github.com/espadat-studio/auberge/pull/1180))
+- *(ansible)* stage root downloads in a root-private directory ([#1177](https://github.com/espadat-studio/auberge/pull/1177))
+
+### Other
+
+- *(build-grimmory)* build upstream code without a write token ([#1186](https://github.com/espadat-studio/auberge/pull/1186))
+- *(renovate-checksums)* trust only renovate and base-ref code ([#1185](https://github.com/espadat-studio/auberge/pull/1185))
+- *(examples)* vouch for immich snapshot times from a local ledger ([#1182](https://github.com/espadat-studio/auberge/pull/1182))
+- *(uv)* bump to 0.13.3 ([#1175](https://github.com/espadat-studio/auberge/pull/1175))
+
 ## [0.20.4](https://github.com/espadat-studio/auberge/compare/v0.20.3...v0.20.4) - 2026-10-24
 
 ### Fixed
