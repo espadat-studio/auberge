@@ -104,15 +104,19 @@
         path: "{{ root_download_dir }}/baikal-{{ baikal_version }}.zip"
         state: absent
 
-    - name: Set proper permissions on Baikal directories
+    - name: Set proper permissions on the Baikal release directories
       ansible.builtin.file:
-        path: "{{ baikal_install_dir }}"
+        path: "{{ baikal_install_dir }}/{{ item }}"
         state: directory
         owner: "{{ baikal_sys_user }}"
         group: "{{ baikal_sys_user }}"
         mode: "u=rwX,go=rX"
         recurse: true
         follow: false
+      loop:
+        - Core
+        - html
+        - vendor
 
     - name: Ensure Specific directory is writable
       ansible.builtin.file:
@@ -314,7 +318,7 @@
         state: touch
         owner: "{{ baikal_sys_user }}"
         group: "{{ baikal_sys_user }}"
-        mode: "0644"
+        mode: "0660"
         modification_time: preserve
         access_time: preserve
 

@@ -11,12 +11,19 @@
 //!
 //! The domain is [`runnable_files`], the widest one: a recursive chown is as
 //! dangerous in a handler or a playbook's own tasks as in a role's `tasks/`.
+//!
+//! A recursive task over a database tree's ancestor reaches the database too,
+//! and a later task narrowing the tree again only closes the window it opened.
+//! Baikal's walk over all of `/opt/baikal` left the database, `config/` and the
+//! busy sync secrets readable by other between two tasks of every deploy.
 
 use serde_yaml::{Mapping, Value};
 
 mod common;
 
-use common::{Plays, defaults, field, relative, resolve, runnable_files, task_name, tasks_in};
+use common::{
+    Plays, defaults, field, relative, resolve, runnable_files, strings, task_name, tasks_in,
+};
 
 /// Trees that hold an App's database, by role and resolved path.
 const DATABASE_TREES: &[(&str, &str)] = &[
@@ -29,6 +36,7 @@ struct RecursiveFileTask {
     label: String,
     role: Option<String>,
     args: Mapping,
+    items: Vec<String>,
 }
 
 impl RecursiveFileTask {
@@ -36,11 +44,35 @@ impl RecursiveFileTask {
         field(&self.args, key).and_then(Value::as_str)
     }
 
+    fn paths(&self, role: &str) -> Vec<String> {
+        let Some(path) = self.arg("path") else {
+            return Vec::new();
+        };
+        let mut vars = defaults(role);
+        if self.items.is_empty() {
+            return vec![resolve(path, &vars)];
+        }
+        self.items
+            .iter()
+            .map(|item| {
+                vars.insert("item".to_string(), item.clone());
+                resolve(path, &vars)
+            })
+            .collect()
+    }
+
     fn is_over(&self, role: &str, tree: &str) -> bool {
+        self.role.as_deref() == Some(role) && self.paths(role).iter().any(|path| path == tree)
+    }
+
+    fn covers(&self, role: &str, tree: &str) -> bool {
         self.role.as_deref() == Some(role)
-            && self
-                .arg("path")
-                .is_some_and(|path| resolve(path, &defaults(role)) == tree)
+            && self.paths(role).iter().any(|path| {
+                tree == path
+                    || tree
+                        .strip_prefix(path.as_str())
+                        .is_some_and(|rest| rest.starts_with('/'))
+            })
     }
 }
 
@@ -64,6 +96,7 @@ fn recursive_file_tasks() -> Vec<RecursiveFileTask> {
                             label: format!("{file}: {}", task_name(&task.body)),
                             role: role.clone(),
                             args,
+                            items: strings(field(&task.body, "loop")),
                         }
                     })
                 })
@@ -122,7 +155,7 @@ fn every_recursive_mode_keeps_files_apart_from_directories() {
 fn database_trees_grant_nothing_to_other() {
     let tasks = recursive_file_tasks();
     for (role, tree) in DATABASE_TREES {
-        for task in tasks.iter().filter(|task| task.is_over(role, tree)) {
+        for task in tasks.iter().filter(|task| task.covers(role, tree)) {
             let mode = task
                 .arg("mode")
                 .unwrap_or_else(|| panic!("{}: no mode", task.label));
