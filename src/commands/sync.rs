@@ -232,22 +232,50 @@ pub fn run_sync_music(
     Ok(())
 }
 
+/// hermes runs as its own user (ADR-0087), so every remote step acts as that
+/// user through the Host's escalation rather than as the ssh user.
+const HERMES_USER: &str = "hermes";
+
+fn hermes_remote_config(route: &crate::services::route::Route) -> String {
+    format!(
+        "{}@{}:/home/{HERMES_USER}/.hermes/config.yaml",
+        route.user, route.address
+    )
+}
+
+fn run_hermes_rsync(mut cmd: Command) -> Result<()> {
+    let result = output::run_piped("rsync", &mut cmd).wrap_err("Failed to execute rsync")?;
+    if !result.status.success() {
+        return Err(result.error("rsync failed"));
+    }
+    output::clear_subprocess_lines(result.lines_written);
+    Ok(())
+}
+
 fn prepare_hermes_dir(session: &dyn SshSession) -> Result<()> {
     let prepare = session
-        .run("mkdir -p ~/.hermes")
-        .wrap_err("Failed to prepare remote ~/.hermes directory")?;
+        .run(&format!(
+            "{} -u {HERMES_USER} mkdir -p /home/{HERMES_USER}/.hermes",
+            session.become_method()
+        ))
+        .wrap_err("Failed to prepare remote hermes directory")?;
     if !prepare.success {
-        eyre::bail!("Remote ~/.hermes directory is missing and could not be created");
+        eyre::bail!(
+            "Remote /home/{HERMES_USER}/.hermes could not be created; deploy hermes first: {}",
+            prepare.stderr_str().trim()
+        );
     }
     Ok(())
 }
 
-/// hermes-gateway is a *user* unit, so `systemctl --user` needs the bus socket
-/// its `XDG_RUNTIME_DIR` names — an ssh command runs without the session
-/// environment a login would have set up, and the restart fails without it.
+/// hermes-gateway is a *user* unit of the hermes user, reached through that
+/// user's manager with `--machine`, which needs root.
 fn restart_hermes_gateway(session: &dyn SshSession) -> Result<()> {
     let restart = session
-        .run("XDG_RUNTIME_DIR=/run/user/$(id -u) systemctl --user restart hermes-gateway")
+        .run(&format!(
+            "{} systemctl --user --machine={HERMES_USER}@ restart hermes-gateway",
+            session.become_method()
+        ))
         .wrap_err("Failed to restart hermes-gateway")?;
     if !restart.success {
         eyre::bail!("hermes-gateway restart failed");
@@ -255,18 +283,28 @@ fn restart_hermes_gateway(session: &dyn SshSession) -> Result<()> {
     Ok(())
 }
 
-/// One config file, pushed. The flag set is the caller's — `--dry-run` is the
-/// reason this is not [`SshSession::scp_to`] or [`SshSession::rsync_to`], and
-/// `--delete` and `--rsync-path=sudo rsync` would both be wrong for a file
-/// under the ssh user's own home. Reaching the Host is still the seam's: the
-/// `-e` argument comes from the session and is never spelled here.
-fn hermes_rsync_command(e_arg: &str, source: &Path, destination: &str, dry_run: bool) -> Command {
+/// One config file, either direction. The flag set is the caller's —
+/// `--dry-run` is the reason this is not [`SshSession::scp_to`] or
+/// [`SshSession::rsync_to`]. The remote rsync runs as the hermes user, so the
+/// file lands owned by it; `--delete` would be wrong for a single file.
+/// Reaching the Host is still the seam's: the `-e` argument comes from the
+/// session and is never spelled here.
+fn hermes_rsync_command(
+    e_arg: &str,
+    become_method: &str,
+    from: impl AsRef<std::ffi::OsStr>,
+    to: impl AsRef<std::ffi::OsStr>,
+    dry_run: bool,
+) -> Command {
     let mut cmd = Command::new("rsync");
     cmd.arg("-az")
         .arg("-e")
         .arg(e_arg)
-        .arg(source)
-        .arg(destination);
+        .arg(format!(
+            "--rsync-path={become_method} -u {HERMES_USER} rsync"
+        ))
+        .arg(from)
+        .arg(to);
     if dry_run {
         cmd.arg("--dry-run");
     }
@@ -304,7 +342,13 @@ pub fn run_sync_hermes(
             "Pulling hermes config from remote to {}",
             local_dest.display()
         ));
-        session.scp_from(".hermes/config.yaml", &local_dest)?;
+        run_hermes_rsync(hermes_rsync_command(
+            &session.rsync_e_arg(),
+            session.become_method(),
+            hermes_remote_config(&route),
+            &local_dest,
+            false,
+        ))?;
         output::success("Hermes config pulled");
         return Ok(());
     }
@@ -327,28 +371,23 @@ pub fn run_sync_hermes(
 
     let route = crate::services::route::resolve(&xdg_host, Some(ssh_key))?;
     let session = LiveSshSession::new(&route, &xdg_host.become_method)?;
-    let remote_dest = format!("{}@{}:.hermes/config.yaml", route.user, route.address);
+    let remote_dest = hermes_remote_config(&route);
 
-    output::info("Preparing remote ~/.hermes directory...");
+    output::info("Preparing remote hermes directory...");
     prepare_hermes_dir(&session)?;
 
     output::info(&format!("Syncing hermes config to {}", remote_dest));
 
-    let mut cmd = hermes_rsync_command(
-        &session.rsync_e_arg(),
-        &config_source,
-        &remote_dest,
-        dry_run,
-    );
     if dry_run {
         output::info("Dry run mode");
     }
-
-    let result = output::run_piped("rsync", &mut cmd).wrap_err("Failed to execute rsync")?;
-    if !result.status.success() {
-        return Err(result.error("rsync failed"));
-    }
-    output::clear_subprocess_lines(result.lines_written);
+    run_hermes_rsync(hermes_rsync_command(
+        &session.rsync_e_arg(),
+        session.become_method(),
+        &config_source,
+        &remote_dest,
+        dry_run,
+    ))?;
     output::success("Hermes config synced");
 
     if dry_run {
@@ -397,13 +436,13 @@ mod tests {
     }
 
     #[test]
-    fn prepare_hermes_dir_creates_it_idempotently() {
-        let mock = crate::services::ssh::MockSshSession::new();
+    fn prepare_hermes_dir_creates_it_as_the_hermes_user() {
+        let mock = crate::services::ssh::MockSshSession::with_become_method("doas");
         prepare_hermes_dir(&mock).unwrap();
         assert_eq!(
             mock.calls(),
             vec![crate::services::ssh::SshOp::Run(
-                "mkdir -p ~/.hermes".to_string()
+                "doas -u hermes mkdir -p /home/hermes/.hermes".to_string()
             )]
         );
     }
@@ -412,23 +451,21 @@ mod tests {
     fn prepare_hermes_dir_fails_loudly_when_the_remote_refuses() {
         let mock = crate::services::ssh::MockSshSession::new();
         mock.stage_run_result(crate::services::ssh::CommandResult::from_stderr(
-            "mkdir: Permission denied",
+            "sudo: unknown user hermes",
         ));
         let err = prepare_hermes_dir(&mock).unwrap_err();
         assert!(err.to_string().contains("could not be created"), "{err}");
     }
 
     #[test]
-    fn restart_hermes_gateway_carries_the_user_bus_into_the_ssh_command() {
+    fn restart_hermes_gateway_reaches_the_hermes_user_manager() {
         let mock = crate::services::ssh::MockSshSession::new();
         restart_hermes_gateway(&mock).unwrap();
-        let crate::services::ssh::SshOp::Run(cmd) = &mock.calls()[0] else {
-            panic!("expected a Run");
-        };
-        assert!(cmd.contains("XDG_RUNTIME_DIR=/run/user/$(id -u)"), "{cmd}");
-        assert!(
-            cmd.contains("systemctl --user restart hermes-gateway"),
-            "{cmd}"
+        assert_eq!(
+            mock.calls(),
+            vec![crate::services::ssh::SshOp::Run(
+                "sudo systemctl --user --machine=hermes@ restart hermes-gateway".to_string()
+            )]
         );
     }
 
@@ -443,8 +480,9 @@ mod tests {
     fn hermes_rsync_takes_its_transport_from_the_session() {
         let cmd = hermes_rsync_command(
             crate::services::ssh::MOCK_RSYNC_E_ARG,
-            Path::new("/home/u/.config/hermes/config.yaml"),
-            "deploy@192.0.2.1:.hermes/config.yaml",
+            "sudo",
+            "/home/u/.config/hermes/config.yaml",
+            "deploy@192.0.2.1:/home/hermes/.hermes/config.yaml",
             false,
         );
         let args = args_of(&cmd);
@@ -453,25 +491,35 @@ mod tests {
     }
 
     #[test]
-    fn hermes_rsync_pushes_the_file_without_deleting_or_escalating() {
+    fn hermes_rsync_acts_as_the_hermes_user_without_deleting() {
         let cmd = hermes_rsync_command(
             "ssh",
-            Path::new("/home/u/.config/hermes/config.yaml"),
-            "deploy@192.0.2.1:.hermes/config.yaml",
+            "doas",
+            "/home/u/.config/hermes/config.yaml",
+            "deploy@192.0.2.1:/home/hermes/.hermes/config.yaml",
             false,
         );
         let args = args_of(&cmd);
         assert!(args.contains(&"-az".to_string()));
         assert!(!args.contains(&"--delete".to_string()));
-        assert!(!args.iter().any(|a| a.contains("--rsync-path")));
+        assert!(args.contains(&"--rsync-path=doas -u hermes rsync".to_string()));
         assert!(!args.contains(&"--dry-run".to_string()));
-        assert_eq!(args.last().unwrap(), "deploy@192.0.2.1:.hermes/config.yaml");
+        assert_eq!(
+            args.last().unwrap(),
+            "deploy@192.0.2.1:/home/hermes/.hermes/config.yaml"
+        );
     }
 
     #[test]
     fn hermes_rsync_adds_dry_run_when_asked() {
-        let cmd = hermes_rsync_command("ssh", Path::new("/tmp/c.yaml"), "h:.hermes/c.yaml", true);
+        let cmd = hermes_rsync_command("ssh", "sudo", "/tmp/c.yaml", "h:/c.yaml", true);
         assert!(args_of(&cmd).contains(&"--dry-run".to_string()));
+    }
+
+    #[test]
+    fn hermes_user_matches_the_role_default() {
+        let defaults = include_str!("../../ansible/roles/hermes/defaults/main.yml");
+        assert!(defaults.contains(&format!("hermes_user: {HERMES_USER}\n")));
     }
 
     fn transfer_command() -> Command {

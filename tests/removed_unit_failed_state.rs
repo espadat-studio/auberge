@@ -177,6 +177,8 @@ fn unit_files_removed(task: &Mapping, file: &str) -> Vec<String> {
 fn reset_in(task: &Mapping, file: &str) -> Option<Reset> {
     let command = field(task, "ansible.builtin.command").and_then(Value::as_str)?;
     let tail = command.split_once("reset-failed")?.1.trim();
+    // A unit in a user manager is reset there; `--user` picks the manager.
+    let tail = tail.strip_prefix("--user ").unwrap_or(tail).trim();
     let items = strings(field(task, "loop"));
     let expansions: Vec<String> = if tail.contains("{{") {
         assert!(
@@ -359,6 +361,7 @@ fn test_the_scan_still_sees_every_removal_site() {
         "ansible/roles/apt/tasks/main.yml::apache-htcacheclean.service",
         "ansible/roles/apt/tasks/main.yml::apache2.service",
         "ansible/roles/freshrss/tasks/main.yml::freshrss.service",
+        "ansible/roles/hermes/tasks/main.yml::hermes-gateway.service",
     ]
     .into_iter()
     .map(str::to_string)

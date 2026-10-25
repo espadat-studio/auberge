@@ -2,13 +2,13 @@
 title: "auberge sync hermes"
 ---
 
-Sync `~/.config/hermes/config.yaml` to `~/.hermes/config.yaml` on a remote host and restart `hermes-gateway`. Alias: `auberge sy h`.
+Sync `~/.config/hermes/config.yaml` to `/home/hermes/.hermes/config.yaml` on a remote host and restart `hermes-gateway`. Alias: `auberge sy h`.
 
 ```bash
 auberge sync hermes [OPTIONS]
 ```
 
-Creates `~/.hermes/` on the remote if absent. Pass `--pull` to reverse direction (downloads remote → local, no service restart). SSH key: `host.ssh_key` from `hosts.toml` if set, else `~/.ssh/identities/{host}/{user}`.
+Every remote step runs as the `hermes` user through the host's `become_method`, so the ssh user needs sudo. Creates `/home/hermes/.hermes/` if absent; fails if hermes was never deployed. Pass `--pull` to reverse direction (downloads remote → local, no service restart). SSH key: `host.ssh_key` from `hosts.toml` if set, else `~/.ssh/identities/{host}/{user}`.
 
 ## Options
 
@@ -31,4 +31,4 @@ auberge sync hermes --host myserver --pull --source /tmp/hermes-config.yaml
 ## Gotchas
 
 - `--dry-run` and `--pull` are mutually exclusive.
-- Service restart failures: `ssh user@your-vps 'journalctl --user -u hermes-gateway -n 50'`.
+- Service restart failures: `ssh user@your-vps 'sudo journalctl _UID=$(id -u hermes) -n 50'`.
