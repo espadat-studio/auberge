@@ -19,12 +19,15 @@
 #                 from the time the box wrote into the snapshot: the box is
 #                 what this half guards against. A new snapshot dated in the
 #                 future, or older than the newest one an earlier run already
-#                 saw, raises the same alarm, stays out of the ledger so the
-#                 alarm repeats, and blocks retention — --keep-within and
-#                 --keep-monthly both count from snapshot times, so a forged
-#                 time would steer which genuine snapshots get forgotten.
-#   2. retention  restic forget --keep-within 30d --keep-monthly 12 --prune,
-#                 per restic's append-only guidance.
+#                 saw, raises the same alarm, is recorded as rejected so the
+#                 alarm repeats until it is removed, and blocks retention —
+#                 --keep-within and --keep-monthly both count from snapshot
+#                 times, so a forged time would steer which genuine snapshots
+#                 get forgotten.
+#   2. retention  --keep-within 30d --keep-monthly 12, per restic's
+#                 append-only guidance: planned as a dry run over exactly the
+#                 snapshots the watchdog vetted, then applied by id with
+#                 restic forget --prune.
 #
 # Configuration — the environment is the whole surface. restic reads its own
 # variables: RESTIC_REPOSITORY, RESTIC_PASSWORD (or RESTIC_PASSWORD_COMMAND /
@@ -37,9 +40,10 @@
 # #558 exists to prove. The 48h threshold is overridable via
 # IMMICH_SNAPSHOT_MAX_AGE_HOURS. The ledger lives at
 # ${XDG_STATE_HOME:-~/.local/state}/immich-b2-prune/ledger, overridable via
-# IMMICH_PRUNE_LEDGER; one line per snapshot: id, first-seen epoch, claimed
-# epoch. First-seen is capped at the claimed time, so a weekly run does not
-# make a snapshot written six days ago look fresh.
+# IMMICH_PRUNE_LEDGER. It is append-only, one line per snapshot ever seen:
+# id, first-seen epoch (or - when rejected), claimed epoch. First-seen is
+# capped at the claimed time, so a weekly run does not make a snapshot written
+# six days ago look fresh.
 #
 # Install on the laptop — a wrapper owns provisioning the environment, so the
 # unit file holds no credentials and this script stays tool-agnostic:
@@ -85,8 +89,9 @@
 #   1 — watchdog finding (stale, empty, or forged-time repository) or
 #       retention failed
 #   2 — operational error: missing prerequisite, credential resolution failed,
-#       the repository or the ledger could not be read (distinguishable from "found
-#       stale", the way the fleet's other watchers keep the two apart)
+#       the repository could not be read, or the ledger could not be read or
+#       written (distinguishable from "found stale", the way the fleet's other
+#       watchers keep the two apart)
 #
 # shellcheck shell=bash
 
@@ -97,7 +102,11 @@ readonly KEEP_WITHIN='30d'
 readonly KEEP_MONTHLY=12
 readonly MAX_SNAPSHOT_AGE_HOURS="${IMMICH_SNAPSHOT_MAX_AGE_HOURS:-48}"
 readonly MAX_CLOCK_SKEW_SECONDS=3600
+readonly SNAPSHOT_ID_PATTERN='^[0-9a-f]{64}$'
 readonly LEDGER="${IMMICH_PRUNE_LEDGER:-${XDG_STATE_HOME:-${HOME}/.local/state}/immich-b2-prune/ledger}"
+
+# The snapshot ids the watchdog vetted; retention may act on these alone.
+VETTED_IDS=()
 
 # die <exit-code> <message> [remediation-line...]
 die() {
@@ -167,47 +176,69 @@ watchdog() {
     exit 1
   fi
 
-  local -A first_seen=()
-  local last_newest=0 id seen claimed
+  local ledger=''
   if [[ -e "${LEDGER}" ]]; then
-    while IFS=$'\t' read -r id seen claimed; do
-      [[ "${id}" =~ ^[0-9a-f]{64}$ && "${seen}" =~ ^[0-9]+$ && "${claimed}" =~ ^[0-9]+$ ]] \
-        || die 2 "ledger is corrupt: ${LEDGER}" \
-          'it is the only record of when snapshots really appeared; restore it' \
-          'from backup, or delete it to re-trust the snapshot times once'
-      first_seen["${id}"]="${seen}"
-      if ((claimed > last_newest)); then last_newest="${claimed}"; fi
-    done <"${LEDGER}"
+    ledger=$(<"${LEDGER}") || die 2 "cannot read the ledger: ${LEDGER}"
+  else
+    alert "no ledger at ${LEDGER} — trusting the box's snapshot times once; expected on the first run only"
   fi
 
-  local now time newest=0 rows=() forged=()
+  local -A first_seen=()
+  local last_newest=0 id seen claimed
+  if [[ -n "${ledger}" ]]; then
+    while IFS=$'\t' read -r id seen claimed; do
+      [[ "${id}" =~ ${SNAPSHOT_ID_PATTERN} && "${seen}" =~ ^([0-9]+|-)$ && "${claimed}" =~ ^[0-9]+$ ]] \
+        || die 2 "ledger is corrupt: ${LEDGER}" \
+          'it is the only record of when snapshots really appeared; restore it' \
+          'from backup — deleting it re-trusts the box'"'"'s snapshot times once'
+      first_seen["${id}"]="${seen}"
+      if [[ "${seen}" != '-' ]] && ((claimed > last_newest)); then last_newest="${claimed}"; fi
+    done <<<"${ledger}"
+  fi
+
+  local now time newest=0 appended=() forged=()
   now=$(date +%s)
+  VETTED_IDS=()
   while IFS=$'\t' read -r id time; do
-    [[ "${id}" =~ ^[0-9a-f]{64}$ ]] \
+    [[ "${id}" =~ ${SNAPSHOT_ID_PATTERN} ]] \
       || die 2 "restic listed a snapshot id this script cannot read: ${id}"
     claimed=$(date -d "${time}" +%s) \
       || die 2 "cannot parse snapshot time: ${time}"
+    VETTED_IDS+=("${id}")
     if [[ -n "${first_seen[${id}]+set}" ]]; then
       seen="${first_seen[${id}]}"
+      if [[ "${seen}" == '-' ]]; then
+        forged+=("${id:0:8} (dated ${time}) was rejected by an earlier run")
+        continue
+      fi
     elif ((claimed > now + MAX_CLOCK_SKEW_SECONDS)); then
       forged+=("${id:0:8} is dated ${time}, in the future")
+      appended+=("${id}"$'\t-\t'"${claimed}"$'\n')
       continue
     elif ((claimed < last_newest)); then
       forged+=("${id:0:8} is dated ${time}, before snapshots an earlier run already saw")
+      appended+=("${id}"$'\t-\t'"${claimed}"$'\n')
       continue
     else
       seen=$((claimed < now ? claimed : now))
+      appended+=("${id}"$'\t'"${seen}"$'\t'"${claimed}"$'\n')
     fi
-    rows+=("${id}"$'\t'"${seen}"$'\t'"${claimed}"$'\n')
     if ((seen > newest)); then newest="${seen}"; fi
   done <<<"${listing}"
 
-  mkdir -p -- "$(dirname -- "${LEDGER}")"
-  printf '%s' "${rows[@]}" >"${LEDGER}.tmp"
-  mv -f -- "${LEDGER}.tmp" "${LEDGER}"
+  if ((${#appended[@]} > 0)); then
+    {
+      mkdir -p -- "$(dirname -- "${LEDGER}")" \
+        && {
+          [[ -z "${ledger}" ]] || printf '%s\n' "${ledger}"
+          printf '%s' "${appended[@]}"
+        } >"${LEDGER}.tmp" \
+        && mv -f -- "${LEDGER}.tmp" "${LEDGER}"
+    } || die 2 "cannot write the ledger: ${LEDGER}"
+  fi
 
   if ((${#forged[@]} > 0)); then
-    alert "new snapshot times cannot be trusted, retention skipped: ${forged[*]}"
+    alert "snapshot times cannot be trusted, retention skipped: ${forged[*]}. Inspect them, then remove each with the full key: restic forget <id>"
     exit 1
   fi
 
@@ -218,12 +249,35 @@ watchdog() {
   fi
 }
 
+retention_failed() {
+  die 1 'retention failed' \
+    'a stale lock from an interrupted run is the usual cause: restic unlock' \
+    'a permission error means the box key leaked into this half — it must' \
+    'never be able to prune'
+}
+
+# The policy is computed as a dry run, then applied by id: the box can still
+# write between the watchdog's listing and this call, and a policy run would
+# count --keep-within from whatever snapshot is newest by then. A dry run that
+# saw any snapshot the watchdog did not vet is refused.
 apply_retention() {
-  restic forget --keep-within "${KEEP_WITHIN}" --keep-monthly "${KEEP_MONTHLY}" --prune \
-    || die 1 'retention failed' \
-      'a stale lock from an interrupted run is the usual cause: restic unlock' \
-      'a permission error means the box key leaked into this half — it must' \
-      'never be able to prune'
+  local plan
+  plan=$(restic forget --dry-run --json --keep-within "${KEEP_WITHIN}" --keep-monthly "${KEEP_MONTHLY}") \
+    || retention_failed
+
+  local planned vetted
+  planned=$(printf '%s' "${plan}" | jq -r '.[] | (.keep // [])[], (.remove // [])[] | .id' | sort) \
+    || die 2 'restic forget returned JSON this script cannot read'
+  vetted=$(printf '%s\n' "${VETTED_IDS[@]}" | sort)
+  if [[ "${planned}" != "${vetted}" ]]; then
+    alert 'a snapshot appeared while retention was being planned — retention skipped'
+    exit 1
+  fi
+
+  local remove=()
+  mapfile -t remove < <(printf '%s' "${plan}" | jq -r '.[] | (.remove // [])[] | .id')
+  ((${#remove[@]} > 0)) || return 0
+  restic forget --prune "${remove[@]}" || retention_failed
 }
 
 main() {
