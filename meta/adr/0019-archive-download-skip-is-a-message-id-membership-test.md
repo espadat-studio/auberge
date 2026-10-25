@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted, 2026-08-11. **Completes ADR-0013** — that ADR made the Message-ID the archive's identity and fixed the consumer that counted wrong (the coverage gate). It left the producer asking a different question. This one aligns them.
+Accepted, 2026-08-11. **Completes ADR-0013** — that ADR made the Message-ID the archive's identity and fixed the consumer that counted wrong (the coverage gate). It left the producer asking a different question. This one aligns them. Amended 2026-10-25 (ADR-0013 amendment): a held key dedups a staged body only when an archived body under it is byte-identical; a different body is published alongside.
 
 ## Decision
 

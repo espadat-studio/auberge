@@ -2,7 +2,7 @@ use crate::services::bichon::api::StoreEnvelope;
 use chrono::DateTime;
 use eyre::Result;
 use serde::Serialize;
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CoverageStatus {
@@ -45,6 +45,20 @@ pub struct MissingMessage {
 pub struct UnverifiableCounts {
     pub store_synthetic: usize,
     pub archive_sha256: usize,
+    pub contested: Vec<ContestedId>,
+}
+
+/// A Message-ID claimed more than once on either side: by several store
+/// messages, or by several archived bodies. The archive dedups only
+/// byte-identical bodies, so a second body under one id is a distinct message.
+/// Any sender can claim an id, so a match by id cannot show which body is
+/// held for which store message. Counted instead: fewer archived bodies than
+/// store messages is a gap.
+#[derive(Serialize, Debug, PartialEq, Eq)]
+pub struct ContestedId {
+    pub message_id: String,
+    pub store: usize,
+    pub archive: usize,
 }
 
 #[derive(Serialize, Debug, PartialEq, Eq)]
@@ -59,6 +73,11 @@ impl CoverageReport {
     pub fn status(&self) -> CoverageStatus {
         if self.missing.is_empty()
             && self.unverifiable.store_synthetic <= self.unverifiable.archive_sha256
+            && self
+                .unverifiable
+                .contested
+                .iter()
+                .all(|c| c.store <= c.archive)
         {
             CoverageStatus::Covered
         } else {
@@ -169,7 +188,7 @@ pub fn compare_coverage(
     folder: &str,
     cutoff_ym: (i32, u32),
 ) -> Result<CoverageReport> {
-    let mut archived = HashSet::new();
+    let mut archived: HashMap<&str, usize> = HashMap::new();
     let mut archive_sha256 = 0usize;
     for row in rows {
         if row.folder != folder {
@@ -190,13 +209,13 @@ pub fn compare_coverage(
         if row.message_id.starts_with("sha256:") {
             archive_sha256 += 1;
         }
-        archived.insert(row.message_id.as_str());
+        *archived.entry(row.message_id.as_str()).or_default() += 1;
     }
 
     let mut store_messages = 0usize;
-    let mut matched = 0usize;
     let mut store_synthetic = 0usize;
-    let mut missing = Vec::new();
+    let mut claims: Vec<(String, &StoreEnvelope)> = Vec::new();
+    let mut store_counts: HashMap<String, usize> = HashMap::new();
     for envelope in envelopes {
         match envelope.mailbox_name.as_deref() {
             Some(name) if name == folder => {}
@@ -209,12 +228,34 @@ pub fn compare_coverage(
         store_messages += 1;
         match canonicalize_store_id(&envelope.message_id) {
             StoreId::Synthetic => store_synthetic += 1,
-            StoreId::Canonical(id) if archived.contains(id.as_str()) => matched += 1,
-            StoreId::Canonical(id) => missing.push(MissingMessage {
+            StoreId::Canonical(id) => {
+                *store_counts.entry(id.clone()).or_default() += 1;
+                claims.push((id, envelope));
+            }
+        }
+    }
+
+    let mut matched = 0usize;
+    let mut missing = Vec::new();
+    let mut contested = Vec::new();
+    let mut seen_contested = HashSet::new();
+    for (id, envelope) in claims {
+        let store = store_counts[&id];
+        let archive = archived.get(id.as_str()).copied().unwrap_or(0);
+        if archive == 0 {
+            missing.push(MissingMessage {
                 message_id: id,
                 date: iso_date(envelope.date),
                 uid: envelope.uid,
-            }),
+            });
+        } else if store == 1 && archive == 1 {
+            matched += 1;
+        } else if seen_contested.insert(id.clone()) {
+            contested.push(ContestedId {
+                message_id: id,
+                store,
+                archive,
+            });
         }
     }
 
@@ -225,6 +266,7 @@ pub fn compare_coverage(
         unverifiable: UnverifiableCounts {
             store_synthetic,
             archive_sha256,
+            contested,
         },
     })
 }
@@ -509,6 +551,87 @@ mod tests {
     }
 
     #[test]
+    fn two_store_messages_claiming_one_archived_id_are_a_contested_gap() {
+        let report = compare_coverage(
+            &[
+                envelope("x@x.io", Some("INBOX"), 0, 1),
+                envelope("x@x.io", Some("INBOX"), 0, 2),
+            ],
+            &[row("/a/2026/01/1.meta.json", "INBOX", "x@x.io")],
+            "INBOX",
+            CUTOFF,
+        )
+        .unwrap();
+
+        assert_eq!(report.matched, 0);
+        assert!(report.missing.is_empty());
+        assert_eq!(
+            report.unverifiable.contested,
+            vec![ContestedId {
+                message_id: "x@x.io".to_string(),
+                store: 2,
+                archive: 1,
+            }]
+        );
+        assert_eq!(report.status(), CoverageStatus::Gap);
+    }
+
+    #[test]
+    fn an_id_archived_with_two_bodies_is_unverifiable_not_matched() {
+        let report = compare_coverage(
+            &[envelope("x@x.io", Some("INBOX"), 0, 1)],
+            &[
+                row("/a/2026/01/1.meta.json", "INBOX", "x@x.io"),
+                row("/a/2026/01/2.meta.json", "INBOX", "x@x.io"),
+            ],
+            "INBOX",
+            CUTOFF,
+        )
+        .unwrap();
+
+        assert_eq!(report.matched, 0);
+        assert_eq!(report.unverifiable.contested.len(), 1);
+        assert_eq!(report.status(), CoverageStatus::Covered);
+    }
+
+    #[test]
+    fn a_contested_id_with_a_body_per_store_message_is_covered() {
+        let report = compare_coverage(
+            &[
+                envelope("x@x.io", Some("INBOX"), 0, 1),
+                envelope("x@x.io", Some("INBOX"), 0, 2),
+            ],
+            &[
+                row("/a/2026/01/1.meta.json", "INBOX", "x@x.io"),
+                row("/a/2026/01/2.meta.json", "INBOX", "x@x.io"),
+            ],
+            "INBOX",
+            CUTOFF,
+        )
+        .unwrap();
+
+        assert_eq!(report.store_messages, 2);
+        assert_eq!(report.status(), CoverageStatus::Covered);
+    }
+
+    #[test]
+    fn store_messages_claiming_an_unarchived_id_stay_named_missing() {
+        let report = compare_coverage(
+            &[
+                envelope("x@x.io", Some("INBOX"), 0, 1),
+                envelope("x@x.io", Some("INBOX"), 0, 2),
+            ],
+            &[],
+            "INBOX",
+            CUTOFF,
+        )
+        .unwrap();
+
+        assert_eq!(report.missing.len(), 2);
+        assert!(report.unverifiable.contested.is_empty());
+    }
+
+    #[test]
     fn a_gap_from_missing_and_a_gap_from_synthetic_render_one_status() {
         let report = CoverageReport {
             store_messages: 3,
@@ -521,6 +644,7 @@ mod tests {
             unverifiable: UnverifiableCounts {
                 store_synthetic: 0,
                 archive_sha256: 0,
+                contested: Vec::new(),
             },
         };
         assert_eq!(report.status().as_str(), "gap");

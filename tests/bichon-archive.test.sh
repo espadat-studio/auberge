@@ -227,20 +227,26 @@ printf '\n== download_message\n'
 # and what is under test is what the archive does with a payload — not how the
 # payload arrived. STUB_PAYLOAD is written wherever --output points, and
 # STUB_STATUS is curl's verdict, which for this defect is always success.
+# STUB_BODIES overrides the payload per envelope id, for a run that must be
+# served two different bodies.
 STUB_PAYLOAD=''
 STUB_STATUS=0
+declare -A STUB_BODIES=()
 curl_auth() {
-  local out=''
+  local out='' url=''
   while [ $# -gt 0 ]; do
     case "$1" in
       --output)
         out="$2"
         shift 2
         ;;
-      *) shift ;;
+      *)
+        url="$1"
+        shift
+        ;;
     esac
   done
-  [ -n "${out}" ] && printf '%s' "${STUB_PAYLOAD}" >"${out}"
+  [ -n "${out}" ] && printf '%s' "${STUB_BODIES["${url##*/}"]-${STUB_PAYLOAD}}" >"${out}"
   return "${STUB_STATUS}"
 }
 
@@ -470,15 +476,18 @@ printf '{"folder":"INBOX","message_id":"lit@[10.0.0.1]"}\n' >"${SET_DIR}/2026/08
 
 assert_succeeds 'a keyed account loads' load_archived_message_ids "${SET_ACCOUNT}"
 assert_eq 'every sidecar of every month partition contributes one key' '3' \
-  "${#ARCHIVED_MESSAGE_IDS[@]}"
+  "${#ARCHIVED_BODIES_BY_ID[@]}"
 assert_eq 'a key from one partition is present' 'archived' \
-  "${ARCHIVED_MESSAGE_IDS['july@example.com']+archived}"
+  "${ARCHIVED_BODIES_BY_ID['july@example.com']+archived}"
 assert_eq 'a key from another partition is present' 'archived' \
-  "${ARCHIVED_MESSAGE_IDS['august@example.com']+archived}"
+  "${ARCHIVED_BODIES_BY_ID['august@example.com']+archived}"
 assert_eq 'a domain-literal id survives as a key' 'archived' \
-  "${ARCHIVED_MESSAGE_IDS['lit@[10.0.0.1]']+archived}"
+  "${ARCHIVED_BODIES_BY_ID['lit@[10.0.0.1]']+archived}"
+assert_eq 'a key maps to the body that claims it' \
+  "${SET_DIR}/2026/07/30.eml" \
+  "$(printf '%s' "${ARCHIVED_BODIES_BY_ID['july@example.com']}")"
 assert_eq 'an id not in the corpus is absent' '' \
-  "${ARCHIVED_MESSAGE_IDS['absent@example.com']+archived}"
+  "${ARCHIVED_BODIES_BY_ID['absent@example.com']+archived}"
 
 # The set is rebuilt per account, so the previous account's keys must not leak
 # into the next one's membership test — they would suppress downloads of mail
@@ -486,7 +495,7 @@ assert_eq 'an id not in the corpus is absent' '' \
 assert_succeeds 'an account with no archive directory is a no-op' \
   load_archived_message_ids 'absent@e.com'
 assert_eq "the no-op leaves an empty set, not the last account's" '0' \
-  "${#ARCHIVED_MESSAGE_IDS[@]}"
+  "${#ARCHIVED_BODIES_BY_ID[@]}"
 
 # backfill_message_ids runs before this and fails the run over an unkeyed
 # sidecar, so contributing nothing is right; contributing an empty key would make
@@ -495,7 +504,7 @@ printf '{"folder":"INBOX","tags":[]}\n' >"${SET_DIR}/2026/08/33.meta.json"
 assert_succeeds 'an unkeyed sidecar does not fail the load' \
   load_archived_message_ids "${SET_ACCOUNT}"
 assert_eq 'an unkeyed sidecar contributes no key at all' '3' \
-  "${#ARCHIVED_MESSAGE_IDS[@]}"
+  "${#ARCHIVED_BODIES_BY_ID[@]}"
 rm "${SET_DIR}/2026/08/33.meta.json"
 
 # A set quietly short of one entry is a duplicate written on the next tick, so an
@@ -623,6 +632,56 @@ assert_eq 'a header-less body already archived is deduped by its hash' \
   "$(counters_of "${HASHED_ACCOUNT}")"
 assert_eq 'no second copy of it is written' '1' \
   "$(find "${HASHED_DIR}" -name '*.eml' | wc -l)"
+
+# Any sender chooses the Message-ID header. Only a byte-identical body is the
+# same message re-offered; a different body under an archived id is another
+# message, and dropping it would leave the archive without it.
+STUB_ENVELOPES="[{\"id\":\"44444444-5555-6666-7777-888888888888\",\"date\":${AUG_MS},\"mailbox_name\":\"INBOX\"}]"
+STUB_PAYLOAD='Message-ID: <already@example.com>
+
+a different body claiming the same id
+'
+assert_eq 'a different body under an archived id is published, not deduped' \
+  'processed=1 skipped=0 deduped=0 failures=0' \
+  "$(counters_of "${DEDUP_ACCOUNT}")"
+assert_eq 'it is archived alongside the body that claimed the id first' \
+  'a different body claiming the same id' \
+  "$(tail -1 "${DEDUP_DIR}/44444444-5555-6666-7777-888888888888.eml")"
+assert_eq 'the first body is untouched' 'the body already archived' \
+  "$(tail -1 "${DEDUP_DIR}/8437886698289967.eml")"
+assert_eq 'both sidecars claim the id' '2' \
+  "$(grep -l '"already@example.com"' "${DEDUP_DIR}"/*.meta.json | wc -l)"
+
+# Both bodies are now archived under one id, so a re-offer of either is still
+# the #455 case and must still be deduped.
+STUB_ENVELOPES="[{\"id\":\"55555555-6666-7777-8888-999999999999\",\"date\":${AUG_MS},\"mailbox_name\":\"INBOX\"}]"
+assert_eq 'a re-offer of the second body is deduped against it' \
+  'processed=0 skipped=0 deduped=1 failures=0' \
+  "$(counters_of "${DEDUP_ACCOUNT}")"
+
+# The same collision inside one run: the body offered first claims the id, and
+# the later one must still be published beside it.
+COLLIDE_ACCOUNT='collide@example.com'
+COLLIDE_DIR="${BICHON_ARCHIVE_DIR}/${COLLIDE_ACCOUNT}/2026/08"
+STUB_ENVELOPES="[{\"id\":\"first\",\"date\":${AUG_MS},\"mailbox_name\":\"INBOX\"},{\"id\":\"second\",\"date\":${AUG_MS},\"mailbox_name\":\"INBOX\"}]"
+STUB_BODIES=(
+  [first]='Message-ID: <x@example.com>
+
+FIRST BODY
+'
+  [second]='Message-ID: <x@example.com>
+
+SECOND BODY
+'
+)
+assert_eq 'two bodies claiming one id in one run are both published' \
+  'processed=2 skipped=0 deduped=0 failures=0' \
+  "$(counters_of "${COLLIDE_ACCOUNT}")"
+assert_eq 'the earlier body stays in the archive' 'FIRST BODY' \
+  "$(tail -1 "${COLLIDE_DIR}/first.eml")"
+assert_eq 'the later body reaches the archive' 'SECOND BODY' \
+  "$(tail -1 "${COLLIDE_DIR}/second.eml")"
+STUB_BODIES=()
 
 # A body already published whose sidecar write failed on an earlier run. Not a
 # dedup candidate even when its identity is already held: it is in the corpus

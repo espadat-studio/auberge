@@ -145,6 +145,7 @@ IDENTITY_MISSING=0
 IDENTITY_STORE=0
 IDENTITY_SYNTHETIC=0
 IDENTITY_SHA256=0
+IDENTITY_CONTESTED=0
 IDENTITY_SAMPLE=''
 
 # Set by the fetch_* functions when they cannot answer, so a die-free caller
@@ -868,6 +869,7 @@ parse_identity_verdict() {
   IDENTITY_STORE=0
   IDENTITY_SYNTHETIC=0
   IDENTITY_SHA256=0
+  IDENTITY_CONTESTED=0
   IDENTITY_SAMPLE=''
 
   local tsv
@@ -877,25 +879,28 @@ parse_identity_verdict() {
       .store_messages,
       .unverifiable.store_synthetic,
       .unverifiable.archive_sha256,
+      ([.unverifiable.contested[]? | select(.store > .archive)] | length),
       ([.missing[0:3][].message_id] | join(" "))
     ] | @tsv'); then
     return 1
   fi
 
-  local status missing store synthetic sha256 sample
-  IFS=$'\t' read -r status missing store synthetic sha256 sample <<<"${tsv}"
+  local status missing store synthetic sha256 contested sample
+  IFS=$'\t' read -r status missing store synthetic sha256 contested sample <<<"${tsv}"
 
   [[ "${status}" == 'covered' ]] || [[ "${status}" == 'gap' ]] || return 1
   [[ "${missing}" =~ ^[0-9]+$ ]] || return 1
   [[ "${store}" =~ ^[0-9]+$ ]] || return 1
   [[ "${synthetic}" =~ ^[0-9]+$ ]] || return 1
   [[ "${sha256}" =~ ^[0-9]+$ ]] || return 1
+  [[ "${contested}" =~ ^[0-9]+$ ]] || return 1
 
   IDENTITY_STATUS="${status}"
   IDENTITY_MISSING="${missing}"
   IDENTITY_STORE="${store}"
   IDENTITY_SYNTHETIC="${synthetic}"
   IDENTITY_SHA256="${sha256}"
+  IDENTITY_CONTESTED="${contested}"
   IDENTITY_SAMPLE="${sample}"
 }
 
@@ -1206,6 +1211,11 @@ render_pair_verdict_or_die() {
           'again — the count surplus after a prior expunge masked them' \
           "backfill them: auberge bichon rescan --host ${host} --account ${account}" \
           're-run this script once the rescan has ingested them'
+      elif ((IDENTITY_CONTESTED > 0)); then
+        die 1 "${IDENTITY_CONTESTED} Message-ID(s) in ${folder} are claimed by more store messages than archived bodies" \
+          'identity cannot tell which archived body belongs to which store message' \
+          "list them: auberge bichon verify-coverage --host ${host} --account ${account} --folder ${folder} --before ${CUTOFF_DATE}" \
+          'do not expunge until every claimant has its own archived body'
       else
         die 1 "${IDENTITY_SYNTHETIC} header-less store message(s) in ${folder} out-count ${IDENTITY_SHA256} sha256-keyed sidecar(s)" \
           'identity cannot match header-less messages to a sidecar one-to-one' \
@@ -1525,6 +1535,9 @@ sweep_probe_pair() {
       if ((IDENTITY_MISSING > 0)); then
         sweep_record finding "${account}" "${folder}" 0 \
           "identity gap: ${IDENTITY_MISSING} store message(s) unarchived — rescan the account, then re-run"
+      elif ((IDENTITY_CONTESTED > 0)); then
+        sweep_record finding "${account}" "${folder}" 0 \
+          "identity gap: ${IDENTITY_CONTESTED} Message-ID(s) claimed by more store messages than archived bodies — run verify-coverage"
       else
         sweep_record finding "${account}" "${folder}" 0 \
           'identity gap: header-less messages out-count sha256 sidecars — rescan the account'
