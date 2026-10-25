@@ -9,7 +9,7 @@ An Ansible playbook (`ansible/playbooks/<name>.yml`) that deploys one app, one p
 _Avoid_: Role, recipe (Ansible-internal), task (Ansible-internal)
 
 **Built Release**:
-A `<app>/v<version>` release of this repo carrying a non-empty artifact (`grimmory-api.jar`), built by a manual `workflow_dispatch` because upstream publishes none. A tag alone does not count: a half-failed run can leave one. CI (`check-grimmory-release.sh`) and `auberge deploy` both refuse a pin with no Built Release; the failure prints the dispatch command rather than running it, so PR-controlled input never triggers a source build.
+A `<app>/v<version>` release of this repo carrying a non-empty artifact (`grimmory-api.jar`), built by a manual `workflow_dispatch` because upstream publishes none. A tag alone does not count: a half-failed run can leave one. CI (`check-grimmory-release.sh`) and `auberge deploy` both refuse a pin with no Built Release; the failure prints the dispatch command rather than running it, so PR-controlled input never triggers a source build. The build runs upstream code with a read-only token, against a tarball whose sha256 is pinned per version in `.github/grimmory-tarballs.sha256`; only a separate publish job, running no upstream code, holds the release write token.
 _Avoid_: Upstream release, artifact
 
 **Composition**:

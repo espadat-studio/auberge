@@ -15,7 +15,7 @@ auberge deploy grimmory
 ```
 
 :::tip
-The JAR is built by this repo, not upstream. Before deploying a new `version.value` in `grimmory.meta.yml`, run `gh workflow run build-grimmory.yml -f version=<version>`. CI and `auberge deploy grimmory` both refuse a pin whose `grimmory/v<version>` release lacks a non-empty `grimmory-api.jar`.
+The JAR is built by this repo, not upstream. Before deploying a new `version.value` in `grimmory.meta.yml`, add the upstream tarball's sha256 to `.github/grimmory-tarballs.sha256`, then run `gh workflow run build-grimmory.yml -f version=<version>`. CI and `auberge deploy grimmory` both refuse a pin whose `grimmory/v<version>` release lacks a non-empty `grimmory-api.jar`.
 :::
 
 ## Required config
