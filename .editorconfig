@@ -2,7 +2,7 @@ root = true
 
 # Google Shell Style Guide, as shfmt reads it: 2-space indent, indented switch
 # cases, binary operators starting the continuation line.
-[*.sh]
+[{*.sh,*.sh.j2}]
 indent_style = space
 indent_size = 2
 switch_case_indent = true
