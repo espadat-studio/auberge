@@ -20,10 +20,10 @@ TOTAL_FAILURES=0
 ARCHIVE_FILE_MODE=0640
 
 # Every message identity the account under work already holds, keyed the way
-# ADR-0013 keys them. Rebuilt per account and added to as the run publishes, so
-# the skip guard can ask whether a message is archived rather than whether a
-# filename exists.
-declare -A ARCHIVED_MESSAGE_IDS=()
+# ADR-0013 keys them, mapped to the newline-separated bodies that claim it.
+# Rebuilt per account and added to as the run publishes, so the skip guard can
+# ask whether a message is archived rather than whether a filename exists.
+declare -A ARCHIVED_BODIES_BY_ID=()
 
 log() {
   printf '%s %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$*" >&2
@@ -112,7 +112,7 @@ download_message() {
   tmp=$(mktemp "${out_path}.XXXXXX")
   chmod "$ARCHIVE_FILE_MODE" "$tmp"
   if curl_auth --output "$tmp" \
-      "${BICHON_BASE_URL}/api/v1/download-message/${account_id}/${message_id}"; then
+    "${BICHON_BASE_URL}/api/v1/download-message/${account_id}/${message_id}"; then
     if has_header_block "$tmp"; then
       mv "$tmp" "$out_path"
       return 0
@@ -328,19 +328,40 @@ load_archived_message_ids() {
   local safe_email="$1"
   local account_dir="${BICHON_ARCHIVE_DIR}/${safe_email}"
 
-  ARCHIVED_MESSAGE_IDS=()
+  ARCHIVED_BODIES_BY_ID=()
   [ -d "$account_dir" ] || return 0
 
-  local ids message_id
-  if ! ids=$(find "$account_dir" -type f -name '*.meta.json' -print0 \
-    | xargs -0 -r jq -r '.message_id // empty'); then
+  # Path first: the sidecar path never holds a tab, the sender-chosen id may.
+  local rows row meta message_id
+  if ! rows=$(find "$account_dir" -type f -name '*.meta.json' -print0 \
+    | xargs -0 -r jq -r 'select(.message_id) | "\(input_filename)\t\(.message_id)"'); then
     return 1
   fi
 
-  while IFS= read -r message_id; do
+  while IFS= read -r row; do
+    [ -z "$row" ] && continue
+    meta="${row%%$'\t'*}"
+    message_id="${row#*$'\t'}"
     [ -z "$message_id" ] && continue
-    ARCHIVED_MESSAGE_IDS["$message_id"]=1
-  done <<<"$ids"
+    add_archived_body "$message_id" "${meta%.meta.json}.eml"
+  done <<<"$rows"
+}
+
+add_archived_body() {
+  local message_id="$1" eml_path="$2"
+  ARCHIVED_BODIES_BY_ID["$message_id"]+="${eml_path}"$'\n'
+}
+
+# Message-ID is a header any sender chooses, so an id match alone is not "the
+# archive holds this message": only a byte-identical body is. That is the #455
+# re-mint case, which ADR-0012's byte-exact download keeps byte-identical.
+holds_identical_body() {
+  local message_id="$1" staged="$2" archived
+  while IFS= read -r archived; do
+    [ -z "$archived" ] && continue
+    cmp -s "$staged" "$archived" && return 0
+  done <<<"${ARCHIVED_BODIES_BY_ID["$message_id"]-}"
+  return 1
 }
 
 write_tag_snapshot() {
@@ -523,8 +544,9 @@ process_account() {
       # published is in the corpus whichever identity it carries, and the sole
       # repair left for it is to key it. Discarding a redundant download is
       # right; leaving an existing body unkeyed is not, because the coverage gate
-      # cannot count what has no sidecar.
-      if [ -n "$stage_path" ] && [ -n "${ARCHIVED_MESSAGE_IDS["$message_id"]+archived}" ]; then
+      # cannot count what has no sidecar. A different body under a held id is
+      # another message and is published alongside.
+      if [ -n "$stage_path" ] && holds_identical_body "$message_id" "$stage_path"; then
         rm -f "$stage_path"
         deduped=$((deduped + 1))
         continue
@@ -539,7 +561,7 @@ process_account() {
         account_failures=$((account_failures + 1))
         continue
       fi
-      ARCHIVED_MESSAGE_IDS["$message_id"]=1
+      add_archived_body "$message_id" "$eml_path"
       processed=$((processed + 1))
     done < <(printf '%s' "$body" | jq -c '.items[]?')
 

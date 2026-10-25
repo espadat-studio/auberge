@@ -66,7 +66,7 @@ ssh <hostname> "journalctl -u bichon-archive.service -n 40 | grep processed="
 # account=x@riou.one processed=0 skipped=714 deduped=0 failures=0
 ```
 
-`skipped` is a filename match and `deduped` an identity match, so a sustained non-zero `deduped` means Bichon's envelope ids moved and the archive is re-recognising bodies it already holds. That costs one download per re-listed message and clears within one overlap window (24h) as the cursor advances past them.
+`skipped` is a filename match and `deduped` an identity match backed by a byte-identical body. A different body that reuses an archived Message-ID is another message, so it is published alongside rather than deduped. A sustained non-zero `deduped` therefore means Bichon's envelope ids moved and the archive is re-recognising bodies it already holds. That costs one download per re-listed message and clears within one overlap window (24h) as the cursor advances past them.
 
 Sidecars written before [ADR-0013](https://github.com/espadat-studio/auberge/blob/master/meta/adr/0013-archive-message-identity-is-the-message-id.md) carry no `message_id`. The next `bichon-archive.service` run repairs every one of them and drops the inert `tags` field [ADR-0012](https://github.com/espadat-studio/auberge/blob/master/meta/adr/0012-archive-splits-immutable-bodies-from-mutable-metadata.md) left behind; until it has, gate 3 of `bichon-expunge.sh` refuses to run.
 

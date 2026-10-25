@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted, 2026-07-30. **Amends ADR-0012** — it does not replace it. The layout, the Tag Snapshot, and the restore script all stand; this ADR adds one field to the sidecar and reverses one of ADR-0012's rejections.
+Accepted, 2026-07-30. **Amends ADR-0012** — it does not replace it. The layout, the Tag Snapshot, and the restore script all stand; this ADR adds one field to the sidecar and reverses one of ADR-0012's rejections. Amended 2026-10-25: a key match dedups only a byte-identical body, and an id claimed more than once is bounded by count in coverage. See the Amendment section below.
 
 ## Decision
 
@@ -140,3 +140,19 @@ Write-once remains the rule for observations about a message. It was never a rul
 - CONTEXT.md — **Email Archive** (message identity), **Tag Snapshot**, **Internal Store**, **Upstream Mailbox**.
 - RFC 5322 §2.2.3 (folded header fields), §3.6.4 (`msg-id`).
 - Issue #389 — reported the defect. Its 103-surplus measurement is corrected above; its analysis of the mechanism and its ordering constraint stand.
+
+## Amendment (2026-10-25): a Message-ID names a message; only the body proves it
+
+The Message-ID is a header the sender writes. The rejection of content hashing above weighed cost and re-download drift, not two distinct messages carrying one id. Invariant: only a byte-identical re-offer of an archived body is dropped, and coverage never vouches for a message whose own body the archive does not hold.
+
+The identity key stands. What changes is what a key match is allowed to decide:
+
+- **Dedup is bound to content.** The run drops a staged body only when it is byte-identical to an archived body under the same `message_id` (`cmp`, read only for ids already held). The #455 re-mint case stays deduped, because ADR-0012 keeps the download byte-exact. A different body under a held id is another message. It is published alongside, with its own sidecar under the same key.
+- **Coverage treats a contested id as unverifiable.** An id is contested when two or more store messages claim it in the folder, or two or more scoped sidecars do. The id can no longer show which body belongs to which store message. `verify-coverage` reports it under `unverifiable.contested` with both counts, never as `matched`. It is a gap when the store count exceeds the archive count. This is the same count bound the header-less messages already get.
+
+Consequences:
+
+- Cost: one `cmp` per staged body whose id is already held. Most bodies are new, or skipped by filename, so they pay nothing.
+- Gate 3's bash half counts distinct `message_id`s. Two archived bodies under one id count as one there. When both messages are still upstream, that half reports a gap the identity half does not. It fails closed, and only on a collision.
+- Not repaired retroactively. A body dropped under the old rule was never written, and the sidecars cannot show which ids were affected. Identity cannot detect that loss for every id. Pre-amendment archives keep this residual until the folder's history ages out of every expunge window.
+- The archive side counts sidecars, not distinct bodies. A byte-identical duplicate left over from before ADR-0019 adds one to a contested id's archive count.
