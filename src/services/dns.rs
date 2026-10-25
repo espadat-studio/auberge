@@ -131,6 +131,7 @@ pub struct DnsStatus {
     pub configured_subdomains: Vec<String>,
     pub active_records: Vec<DnsRecord>,
     pub missing_subdomains: Vec<String>,
+    pub off_roster_records: Vec<DnsRecord>,
 }
 
 #[derive(Debug)]
@@ -635,10 +636,13 @@ pub async fn migrate_all<D: DnsRecords>(
     Ok(outcome)
 }
 
-/// Reads the zone and reports which of `configured_subdomains` have no A record.
+/// Reads the zone and reports which of `configured_subdomains` have no A record,
+/// and which A records point at an address none of `roster_ips` is — the
+/// record a removed Host leaves behind.
 pub async fn status<D: DnsRecords>(
     dns: &D,
     configured_subdomains: Vec<String>,
+    roster_ips: &[String],
 ) -> Result<DnsStatus> {
     let active_records = dns.list_records().await?;
     let domain_suffix = format!(".{}", dns.domain());
@@ -655,11 +659,21 @@ pub async fn status<D: DnsRecords>(
         .cloned()
         .collect();
 
+    let off_roster_records: Vec<DnsRecord> = active_records
+        .iter()
+        .filter(|r| {
+            r.a_ip()
+                .is_some_and(|ip| !roster_ips.contains(&ip.to_string()))
+        })
+        .cloned()
+        .collect();
+
     Ok(DnsStatus {
         domain: dns.domain().to_string(),
         configured_subdomains,
         active_records,
         missing_subdomains,
+        off_roster_records,
     })
 }
 
@@ -1978,6 +1992,7 @@ mod tests {
         let report = status(
             &dns,
             vec!["rss".to_string(), "baikal".to_string(), "music".to_string()],
+            &["203.0.113.10".to_string()],
         )
         .await
         .unwrap();
@@ -1988,6 +2003,44 @@ mod tests {
             report.missing_subdomains,
             vec!["baikal".to_string(), "music".to_string()],
             "a CNAME does not publish the App — only an A record counts"
+        );
+    }
+
+    /// A removed Host's public address outlives it in the zone; if the
+    /// provider hands the address to someone else, the record serves them.
+    /// Only an A record counts, and an address a roster Host holds — public or
+    /// tailnet — is accounted for.
+    #[tokio::test]
+    async fn status_flags_a_records_whose_address_no_roster_host_holds() {
+        let dns = FakeDns::new(
+            "example.com",
+            vec![
+                a_record("rss.example.com", "198.51.100.7"),
+                a_record("music.example.com", "203.0.113.10"),
+                a_record("hs.example.com", "100.64.0.2"),
+                a_record("old.example.com", "100.64.0.9"),
+            ],
+        );
+        let report = status(
+            &dns,
+            vec!["rss".to_string(), "music".to_string()],
+            &["203.0.113.10".to_string(), "100.64.0.2".to_string()],
+        )
+        .await
+        .unwrap();
+
+        assert!(report.missing_subdomains.is_empty());
+        let off_roster: Vec<(&str, String)> = report
+            .off_roster_records
+            .iter()
+            .map(|r| (r.name.as_str(), r.a_ip().unwrap().to_string()))
+            .collect();
+        assert_eq!(
+            off_roster,
+            vec![
+                ("rss.example.com", "198.51.100.7".to_string()),
+                ("old.example.com", "100.64.0.9".to_string()),
+            ]
         );
     }
 }

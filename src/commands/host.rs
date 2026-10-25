@@ -332,11 +332,15 @@ pub fn run_host_list(tags: Option<String>, output: OutputFormat) -> Result<()> {
 
 pub fn run_host_remove(name: Option<String>, yes: bool) -> Result<()> {
     let host = crate::hosts::select_or_arg(name, crate::hosts::HOST_POSITIONAL)?;
-    if !confirm(&format!("Remove host '{}'?", host.name), yes) {
+    if !confirm(
+        &format!("Remove host '{}' and delete its headscale node?", host.name),
+        yes,
+    ) {
         eprintln!("Cancelled.");
         return Ok(());
     }
 
+    crate::commands::headscale::revoke_host_node(&host)?;
     HostManager::remove_host(&host.name)?;
     output::success(&format!("Host '{}' removed", host.name));
 
