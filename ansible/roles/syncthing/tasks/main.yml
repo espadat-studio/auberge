@@ -12,7 +12,8 @@
 
     - name: Download Syncthing GPG key
       ansible.builtin.get_url:
-        url: https://syncthing.net/release-key.gpg
+        url: "{{ syncthing_key_url }}"
+        checksum: "sha256:{{ syncthing_key_sha256 }}"
         dest: /usr/share/keyrings/syncthing-archive-keyring.gpg
         mode: "0644"
 

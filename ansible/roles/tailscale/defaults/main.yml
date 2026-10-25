@@ -7,3 +7,7 @@ tailscale_advertise_exit_node: false # Advertise as exit node
 tailscale_accept_dns: false # Disabled on server to prevent DNS loop when Blocky manages tailnet DNS
 tailscale_login_server: "" # Headscale URL (empty = Tailscale SaaS)
 tailscale_extra_args: "" # Additional arguments for tailscale up command
+# One key serves every codename; the digest holds across releases.
+# recompute-checksums.sh cannot render a fact, so a rotation is edited by hand.
+tailscale_key_url: "https://pkgs.tailscale.com/stable/debian/{{ ansible_facts['distribution_release'] }}.noarmor.gpg"
+tailscale_key_sha256: "3e03dacf222698c60b8e2f990b809ca1b3e104de127767864284e6c228f1fb39"

@@ -82,6 +82,7 @@
     - name: Download NodeSource signing key
       ansible.builtin.get_url:
         url: "{{ actual_nodesource_key_url }}"
+        checksum: "sha256:{{ actual_nodesource_key_sha256 }}"
         dest: /etc/apt/keyrings/nodesource.asc
         mode: "0644"
 

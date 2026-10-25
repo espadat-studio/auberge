@@ -2,7 +2,8 @@
   block:
     - name: Download xcaddy GPG key
       ansible.builtin.get_url:
-        url: https://dl.cloudsmith.io/public/caddy/xcaddy/gpg.key
+        url: "{{ caddy_xcaddy_key_url }}"
+        checksum: "sha256:{{ caddy_xcaddy_key_sha256 }}"
         dest: /usr/share/keyrings/caddy-xcaddy-archive-keyring.gpg
         mode: "0644"
 

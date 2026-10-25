@@ -19,3 +19,5 @@ caddy_dns_api_token: "{{ cloudflare_dns_api_token }}"
 caddy_binary: /usr/local/bin/caddy
 caddy_build_id_file: /usr/local/bin/.caddy-build-id
 caddy_build_id: "l4-{{ caddy_l4_version }}-cf-{{ caddy_cloudflare_plugin_version }}"
+caddy_xcaddy_key_url: https://dl.cloudsmith.io/public/caddy/xcaddy/gpg.key
+caddy_xcaddy_key_sha256: "783dfee04b19e851a928cd87b34710213ebbe7628f98d9f34595ab83be578c00"
