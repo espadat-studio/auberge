@@ -9,7 +9,7 @@
     create_home: false
     system: true
 
-- name: Ensure install, conf and certs dirs exist
+- name: Ensure install and config dirs exist, owned by root
   with_items: [
     "{{ blocky_install_path }}",
     "{{ blocky_config_path }}",
@@ -17,13 +17,107 @@
   ansible.builtin.file:
     path: "{{ item }}"
     mode: "0755"
-    group: blocky
-    owner: blocky
+    group: root
+    owner: root
+    state: directory
+
+- name: Find links planted in the Lego state
+  ansible.builtin.find:
+    paths:
+      - "{{ blocky_config_path }}/accounts"
+      - "{{ blocky_cert_dir }}"
+    recurse: true
+    file_type: link
+    hidden: true
+  register: blocky_lego_state_links
+
+- name: Refuse Lego state that holds a link
+  ansible.builtin.assert:
+    that: blocky_lego_state_links.matched == 0
+    fail_msg: >-
+      Links under the Lego state dirs, which root would follow:
+      {{ blocky_lego_state_links.files | map(attribute='path') | join(', ') }}.
+      Inspect and remove them on the Host, then redeploy.
+
+- name: Take the Lego account state back from the blocky user
+  ansible.builtin.file:
+    path: "{{ blocky_config_path }}/accounts"
+    owner: root
+    group: root
+    mode: "go="
     state: directory
     recurse: true
+    follow: false
+
+- name: Take the certificate dir back from the blocky user
+  ansible.builtin.file:
+    path: "{{ blocky_cert_dir }}"
+    owner: root
+    group: blocky
+    mode: "o="
+    state: directory
+    recurse: true
+    follow: false
+
+- name: Deploy Lego renewal script
+  ansible.builtin.template:
+    src: lego-renew.sh.j2
+    dest: "{{ blocky_config_path }}/lego-renew.sh"
+    owner: root
+    group: root
+    mode: "0700"
+
+- name: Require a Zone DNS token systemd can carry verbatim
+  ansible.builtin.assert:
+    that:
+      - "\"'\" not in blocky_dns_api_token"
+    fail_msg: >-
+      The Zone DNS token carries a single quote, which would truncate the
+      value systemd reads from the renewal env file.
+  no_log: true
+
+- name: Deploy the Lego renewal env file
+  ansible.builtin.template:
+    src: lego-renew.env.j2
+    dest: "{{ blocky_lego_env_path }}"
+    owner: root
+    group: root
+    mode: "0600"
+  no_log: true
+
+- name: Deploy Lego renewal systemd service
+  ansible.builtin.template:
+    src: lego-renew.service.j2
+    dest: /etc/systemd/system/lego-renew.service
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Reload systemd
+
+- name: Deploy Lego renewal systemd timer
+  ansible.builtin.copy:
+    src: lego-renew.timer
+    dest: /etc/systemd/system/lego-renew.timer
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Reload systemd
+
+- name: Enable and start Lego renewal timer
+  ansible.builtin.systemd:
+    name: lego-renew.timer
+    enabled: true
+    state: started
+  when: not ansible_check_mode
+
+- name: Stat the installed Lego binary
+  ansible.builtin.stat:
+    path: "{{ blocky_lego_binary_path }}"
+  register: blocky_lego_binary
 
 - name: Read installed Lego version
-  ansible.builtin.command: /usr/local/bin/lego --version
+  when: blocky_lego_binary.stat.exists and blocky_lego_binary.stat.pw_name == 'root'
+  ansible.builtin.command: "{{ blocky_lego_binary_path }} --version"
   register: blocky_lego_version_output
   changed_when: false
   failed_when: false
@@ -58,10 +152,10 @@
   when: blocky_lego_installed_version != blocky_lego_version
   ansible.builtin.unarchive:
     src: "{{ root_download_dir }}/lego.tar.gz"
-    dest: "/usr/local/bin"
+    dest: "{{ blocky_lego_binary_path | dirname }}"
     remote_src: true
-    owner: blocky
-    group: blocky
+    owner: root
+    group: root
     mode: "0755"
 
 - name: Remove the downloaded Lego archive
@@ -82,7 +176,7 @@
     - not ansible_check_mode
     - blocky_lego_v4_layout.matched > 0
   ansible.builtin.shell:
-    cmd: "set -o pipefail && echo y | /usr/local/bin/lego migrate --path {{ blocky_config_path }}"
+    cmd: "set -o pipefail && echo y | {{ blocky_lego_binary_path }} migrate --path {{ blocky_config_path }}"
     chdir: /tmp
     executable: /bin/bash
   register: blocky_lego_migrate_result
@@ -109,7 +203,13 @@
   loop: ["{{ blocky_cert_file }}", "{{ blocky_key_file }}"]
   notify: Restart blocky
 
+- name: Stat the installed Blocky binary
+  ansible.builtin.stat:
+    path: "{{ blocky_install_path }}/blocky"
+  register: blocky_binary
+
 - name: Read installed Blocky version
+  when: blocky_binary.stat.exists and blocky_binary.stat.pw_name == 'root'
   ansible.builtin.command: "{{ blocky_install_path }}/blocky version"
   register: blocky_version_output
   changed_when: false
@@ -156,8 +256,8 @@
   ansible.builtin.unarchive:
     src: "{{ root_download_dir }}/{{ blocky_archive_name }}"
     dest: "{{ blocky_install_path }}"
-    group: blocky
-    owner: blocky
+    group: root
+    owner: root
     mode: "0755"
     copy: false
   notify: Restart blocky
@@ -170,8 +270,8 @@
 - name: Ensure owner and mode of blocky binary
   ansible.builtin.file:
     path: "{{ blocky_install_path }}/blocky"
-    group: blocky
-    owner: blocky
+    group: root
+    owner: root
     mode: "0755"
   notify: Restart blocky
 
@@ -306,39 +406,6 @@
     port: "{{ blocky_dot_port }}"
     proto: tcp
     state: enabled
-
-- name: Deploy Lego renewal script
-  ansible.builtin.template:
-    src: lego-renew.sh.j2
-    dest: "{{ blocky_config_path }}/lego-renew.sh"
-    owner: root
-    group: root
-    mode: "0700"
-
-- name: Deploy Lego renewal systemd service
-  ansible.builtin.template:
-    src: lego-renew.service.j2
-    dest: /etc/systemd/system/lego-renew.service
-    owner: root
-    group: root
-    mode: "0644"
-  notify: Reload systemd
-
-- name: Deploy Lego renewal systemd timer
-  ansible.builtin.copy:
-    src: lego-renew.timer
-    dest: /etc/systemd/system/lego-renew.timer
-    owner: root
-    group: root
-    mode: "0644"
-  notify: Reload systemd
-
-- name: Enable and start Lego renewal timer
-  ansible.builtin.systemd:
-    name: lego-renew.timer
-    enabled: true
-    state: started
-  when: not ansible_check_mode
 
 - name: Ensure Cloudflare DNS A record exists for {{ blocky_domain }}
   ansible.builtin.include_role:
