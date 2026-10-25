@@ -104,6 +104,7 @@ jobs:
           ./tests/forgejo-onboard.test.sh
           ./tests/immich-b2-prune.test.sh
           ./tests/immich-backup.test.sh
+          ./tests/recompute-checksums.test.sh
           ./tests/standby-runner-flip.test.sh
           ./tests/standby-runner-reset.test.sh
 
