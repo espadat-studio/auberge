@@ -331,6 +331,13 @@ keys:
     secret: false
     doc: "Subdomain for the Stirling-PDF editor (default pdf)"
 
+  syncthing_gui_password:
+    secret: true
+    doc: >-
+      Password the Syncthing web UI and REST API require on every Host; the user is the account
+      Syncthing runs as. Without one, any local process that reaches the loopback controls
+      Syncthing. Changing it signs the web UI out.
+
   tailscale_advertise_exit_node:
     secret: false
     doc: "Offer this host as a tailnet exit node (true/false); scope it under [hosts.<name>] to one host"

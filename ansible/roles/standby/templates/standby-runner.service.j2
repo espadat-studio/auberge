@@ -41,6 +41,12 @@ ProtectKernelTunables=true
 ProtectKernelModules=true
 ProtectControlGroups=true
 ReadWritePaths={{ standby_runner_install_dir }} {{ standby_runner_home }}
+# Job code is org-repo code on the agent Host: it must not reach the loopback
+# control planes beside it (Syncthing, aoe, Caddy admin). The resolver stub is
+# the one exception, because every lookup on the Host goes through it. Egress
+# stays open; the jobs need GitHub.
+IPAddressDeny=localhost
+IPAddressAllow=127.0.0.53
 StandardOutput=journal
 StandardError=journal
 UMask=0027

@@ -20,6 +20,10 @@ syncthing_api: "http://127.0.0.1:8384/rest"
 
 syncthing_listen_address: "0.0.0.0:8384"
 
+# 204 is a login with the declared credentials, 403 a different password, 404
+# no GUI user at all.
+syncthing_gui_auth_is_current: "{{ syncthing_gui_login.status == 204 }}"
+
 syncthing_listen_is_current: >-
   {{ syncthing_running.json.gui.address == syncthing_listen_address }}
 

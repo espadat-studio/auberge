@@ -397,7 +397,8 @@ fn test_the_playbook_walk_reaches_the_run() {
 /// write reports `changed` on every deploy forever — and a deploy that is
 /// always changed is one nobody reads. The guard has to name a `_is_current`
 /// variable, because that is where the comparison against the running
-/// configuration lives; a guard on anything else is not one.
+/// configuration lives; a guard on anything else is not one. The GUI login is
+/// the one `POST` that writes nothing: it is the convergence check itself.
 #[test]
 fn test_every_syncthing_api_write_is_guarded_by_a_convergence_check() {
     let mut writes = 0;
@@ -409,6 +410,12 @@ fn test_every_syncthing_api_write_is_guarded_by_a_convergence_check() {
             .and_then(Value::as_str)
             .unwrap_or("GET");
         if !matches!(method, "PUT" | "PATCH" | "POST") {
+            continue;
+        }
+        let url = field(uri, "url")
+            .and_then(Value::as_str)
+            .unwrap_or_default();
+        if url.ends_with("/noauth/auth/password") {
             continue;
         }
         writes += 1;
