@@ -142,11 +142,14 @@
       ansible.builtin.user:
         name: "{{ paperless_sys_user }}"
         group: "{{ paperless_sys_group }}"
+        groups: redis
+        append: true
         shell: /usr/sbin/nologin
         home: "{{ paperless_install_path }}"
         create_home: false
         system: true
         state: present
+      notify: Restart all paperless services
 
     - name: Check installed version
       ansible.builtin.stat:
@@ -303,6 +306,50 @@
         group: "{{ paperless_sys_group }}"
         mode: "0600"
       notify: Restart all paperless services
+
+    - name: Deploy the Redis socket-only override
+      ansible.builtin.copy:
+        src: redis-socket.conf
+        dest: /etc/redis/redis-socket.conf
+        owner: root
+        group: redis
+        mode: "0640"
+      register: paperless_redis_override
+
+    - name: Include the Redis override last so it wins
+      ansible.builtin.lineinfile:
+        path: /etc/redis/redis.conf
+        line: include /etc/redis/redis-socket.conf
+        insertafter: EOF
+      register: paperless_redis_include
+
+    - name: Restart Redis onto the socket and the paperless units with it
+      when: paperless_redis_override.changed or paperless_redis_include.changed
+      ansible.builtin.systemd_service:
+        name: redis-server
+        state: restarted
+
+    - name: Probe Redis as paperless over the socket
+      ansible.builtin.command: redis-cli -s /run/redis/redis-server.sock ping
+      become: true
+      become_user: "{{ paperless_sys_user }}"
+      register: paperless_redis_member_probe
+      changed_when: false
+      failed_when: paperless_redis_member_probe.stdout != "PONG"
+
+    - name: Probe Redis as a uid outside its group
+      ansible.builtin.command: redis-cli -s /run/redis/redis-server.sock ping
+      become: true
+      become_user: nobody
+      register: paperless_redis_outsider_probe
+      changed_when: false
+      failed_when: "'PONG' in paperless_redis_outsider_probe.stdout"
+
+    - name: Probe Redis over loopback TCP
+      ansible.builtin.command: redis-cli -h 127.0.0.1 -p 6379 ping
+      register: paperless_redis_tcp_probe
+      changed_when: false
+      failed_when: "'PONG' in paperless_redis_tcp_probe.stdout"
 
     - name: Validate Cloudflare API token for Caddy DNS-01 challenge
       ansible.builtin.assert:
