@@ -487,3 +487,150 @@ fn test_renovate_checksums_runs_no_head_code_with_the_app_token() {
         workflow.display()
     );
 }
+
+/// `build-grimmory` runs upstream code (npm lifecycle scripts, gradle) that
+/// must never share a job with a write token. Only `publish` may write, its
+/// one `run` checks the jar against the digest `build` recorded, and it does
+/// so before releasing. `build` checks the tarball against the digest pinned
+/// for its version before any npm step, so the pinned version must have one.
+#[test]
+fn test_build_grimmory_runs_no_upstream_code_with_a_write_token() {
+    let workflow = repo_root().join(".github/workflows/build-grimmory.yml");
+    let parsed: serde_yaml::Value = serde_yaml::from_str(&read(&workflow))
+        .unwrap_or_else(|e| panic!("{}: {e}", workflow.display()));
+    fn writes(node: &serde_yaml::Value) -> Vec<String> {
+        node.get("permissions")
+            .and_then(|p| p.as_mapping())
+            .into_iter()
+            .flatten()
+            .filter(|(_, level)| level.as_str() == Some("write"))
+            .filter_map(|(scope, _)| scope.as_str().map(str::to_string))
+            .collect()
+    }
+    fn field<'a>(step: &'a serde_yaml::Value, key: &str) -> &'a str {
+        step.get(key).and_then(|v| v.as_str()).unwrap_or_default()
+    }
+    let jobs = parsed
+        .get("jobs")
+        .and_then(|jobs| jobs.as_mapping())
+        .unwrap_or_else(|| panic!("{}: no jobs", workflow.display()));
+    let steps = |name: &str| {
+        jobs.get(name)
+            .and_then(|job| job.get("steps"))
+            .and_then(|s| s.as_sequence())
+            .unwrap_or_else(|| panic!("{}: `{name}` has no steps", workflow.display()))
+    };
+
+    assert!(
+        parsed.get("permissions").is_some() && writes(&parsed).is_empty(),
+        "{}: the workflow default must be explicit and grant no write",
+        workflow.display()
+    );
+    for (name, job) in jobs {
+        let name = name.as_str().unwrap_or_default();
+        let expected: &[&str] = if name == "publish" {
+            &["contents"]
+        } else {
+            &[]
+        };
+        assert!(
+            job.get("permissions").is_some() && writes(job) == expected,
+            "{}: `{name}` writes {:?}; only `publish` may write, and only contents",
+            workflow.display(),
+            writes(job)
+        );
+    }
+    assert_eq!(
+        jobs.get("publish")
+            .and_then(|job| job.get("needs"))
+            .and_then(|v| v.as_str()),
+        Some("build"),
+        "{}: `publish` must need `build`",
+        workflow.display()
+    );
+
+    let build = steps("build");
+    let pin = build
+        .iter()
+        .position(|s| {
+            field(s, "run").lines().any(|line| {
+                line.trim()
+                    == r#"awk -v f="${TARBALL}" '$2 == f' .github/grimmory-tarballs.sha256 | sha256sum -c -"#
+            })
+        })
+        .unwrap_or_else(|| {
+            panic!(
+                "{}: `build` never checks the tarball against its pinned digest",
+                workflow.display()
+            )
+        });
+    let npm = build
+        .iter()
+        .position(|s| field(s, "run").contains("npm"))
+        .unwrap_or_else(|| panic!("{}: `build` runs no npm step", workflow.display()));
+    assert!(
+        pin < npm,
+        "{}: `build` runs npm before checking the tarball digest",
+        workflow.display()
+    );
+    assert!(
+        build
+            .iter()
+            .any(|s| field(s, "uses").starts_with("actions/upload-artifact@")),
+        "{}: `build` must hand the jar over as an artifact",
+        workflow.display()
+    );
+
+    let publish = steps("publish");
+    let verify = r#"echo "${DIGEST}  grimmory-api.jar" | sha256sum -c -"#;
+    for step in publish {
+        let (uses, run) = (field(step, "uses"), field(step, "run").trim());
+        assert!(
+            (uses.is_empty() && run == verify)
+                || (run.is_empty()
+                    && (uses.starts_with("actions/download-artifact@")
+                        || uses.starts_with("softprops/action-gh-release@"))),
+            "{}: `publish` may only download the artifact, run `{verify}` and release; \
+             found uses `{uses}` run `{run}`",
+            workflow.display()
+        );
+    }
+    let position = |found: &dyn Fn(&serde_yaml::Value) -> bool, what: &str| {
+        publish
+            .iter()
+            .position(found)
+            .unwrap_or_else(|| panic!("{}: `publish` never {what}", workflow.display()))
+    };
+    let verified = position(
+        &|s| field(s, "run").trim() == verify,
+        "verifies the jar digest",
+    );
+    let released = position(
+        &|s| field(s, "uses").starts_with("softprops/action-gh-release@"),
+        "releases",
+    );
+    assert!(
+        verified < released,
+        "{}: `publish` releases before verifying the jar digest",
+        workflow.display()
+    );
+
+    let meta = read(&repo_root().join("ansible/playbooks/grimmory.meta.yml"));
+    let version = serde_yaml::from_str::<serde_yaml::Value>(&meta)
+        .ok()
+        .and_then(|m| m.get("version")?.get("value")?.as_str().map(str::to_string))
+        .expect("grimmory.meta.yml: no version.value");
+    let pins = read(&repo_root().join(".github/grimmory-tarballs.sha256"));
+    let tarball = format!("grimmory-{version}.tar.gz");
+    assert!(
+        pins.lines().any(|line| {
+            let mut parts = line.split_whitespace();
+            matches!(
+                (parts.next(), parts.next(), parts.next()),
+                (Some(hex), Some(name), None)
+                    if name == tarball && hex.len() == 64 && hex.bytes().all(|b| b.is_ascii_hexdigit())
+            )
+        }),
+        ".github/grimmory-tarballs.sha256: no sha256 pin for {tarball}"
+    );
+}

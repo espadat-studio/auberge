@@ -1,4 +1,8 @@
 name: build-grimmory
+# Upstream build code (npm lifecycle scripts, gradle) runs only in `build`,
+# which holds a read-only token. `publish` holds the release write token and
+# runs nothing from the tarball. A new version needs its tarball digest added
+# to .github/grimmory-tarballs.sha256 before dispatch.
 
 on:
   workflow_dispatch:
@@ -9,11 +13,15 @@ on:
         type: string
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   build:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      digest: ${{ steps.digest.outputs.digest }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
@@ -29,7 +37,13 @@ jobs:
           node-version: "24"
           package-manager-cache: false
 
-      - run: curl -fsSL "https://github.com/grimmory-tools/grimmory/archive/refs/tags/v${VERSION}.tar.gz" | tar -xz
+      - name: Fetch the tarball and check it against its pinned digest
+        run: |
+          [[ "${VERSION}" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]
+          TARBALL="grimmory-${VERSION}.tar.gz"
+          curl -fsSL -o "${TARBALL}" "https://github.com/grimmory-tools/grimmory/archive/refs/tags/v${VERSION}.tar.gz"
+          awk -v f="${TARBALL}" '$2 == f' .github/grimmory-tarballs.sha256 | sha256sum -c -
+          tar -xzf "${TARBALL}"
         env:
           VERSION: ${{ inputs.version }}
 
@@ -48,14 +62,42 @@ jobs:
 
       - run: |
           JAR=$(find "grimmory-${VERSION}/booklore-api/build/libs/" -name '*.jar' ! -name '*-plain.jar')
-          cp "$JAR" grimmory-api.jar
+          mkdir dist
+          cp "$JAR" dist/grimmory-api.jar
         env:
           VERSION: ${{ inputs.version }}
 
       - name: Assert api icons and frontend are inside the jar
         run: |
-          unzip -l grimmory-api.jar | grep -q 'static/images/icons/svg/'
-          unzip -l grimmory-api.jar | grep -q 'static/index.html'
+          unzip -l dist/grimmory-api.jar | grep -q 'static/images/icons/svg/'
+          unzip -l dist/grimmory-api.jar | grep -q 'static/index.html'
+
+      - id: digest
+        run: |
+          sha256sum grimmory-api.jar >grimmory-api.jar.sha256
+          echo "digest=$(cut -d' ' -f1 grimmory-api.jar.sha256)" >>"${GITHUB_OUTPUT}"
+        working-directory: dist
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: grimmory-api
+          path: dist/
+          if-no-files-found: error
+          retention-days: 1
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
+        with:
+          name: grimmory-api
+
+      - run: echo "${DIGEST}  grimmory-api.jar" | sha256sum -c -
+        env:
+          DIGEST: ${{ needs.build.outputs.digest }}
 
       - uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3
         with:
