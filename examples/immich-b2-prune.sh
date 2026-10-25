@@ -15,7 +15,14 @@
 #                 repository — raises a desktop notification and exits 1, a
 #                 failed user unit. Retention does not run: pruning a repo the
 #                 box has stopped writing to only walks toward destroying the
-#                 history that is left.
+#                 history that is left. Age is read from a local ledger, not
+#                 from the time the box wrote into the snapshot: the box is
+#                 what this half guards against. A new snapshot dated in the
+#                 future, or older than the newest one an earlier run already
+#                 saw, raises the same alarm, stays out of the ledger so the
+#                 alarm repeats, and blocks retention — --keep-within and
+#                 --keep-monthly both count from snapshot times, so a forged
+#                 time would steer which genuine snapshots get forgotten.
 #   2. retention  restic forget --keep-within 30d --keep-monthly 12 --prune,
 #                 per restic's append-only guidance.
 #
@@ -28,7 +35,11 @@
 # with must be the FULL key — the one with deleteFiles — never the box key:
 # retention against the box key fails, which is exactly the capability split
 # #558 exists to prove. The 48h threshold is overridable via
-# IMMICH_SNAPSHOT_MAX_AGE_HOURS.
+# IMMICH_SNAPSHOT_MAX_AGE_HOURS. The ledger lives at
+# ${XDG_STATE_HOME:-~/.local/state}/immich-b2-prune/ledger, overridable via
+# IMMICH_PRUNE_LEDGER; one line per snapshot: id, first-seen epoch, claimed
+# epoch. First-seen is capped at the claimed time, so a weekly run does not
+# make a snapshot written six days ago look fresh.
 #
 # Install on the laptop — a wrapper owns provisioning the environment, so the
 # unit file holds no credentials and this script stays tool-agnostic:
@@ -71,9 +82,10 @@
 #
 # Exit codes:
 #   0 — backup fresh, retention applied
-#   1 — watchdog finding (stale or empty repository) or retention failed
+#   1 — watchdog finding (stale, empty, or forged-time repository) or
+#       retention failed
 #   2 — operational error: missing prerequisite, credential resolution failed,
-#       or the repository could not be read (distinguishable from "found
+#       the repository or the ledger could not be read (distinguishable from "found
 #       stale", the way the fleet's other watchers keep the two apart)
 #
 # shellcheck shell=bash
@@ -84,6 +96,8 @@ readonly PROGRAM_NAME="${0##*/}"
 readonly KEEP_WITHIN='30d'
 readonly KEEP_MONTHLY=12
 readonly MAX_SNAPSHOT_AGE_HOURS="${IMMICH_SNAPSHOT_MAX_AGE_HOURS:-48}"
+readonly MAX_CLOCK_SKEW_SECONDS=3600
+readonly LEDGER="${IMMICH_PRUNE_LEDGER:-${XDG_STATE_HOME:-${HOME}/.local/state}/immich-b2-prune/ledger}"
 
 # die <exit-code> <message> [remediation-line...]
 die() {
@@ -134,9 +148,6 @@ require_repository() {
       'in the header)'
 }
 
-# Newest snapshot time, taken as the lexicographic max of the RFC 3339 strings
-# rather than parsed per entry: mixed UTC offsets can mis-order by at most the
-# offset delta, noise against a 48h threshold.
 watchdog() {
   local snapshots_json
   # exit 2, not 1: an unreadable repository is an operational error, not a
@@ -147,20 +158,60 @@ watchdog() {
     exit 2
   fi
 
-  local newest
-  newest=$(printf '%s' "${snapshots_json}" | jq -r 'map(.time) | max // empty') \
+  local listing
+  listing=$(printf '%s' "${snapshots_json}" | jq -r '.[] | [.id, .time] | @tsv') \
     || die 2 'restic snapshots returned JSON this script cannot read'
 
-  if [[ -z "${newest}" ]]; then
+  if [[ -z "${listing}" ]]; then
     alert 'the B2 repository holds no snapshots — the Immich box has never backed up'
     exit 1
   fi
 
-  local newest_epoch age_hours
-  newest_epoch=$(date -d "${newest}" +%s) \
-    || die 2 "cannot parse snapshot time: ${newest}"
-  age_hours=$((($(date +%s) - newest_epoch) / 3600))
+  local -A first_seen=()
+  local last_newest=0 id seen claimed
+  if [[ -e "${LEDGER}" ]]; then
+    while IFS=$'\t' read -r id seen claimed; do
+      [[ "${id}" =~ ^[0-9a-f]{64}$ && "${seen}" =~ ^[0-9]+$ && "${claimed}" =~ ^[0-9]+$ ]] \
+        || die 2 "ledger is corrupt: ${LEDGER}" \
+          'it is the only record of when snapshots really appeared; restore it' \
+          'from backup, or delete it to re-trust the snapshot times once'
+      first_seen["${id}"]="${seen}"
+      if ((claimed > last_newest)); then last_newest="${claimed}"; fi
+    done <"${LEDGER}"
+  fi
 
+  local now time newest=0 rows=() forged=()
+  now=$(date +%s)
+  while IFS=$'\t' read -r id time; do
+    [[ "${id}" =~ ^[0-9a-f]{64}$ ]] \
+      || die 2 "restic listed a snapshot id this script cannot read: ${id}"
+    claimed=$(date -d "${time}" +%s) \
+      || die 2 "cannot parse snapshot time: ${time}"
+    if [[ -n "${first_seen[${id}]+set}" ]]; then
+      seen="${first_seen[${id}]}"
+    elif ((claimed > now + MAX_CLOCK_SKEW_SECONDS)); then
+      forged+=("${id:0:8} is dated ${time}, in the future")
+      continue
+    elif ((claimed < last_newest)); then
+      forged+=("${id:0:8} is dated ${time}, before snapshots an earlier run already saw")
+      continue
+    else
+      seen=$((claimed < now ? claimed : now))
+    fi
+    rows+=("${id}"$'\t'"${seen}"$'\t'"${claimed}"$'\n')
+    if ((seen > newest)); then newest="${seen}"; fi
+  done <<<"${listing}"
+
+  mkdir -p -- "$(dirname -- "${LEDGER}")"
+  printf '%s' "${rows[@]}" >"${LEDGER}.tmp"
+  mv -f -- "${LEDGER}.tmp" "${LEDGER}"
+
+  if ((${#forged[@]} > 0)); then
+    alert "new snapshot times cannot be trusted, retention skipped: ${forged[*]}"
+    exit 1
+  fi
+
+  local age_hours=$(((now - newest) / 3600))
   if ((age_hours > MAX_SNAPSHOT_AGE_HOURS)); then
     alert "newest snapshot is ${age_hours}h old (limit ${MAX_SNAPSHOT_AGE_HOURS}h) — the Immich box has stopped backing up"
     exit 1

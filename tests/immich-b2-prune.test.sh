@@ -37,6 +37,7 @@ readonly FORGET_RC="${WORK}/forget.rc"
 readonly FORGET_SEEN_PASSWORD="${WORK}/forget.seen-password"
 readonly FORGET_SEEN_AWS_KEY="${WORK}/forget.seen-aws-key"
 readonly NOTIFY_ARGS="${WORK}/notify.args"
+readonly LEDGER="${WORK}/ledger"
 
 mkdir -p "${BIN}"
 
@@ -66,21 +67,36 @@ chmod 0755 "${BIN}/notify-send"
 
 export PATH="${BIN}:${PATH}"
 
-# stage <snapshots-rc> <forget-rc> <snapshot-time…>
+snapshot_id() {
+  printf '%s' "$1" | sha256sum | cut -c1-64
+}
+
+# list <snapshot-time…>
 # Each snapshot time becomes one entry in the staged `restic snapshots --json`
-# listing; none stages an empty repository.
-stage() {
-  local snapshots_rc="$1" forget_rc="$2"
-  shift 2
-  printf '%s' "${snapshots_rc}" >"${SNAPSHOTS_RC}"
-  printf '%s' "${forget_rc}" >"${FORGET_RC}"
+# listing, its id derived from the time so a re-listed snapshot keeps its id;
+# none stages an empty repository.
+list() {
   local time entries=()
-  for time in "$@"; do entries+=("{\"time\": \"${time}\"}"); done
+  for time in "$@"; do
+    entries+=("{\"id\": \"$(snapshot_id "${time}")\", \"time\": \"${time}\"}")
+  done
   printf '[%s]\n' "$(
     IFS=,
     printf '%s' "${entries[*]-}"
   )" >"${SNAPSHOTS_OUT}"
   : >"${RESTIC_ARGS}"
+  : >"${NOTIFY_ARGS}"
+}
+
+# stage <snapshots-rc> <forget-rc> <snapshot-time…>
+# A fresh laptop: no ledger from earlier runs.
+stage() {
+  local snapshots_rc="$1" forget_rc="$2"
+  shift 2
+  printf '%s' "${snapshots_rc}" >"${SNAPSHOTS_RC}"
+  printf '%s' "${forget_rc}" >"${FORGET_RC}"
+  rm -f "${LEDGER}"
+  list "$@"
   : >"${NOTIFY_ARGS}"
   : >"${FORGET_SEEN_PASSWORD}"
   : >"${FORGET_SEEN_AWS_KEY}"
@@ -95,12 +111,17 @@ run_prune() {
     RESTIC_PASSWORD='repo-pass' \
     AWS_ACCESS_KEY_ID='full-key-id' \
     AWS_SECRET_ACCESS_KEY='full-key-secret' \
+    IMMICH_PRUNE_LEDGER="${LEDGER}" \
     "${SCRIPT}" >/dev/null 2>&1 || status=$?
   printf '%s' "${status}"
 }
 
 hours_ago() {
   date -u -d "-$1 hours" '+%Y-%m-%dT%H:%M:%SZ'
+}
+
+hours_from_now() {
+  date -u -d "+$1 hours" '+%Y-%m-%dT%H:%M:%SZ'
 }
 
 # ── fresh repository: retention runs, nobody is woken up ──
@@ -156,5 +177,60 @@ assert_eq 'missing RESTIC_REPOSITORY touches restic not at all' '' "$(cat "${RES
 
 stage 0 1 "$(hours_ago 6)"
 assert_eq 'failed forget exits 1' '1' "$(run_prune)"
+
+# ── the ledger records every snapshot it vouches for ──
+
+older="$(hours_ago 60)" newer="$(hours_ago 6)"
+stage 0 0 "${older}" "${newer}"
+run_prune >/dev/null
+assert_eq 'first run records every listed snapshot' \
+  "$(printf '%s\n' "$(snapshot_id "${older}")" "$(snapshot_id "${newer}")" | sort)" \
+  "$(cut -f1 "${LEDGER}" | sort)"
+
+# ── a backdated new snapshot: alarm, retention skipped, not recorded ──
+
+seen="$(hours_ago 6)" backdated="$(hours_ago 30)"
+stage 0 0 "${seen}"
+run_prune >/dev/null
+list "${seen}" "${backdated}"
+assert_eq 'backdated snapshot exits 1' '1' "$(run_prune)"
+assert_eq 'backdated snapshot raises a desktop notification' '1' \
+  "$(grep -c 'immich' "${NOTIFY_ARGS}")"
+assert_eq 'backdated snapshot blocks retention' \
+  'snapshots --json' "$(cat "${RESTIC_ARGS}")"
+assert_eq 'backdated snapshot stays out of the ledger' '0' \
+  "$(grep -c "$(snapshot_id "${backdated}")" "${LEDGER}" || true)"
+list "${seen}" "${backdated}"
+assert_eq 'backdated snapshot keeps alarming on the next run' '1' "$(run_prune)"
+
+# ── a future-dated new snapshot: alarm, retention skipped, not recorded ──
+
+future="$(hours_from_now 48)"
+stage 0 0 "$(hours_ago 6)" "${future}"
+assert_eq 'future-dated snapshot exits 1' '1' "$(run_prune)"
+assert_eq 'future-dated snapshot raises a desktop notification' '1' \
+  "$(grep -c 'immich' "${NOTIFY_ARGS}")"
+assert_eq 'future-dated snapshot blocks retention' \
+  'snapshots --json' "$(cat "${RESTIC_ARGS}")"
+assert_eq 'future-dated snapshot stays out of the ledger' '0' \
+  "$(grep -c "$(snapshot_id "${future}")" "${LEDGER}" || true)"
+
+# ── freshness comes from the ledger, not the snapshot's own claim ──
+
+claimed="$(hours_ago 6)"
+stage 0 0 "${claimed}"
+printf '%s\t%s\t%s\n' "$(snapshot_id "${claimed}")" \
+  "$(date -d "$(hours_ago 100)" +%s)" "$(date -d "${claimed}" +%s)" >"${LEDGER}"
+assert_eq 'snapshot first seen 100h ago is stale whatever it claims' '1' "$(run_prune)"
+assert_eq 'stale first-seen blocks retention' \
+  'snapshots --json' "$(cat "${RESTIC_ARGS}")"
+
+# ── a corrupt ledger is an operational error ──
+
+stage 0 0 "$(hours_ago 6)"
+printf 'not a ledger\n' >"${LEDGER}"
+assert_eq 'corrupt ledger exits 2' '2' "$(run_prune)"
+assert_eq 'corrupt ledger blocks retention' \
+  'snapshots --json' "$(cat "${RESTIC_ARGS}")"
 
 report 'immich-b2-prune'
