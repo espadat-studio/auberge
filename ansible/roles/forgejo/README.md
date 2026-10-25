@@ -28,6 +28,10 @@ Deliberately not deployed:
 
 - **Forgejo Actions.** `ENABLED = false`; upstream turns the subsystem on by default.
 - **Postgres, and any container.** One editor does not need either.
+- **Migrations.** `DISABLE_MIGRATIONS = true`. Onboarding migrates nothing.
+- **Repositories owned by editors.** `MAX_CREATION_LIMIT = 0`. Editors get write access to the admin's repositories, and admins are exempt from the limit.
+
+Webhooks are limited to `ALLOWED_HOST_LIST = external`. That is Forgejo's own default, written out. Since Forgejo 17 the `external` match leaves out loopback, RFC 1918, ULA and CGNAT addresses, so a webhook cannot call a tailnet or Host-local address.
 
 ## Variables
 
