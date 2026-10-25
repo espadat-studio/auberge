@@ -294,12 +294,18 @@ fn bootstrap_argv(ctx: &ArgvCtx) -> Vec<OsString> {
     argv
 }
 
+/// One JSON object, never `key=value`: ansible splits a `-e key=value` string
+/// on whitespace into further variables, so a value could define a sibling.
 fn extra_var_args(extra_vars: Option<&[(&str, &str)]>) -> Vec<String> {
-    extra_vars
+    let vars: serde_json::Map<String, serde_json::Value> = extra_vars
         .into_iter()
         .flatten()
-        .map(|(key, value)| format!("{key}={value}"))
-        .collect()
+        .map(|(key, value)| (key.to_string(), serde_json::Value::from(*value)))
+        .collect();
+    if vars.is_empty() {
+        return Vec::new();
+    }
+    vec![serde_json::Value::Object(vars).to_string()]
 }
 
 fn write_extra_vars_file(flat_vars: &HashMap<String, String>) -> Result<tempfile::NamedTempFile> {
@@ -710,12 +716,35 @@ mod tests {
             .expect("the config extra-vars file must be on the command line");
         let injected = rendered
             .iter()
-            .position(|a| a == "tailscale_authkey=tskey-minted")
+            .position(|a| {
+                serde_json::from_str::<HashMap<String, String>>(a).is_ok_and(|vars| {
+                    vars == HashMap::from([(
+                        "tailscale_authkey".to_string(),
+                        "tskey-minted".to_string(),
+                    )])
+                })
+            })
             .expect("the caller's pair must be on the command line");
         assert!(
             config_file < injected,
             "the minted key must come after the config file to win: {rendered:?}"
         );
+    }
+
+    #[test]
+    fn extra_var_args_parse_back_to_exactly_the_input_vars() {
+        let vars = [
+            ("tailscale_authkey", "k x=1 y={{ z }}"),
+            ("ansible_user", "a\"b'c"),
+        ];
+        let args = extra_var_args(Some(&vars));
+        assert_eq!(args.len(), 1, "{args:?}");
+        let parsed: HashMap<String, String> = serde_json::from_str(&args[0]).unwrap();
+        let expected: HashMap<String, String> = vars
+            .iter()
+            .map(|(k, v)| (k.to_string(), v.to_string()))
+            .collect();
+        assert_eq!(parsed, expected);
     }
 
     #[test]
@@ -1110,17 +1139,9 @@ mod tests {
     }
 
     #[test]
-    fn extra_var_args_formats_each_pair_as_key_equals_value() {
-        let vars = [("actual_version", "26.8.0"), ("ansible_user", "debian")];
-        assert_eq!(
-            extra_var_args(Some(&vars)),
-            vec!["actual_version=26.8.0", "ansible_user=debian"]
-        );
-    }
-
-    #[test]
     fn extra_var_args_none_yields_no_args() {
         assert!(extra_var_args(None).is_empty());
+        assert!(extra_var_args(Some(&[])).is_empty());
     }
 
     #[test]
