@@ -146,8 +146,9 @@
         state: directory
         owner: "{{ yourls_sys_user }}"
         group: "{{ yourls_sys_group }}"
-        mode: "0755"
+        mode: "u=rwX,go=rX"
         recurse: true
+        follow: false
 
     - name: Deploy YOURLS PHP-FPM pool configuration
       ansible.builtin.template:

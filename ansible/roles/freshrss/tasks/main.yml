@@ -90,8 +90,9 @@
         state: directory
         owner: "{{ freshrss_sys_user }}"
         group: "{{ freshrss_sys_group }}"
-        mode: "0700"
+        mode: "u=rwX,go="
         recurse: true
+        follow: false
 
     - name: Update FreshRSS repository
       when:
