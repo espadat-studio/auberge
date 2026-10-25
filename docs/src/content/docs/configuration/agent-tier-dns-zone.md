@@ -66,4 +66,4 @@ Getting a domain onto Cloudflare and minting a scoped token both sit behind an i
 
 ## Rotation
 
-Cloudflare tokens carry no forced expiry unless one is set at creation — set a TTL when minting and note the rotation date. To rotate: create a replacement token scoped to `agents_domain` the same way, `auberge config set agents_cloudflare_dns_api_token NEW_TOKEN`, revoke the old token, then `auberge deploy --tags caddy -H ruche` to rewrite the drop-in.
+Cloudflare tokens carry no forced expiry unless one is set at creation — set a TTL when minting and note the rotation date. To rotate: create a replacement token scoped to `agents_domain` the same way, `auberge config set agents_cloudflare_dns_api_token NEW_TOKEN`, revoke the old token, then `auberge deploy --tags caddy -H ruche` to rewrite `/etc/caddy/caddy.env`.

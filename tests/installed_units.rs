@@ -184,22 +184,25 @@ fn test_a_drop_in_is_its_own_file_and_names_the_unit_it_refines() {
     assert_eq!(unit.file(), "caddy.service");
 
     assert_eq!(
-        dropin.all_in("Service", "Environment"),
-        vec![
-            "\"CLOUDFLARE_DNS_API_TOKEN={{ caddy_dns_api_token }}\"",
-            "\"{{ zone.env }}={{ zone.token }}\"",
-        ],
-        "caddy's drop-in exists to carry ACME tokens into the unit: the fleet's, \
-         under the name every vhost resolves to, and one line per named Zone this \
-         Host serves (ADR-0082). Read unresolved, as every unit body here is — \
-         `vhost_acme_token.rs` is what renders them"
+        dropin.all_in("Service", "EnvironmentFile"),
+        vec!["/etc/caddy/caddy.env"],
+        "caddy's drop-in exists to carry ACME tokens into the unit, by pointing at \
+         the root-only file that holds them; `vhost_acme_token.rs` renders it"
     );
     assert!(
-        unit.all_in("Service", "Environment").is_empty(),
+        unit.all_in("Service", "EnvironmentFile").is_empty(),
         "the drop-in's assignment must not appear in the unit file's own list; \
-         it is the drop-in that carries the token, and a merged view would lose \
-         which of the two files does"
+         a merged view would lose which of the two files carries it"
     );
+    for file in [&unit, &dropin] {
+        assert!(
+            file.all_in("Service", "Environment").is_empty(),
+            "{}: an `Environment=` value is readable by every local user over D-Bus \
+             (`systemctl show -p Environment`); caddy's tokens go through \
+             `EnvironmentFile=`",
+            file.file()
+        );
+    }
 }
 
 /// A unit the repo only drops in over yields drop-ins and no unit file, which

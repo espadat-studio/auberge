@@ -11,20 +11,20 @@
 //! operator moves an App between Zones from `config.toml`, so a spelling
 //! written into the template could only ever be the Zone the repo guessed.
 //! The token itself cannot be written there at all: `/etc/caddy/sites/` is
-//! mode `0644`, while the systemd drop-in that answers `{env.…}` is `0600`.
+//! mode `0644`, while the root-only env file that answers `{env.…}` is `0600`.
 //!
 //! All of them, not only the App that moved. "Absent means inherit the
 //! process default" is a hole this file could not see through: the assertion
 //! would then only be checkable against the vhosts that opted in, which is
 //! the set that was already right.
 //!
-//! The fleet's line in the drop-in is the one exception, and the reason is
+//! The fleet's line in the env file is the one exception, and the reason is
 //! ADR-0068. Every App answers its own `<app>_subdomain` fleet-wide, so the
 //! fleet Zone is in every Host's Zone set — the agent tier's Host included,
 //! and that box must never hold the parent domain's token. Its value is
 //! chosen per Host by `infrastructure.yml` (`caddy_acme_token.rs` holds that
 //! choice); the Zone set supplies the *named* Zones only. The last test here
-//! is what refuses a drop-in that starts taking the fleet's token from the
+//! is what refuses an env file that starts taking the fleet's token from the
 //! set.
 
 use std::collections::{BTreeMap, BTreeSet};
@@ -146,7 +146,7 @@ fn test_every_vhost_answers_dns_01_with_its_own_apps_variable() {
         assert!(
             line.contains("{env."),
             "{role}/{name} must read its token out of caddy's environment — the site \
-             file is mode 0644 and the drop-in holding the token is 0600:\n  {line}"
+             file is mode 0644 and the env file holding the token is 0600:\n  {line}"
         );
         assert_eq!(
             expression_identifiers(line),
@@ -204,7 +204,7 @@ fn test_no_vhost_reads_the_token_itself() {
     }
 }
 
-// ── What the drop-in writes ───────────────────────────────────────────────
+// ── What the env file writes ──────────────────────────────────────────────
 
 fn jinja() -> Environment<'static> {
     let mut env = Environment::new();
@@ -223,11 +223,11 @@ fn jinja() -> Environment<'static> {
     env
 }
 
-/// The drop-in, rendered against the Host's Zone set and the token
+/// The env file, rendered against the Host's Zone set and the token
 /// `infrastructure.yml` chose for the fleet's Zone.
 fn render(fleet_token: &str, zones: &[(Option<&str>, &str)]) -> String {
-    let template = fs::read_to_string(role_dir("caddy").join("templates/caddy-env.conf.j2"))
-        .expect("caddy-env.conf.j2 must exist");
+    let template = fs::read_to_string(role_dir("caddy").join("templates/caddy.env.j2"))
+        .expect("caddy.env.j2 must exist");
     let set: Vec<serde_json::Value> = zones
         .iter()
         .map(|(prefix, token)| {
@@ -249,23 +249,25 @@ fn render(fleet_token: &str, zones: &[(Option<&str>, &str)]) -> String {
     ]);
     jinja()
         .render_str(&template, JValue::from_serialize(&context))
-        .expect("caddy-env.conf.j2 must render")
+        .expect("caddy.env.j2 must render")
 }
 
-/// Every `NAME=value` the rendered drop-in sets, in order.
+/// Every `NAME=value` the rendered env file sets, in order.
 fn environment(rendered: &str) -> Vec<(String, String)> {
     rendered
         .lines()
-        .filter_map(|line| line.trim().strip_prefix("Environment="))
+        .map(str::trim)
+        .filter(|line| !line.is_empty() && !line.starts_with('#'))
         .map(|assignment| {
-            let unquoted = assignment.trim_matches('"');
-            let (name, value) = unquoted
+            let (name, quoted) = assignment
                 .split_once('=')
-                .unwrap_or_else(|| panic!("`Environment={assignment}` sets nothing"));
-            assert!(
-                assignment.starts_with('"') && assignment.ends_with('"'),
-                "`{assignment}` must be quoted, or systemd splits the value on whitespace"
-            );
+                .unwrap_or_else(|| panic!("`{assignment}` sets nothing"));
+            let value = quoted
+                .strip_prefix('\'')
+                .and_then(|rest| rest.strip_suffix('\''))
+                .unwrap_or_else(|| {
+                    panic!("`{assignment}` must be single-quoted, or systemd unescapes the value")
+                });
             (name.to_string(), value.to_string())
         })
         .collect()
@@ -312,7 +314,7 @@ fn test_a_host_serving_a_second_zone_writes_both_tokens() {
 /// ADR-0068, held where this change could have broken it.
 ///
 /// The agent tier's Host resolves the fleet Zone like every other — its Apps
-/// answer their subdomains fleet-wide — so the Zone set hands the drop-in the
+/// answer their subdomains fleet-wide — so the Zone set hands the env file the
 /// parent domain's token. Taking the fleet's line from that set would write
 /// it onto the one box ADR-0054 assumes compromisable.
 #[test]
