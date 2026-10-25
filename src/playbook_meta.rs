@@ -197,7 +197,7 @@ pub struct DbRecipe {
     /// the same name that owns `name` and nothing else. A restore never runs
     /// as the `postgres` superuser, since the dump came from another Host.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub role: Option<String>,
+    pub pg_role: Option<String>,
     #[serde(default, skip_serializing_if = "DbEngine::is_postgres")]
     pub engine: DbEngine,
 }
@@ -242,7 +242,7 @@ impl BackupRecipe {
             owner: self.owner.map(|(user, group)| (sub(user), sub(group))),
             db: self.db.map(|db| DbRecipe {
                 name: sub(db.name),
-                role: db.role.map(sub),
+                pg_role: db.pg_role.map(sub),
                 engine: db.engine,
             }),
             post_restore_command: self.post_restore_command.map(sub),
@@ -761,7 +761,7 @@ mod tests {
         let db = backup.db.expect("paperless declares db");
         assert_eq!(db.name, "paperless");
         assert_eq!(db.engine, DbEngine::Postgres);
-        let role = db.role.expect("a postgres restore needs a role");
+        let role = db.pg_role.expect("a postgres restore needs a pg_role");
         assert_eq!(
             role,
             role_default("paperless", "paperless_db_user"),
@@ -1049,7 +1049,7 @@ backup:
   owner: [paperless, paperless]
   db:
     name: paperless
-    role: paperless
+    pg_role: paperless
   post_restore_command: "sudo -u paperless bash -c 'cd /opt/paperless/src && ./manage.py migrate'"
   restore_advice: "confirm the consumer picked the inbox back up"
 "#;
@@ -1065,7 +1065,7 @@ backup:
         );
         let db = backup.db.unwrap();
         assert_eq!(db.name, "paperless");
-        assert_eq!(db.role.as_deref(), Some("paperless"));
+        assert_eq!(db.pg_role.as_deref(), Some("paperless"));
         assert_eq!(
             db.engine,
             DbEngine::Postgres,
@@ -1120,7 +1120,7 @@ backup:
             owner: None,
             db: Some(DbRecipe {
                 name: "paperless".to_string(),
-                role: Some("paperless".to_string()),
+                pg_role: Some("paperless".to_string()),
                 engine: DbEngine::Postgres,
             }),
             post_restore_command: None,
@@ -1279,7 +1279,7 @@ backup:
             owner: Some(("grimmory".to_string(), "grimmory".to_string())),
             db: Some(DbRecipe {
                 name: "grimmory".to_string(),
-                role: None,
+                pg_role: None,
                 engine: DbEngine::Mariadb,
             }),
             post_restore_command: None,

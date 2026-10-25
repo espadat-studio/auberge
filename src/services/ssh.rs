@@ -255,11 +255,16 @@ pub trait SshSession {
     fn set_ownership(&self, remote: &str, user: &str, group: &str) -> Result<()>;
     /// A fresh directory only the ssh user can enter: `mktemp -d` picks an
     /// unguessable name and creates it 0700, so nothing staged in it is
-    /// readable, or pre-creatable, by another local user.
+    /// readable, or pre-creatable, by another local user. The name is spliced
+    /// unquoted into later commands, so anything beyond a plain path is
+    /// refused.
     fn private_dir(&self) -> Result<String> {
         let made = self.run("mktemp -d")?;
         let dir = made.stdout_str().trim().to_string();
-        if !made.success || !dir.starts_with('/') {
+        let plain = dir
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || "/._-".contains(c));
+        if !made.success || !dir.starts_with('/') || !plain {
             eyre::bail!(
                 "mktemp -d failed to create a private directory: {}",
                 made.stderr_str().trim()

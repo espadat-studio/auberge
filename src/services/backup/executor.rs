@@ -204,10 +204,11 @@ impl<'a, S: SshSession + ?Sized> RecipeExecutor<'a, S> {
     ) -> Result<()> {
         if let Some(db) = &recipe.db
             && db.engine == DbEngine::Postgres
-            && db.role.is_none()
+            && db.pg_role.is_none()
+            && source_dir.join("db.dump").exists()
         {
             eyre::bail!(
-                "{app}: a postgres restore needs `db.role` in the Playbook Meta; it never runs \
+                "{app}: a postgres restore needs `db.pg_role` in the Playbook Meta; it never runs \
                  as the postgres superuser"
             );
         }
@@ -269,7 +270,7 @@ impl<'a, S: SshSession + ?Sized> RecipeExecutor<'a, S> {
                     // shell's redirect hands the client a private file, the
                     // MariaDB client runs with shell escapes off, and
                     // pg_restore connects as the database's owner role.
-                    let (tool, cmd) = match (db.engine, &db.role) {
+                    let (tool, cmd) = match (db.engine, &db.pg_role) {
                         (DbEngine::Postgres, Some(role)) => (
                             "pg_restore",
                             format!(
@@ -278,7 +279,9 @@ impl<'a, S: SshSession + ?Sized> RecipeExecutor<'a, S> {
                                 db.name
                             ),
                         ),
-                        (DbEngine::Postgres, None) => eyre::bail!("postgres restore needs db.role"),
+                        (DbEngine::Postgres, None) => {
+                            eyre::bail!("postgres restore needs db.pg_role")
+                        }
                         (DbEngine::Mariadb, _) => (
                             "mariadb",
                             format!("sudo mariadb --sandbox {} < {path} 2>&1", db.name),
@@ -585,7 +588,7 @@ mod tests {
             owner: Some(("paperless".to_string(), "paperless".to_string())),
             db: Some(DbRecipe {
                 name: "paperless".to_string(),
-                role: Some("paperless".to_string()),
+                pg_role: Some("paperless".to_string()),
                 engine: DbEngine::Postgres,
             }),
             post_restore_command: Some("sudo -u paperless ./manage.py migrate".to_string()),
@@ -602,7 +605,7 @@ mod tests {
             owner: Some(("grimmory".to_string(), "grimmory".to_string())),
             db: Some(DbRecipe {
                 name: "grimmory".to_string(),
-                role: None,
+                pg_role: None,
                 engine: DbEngine::Mariadb,
             }),
             post_restore_command: None,
@@ -1371,7 +1374,7 @@ mod tests {
         let source = staged_backup(&["/opt/paperless/data"]);
         std::fs::write(source.path().join("db.dump"), b"-- dump").unwrap();
         let mut recipe = paperless_recipe();
-        recipe.db.as_mut().unwrap().role = None;
+        recipe.db.as_mut().unwrap().pg_role = None;
         let mock = MockSshSession::new();
         let executor = RecipeExecutor::new(&mock);
         let mut progress = crate::services::progress::MockProgress::new();
@@ -1384,6 +1387,20 @@ mod tests {
             "the refusal must cost no service bounce: {:?}",
             mock.calls()
         );
+    }
+
+    #[test]
+    fn test_postgres_restore_without_a_role_still_restores_a_backup_holding_no_dump() {
+        let source = staged_backup(&["/opt/paperless/data"]);
+        let mut recipe = paperless_recipe();
+        recipe.db.as_mut().unwrap().pg_role = None;
+        let mock = MockSshSession::new();
+        let executor = RecipeExecutor::new(&mock);
+        let mut progress = crate::services::progress::MockProgress::new();
+
+        executor
+            .restore("paperless", &recipe, source.path(), &mut progress)
+            .unwrap();
     }
 
     #[test]
