@@ -390,15 +390,6 @@ const DECLARED_DIRECTORIES: &[DeclaredDirectory] = &[
     },
     DeclaredDirectory {
         role: "standby",
-        dir: "{{ root_download_dir }}",
-        kind: Kind::Staging,
-        writers: &[],
-        why: "the root-private download stage, declared here only because standby is the one \
-              staging role with a root strict unit; set in group_vars/all rather than the role's \
-              defaults; the runner seed lands here and is removed once unpacked",
-    },
-    DeclaredDirectory {
-        role: "standby",
         dir: "/usr/local/lib/standby-runner",
         kind: Kind::Install,
         writers: &[],
@@ -408,16 +399,17 @@ const DECLARED_DIRECTORIES: &[DeclaredDirectory] = &[
         role: "standby",
         dir: "/opt/standby-runner",
         kind: Kind::Expendable,
-        writers: &["standby-runner.service", "standby-runner-prune.service"],
-        why: "the runner seeds an empty box and then updates itself in place, and the work \
-              dir holds one job's checkout; a lost tree is re-seeded and re-registered",
+        writers: &[],
+        why: "the root-owned release and the job dir the root reset rebuilds from it before \
+              every job; job code must not write the release, and a lost tree is reinstalled \
+              by the next start",
     },
     DeclaredDirectory {
         role: "standby",
         dir: "/var/lib/standby-runner",
         kind: Kind::Expendable,
         writers: &["standby-runner.service", "standby-runner-prune.service"],
-        why: "the runner user's home: the cargo registry cache the weekly prune caps",
+        why: "the runner user's home, emptied by the root reset before every job",
     },
     DeclaredDirectory {
         role: "standby",

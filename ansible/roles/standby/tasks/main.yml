@@ -48,53 +48,28 @@
       - not standby_runner_agent_home.stat.exists or not standby_runner_agent_home.stat.roth
     fail_msg: "/home/{{ agent_user_name }} is world-readable, so the Standby Runner could read it"
 
+# Before the per-job reset the runner user owned the install and everything in
+# it, binaries included. Nothing in that tree is kept: the reset reinstalls.
+- name: Stat the runner install directory
+  ansible.builtin.stat:
+    path: "{{ standby_runner_install_dir }}"
+  register: standby_runner_install
+
+- name: Remove a runner install the runner user owns
+  when: standby_runner_install.stat.exists and standby_runner_install.stat.pw_name != 'root'
+  ansible.builtin.file:
+    path: "{{ standby_runner_install_dir }}"
+    state: absent
+  notify: Restart standby-runner
+
+# Root-owned, so job code cannot write the release. The reset fills it (ADR-0085).
 - name: Create the runner install directory
   ansible.builtin.file:
     path: "{{ standby_runner_install_dir }}"
     state: directory
-    owner: "{{ standby_runner_user }}"
-    group: "{{ standby_runner_group }}"
-    mode: "0750"
-
-- name: Stat the runner entrypoint
-  ansible.builtin.stat:
-    path: "{{ standby_runner_run_script }}"
-  register: standby_runner_entrypoint
-
-# The runner updates itself on every start (ADR-0085), so the pinned version
-# only seeds a fresh box and is never compared against what is installed.
-- name: Create the root-private download directory
-  ansible.builtin.file:
-    path: "{{ root_download_dir }}"
-    state: directory
     owner: root
     group: root
-    mode: "0700"
-
-- name: Download the runner release archive
-  when: not standby_runner_entrypoint.stat.exists
-  ansible.builtin.get_url:
-    url: "{{ standby_runner_archive_url }}"
-    dest: "{{ standby_runner_archive_download_path }}"
-    owner: root
-    group: root
-    mode: "0644"
-
-- name: Install the runner
-  when: not standby_runner_entrypoint.stat.exists
-  ansible.builtin.unarchive:
-    src: "{{ standby_runner_archive_download_path }}"
-    dest: "{{ standby_runner_install_dir }}"
-    remote_src: true
-    owner: "{{ standby_runner_user }}"
-    group: "{{ standby_runner_group }}"
-    mode: "0750"
-  notify: Restart standby-runner
-
-- name: Remove the downloaded runner archive
-  ansible.builtin.file:
-    path: "{{ standby_runner_archive_download_path }}"
-    state: absent
+    mode: "0755"
 
 - name: Create the root-only credentials directory
   ansible.builtin.file:
@@ -131,6 +106,15 @@
   notify:
     - Restart standby-runner
     - Restart standby-runner-flip timer
+
+- name: Deploy the reset script
+  ansible.builtin.copy:
+    src: standby-runner-reset.sh
+    dest: "{{ standby_runner_reset_script_path }}"
+    owner: root
+    group: root
+    mode: "0755"
+  notify: Restart standby-runner
 
 - name: Deploy the registration script
   ansible.builtin.copy:

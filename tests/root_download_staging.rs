@@ -29,7 +29,6 @@ const STAGING_ROLES: &[&str] = &[
     "navidrome",
     "opencode",
     "paperless",
-    "standby",
 ];
 
 fn vars(role: &str) -> BTreeMap<String, String> {
