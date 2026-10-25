@@ -22,6 +22,19 @@ SSH_PORT = {{ forgejo_ssh_port }}
 
 [repository]
 ROOT = {{ forgejo_data_dir }}/repos
+; Editors are collaborators on repositories the admin creates. Admins bypass
+; the limit.
+MAX_CREATION_LIMIT = 0
+; Onboarding migrates nothing, and a migration is a fetch the forge makes on a
+; user's behalf.
+DISABLE_MIGRATIONS = true
+
+[migrations]
+ALLOW_LOCALNETWORKS = false
+
+[webhook]
+; Forgejo's own default, declared. See the role README's Scope section.
+ALLOWED_HOST_LIST = external
 
 [database]
 DB_TYPE = sqlite3
