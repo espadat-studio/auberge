@@ -34,7 +34,7 @@
   ansible.builtin.get_url:
     url: "{{ agent_users_mise_url }}"
     dest: "{{ agent_users_mise_path }}"
-    checksum: "sha256:{{ agent_users_mise_checksums_url }}"
+    checksum: "sha256:{{ agent_users_mise_sha256 }}"
     owner: root
     group: root
     mode: "0755"

@@ -15,7 +15,7 @@ auberge deploy grimmory
 ```
 
 :::tip
-The JAR is built by this repo, not upstream. Before deploying a new `version.value` in `grimmory.meta.yml`, add the upstream tarball's sha256 to `.github/grimmory-tarballs.sha256`, then run `gh workflow run build-grimmory.yml -f version=<version>`. CI and `auberge deploy grimmory` both refuse a pin whose `grimmory/v<version>` release lacks a non-empty `grimmory-api.jar`.
+The JAR is built by this repo, not upstream. Before deploying a new `version.value` in `grimmory.meta.yml`, add the upstream tarball's sha256 to `.github/grimmory-tarballs.sha256`, then run `gh workflow run build-grimmory.yml -f version=<version>`. CI and `auberge deploy grimmory` both refuse a pin whose `grimmory/v<version>` release lacks a non-empty `grimmory-api.jar`. Renovate does not bump grimmory, so once the release exists run `.github/scripts/recompute-checksums.sh origin/master` to rewrite `grimmory_jar_sha256`; the deploy refuses a jar that does not match it.
 :::
 
 ## Required config

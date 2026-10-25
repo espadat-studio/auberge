@@ -95,3 +95,5 @@ syncthing_folder_is_current: >-
      and syncthing_declared_folder.devices | default([])
          | map(attribute='deviceID') | map('replace', '-', '') | map('upper')
          | list | sort == syncthing_folder_device_keys }}
+syncthing_key_url: https://syncthing.net/release-key.gpg
+syncthing_key_sha256: "c38853d2ccb890ae428e1fbf05d8c8fe0ba6f560bd050e161fb4e5324cdb4a9b"

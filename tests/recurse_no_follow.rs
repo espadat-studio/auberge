@@ -24,7 +24,8 @@ use serde_yaml::{Mapping, Value};
 mod common;
 
 use common::{
-    Plays, defaults, field, relative, resolve, runnable_files, strings, task_name, tasks_in,
+    Plays, defaults, field, relative, resolve, role_of, runnable_files, strings, task_name,
+    tasks_in,
 };
 
 /// Trees that hold an App's database, by role and resolved path.
@@ -83,10 +84,7 @@ fn recursive_file_tasks() -> Vec<RecursiveFileTask> {
         .into_iter()
         .flat_map(|path| {
             let file = relative(&path);
-            let role = file
-                .strip_prefix("ansible/roles/")
-                .and_then(|rest| rest.split('/').next())
-                .map(str::to_string);
+            let role = role_of(&file);
             tasks_in(&path, Plays::Descend)
                 .into_iter()
                 .filter_map(move |task| {

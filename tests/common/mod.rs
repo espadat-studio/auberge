@@ -153,6 +153,14 @@ pub fn relative(path: &Path) -> String {
         .to_string()
 }
 
+/// The role a repo-relative `ansible/roles/<role>/…` path belongs to, or `None`
+/// for a playbook.
+pub fn role_of(file: &str) -> Option<String> {
+    file.strip_prefix("ansible/roles/")
+        .and_then(|rest| rest.split('/').next())
+        .map(str::to_string)
+}
+
 pub fn all_roles() -> Vec<String> {
     let mut roles: Vec<String> = fs::read_dir(roles_dir())
         .expect("ansible/roles must exist")

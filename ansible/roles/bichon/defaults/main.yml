@@ -17,6 +17,7 @@ bichon_encrypt_password_file: "{{ bichon_install_dir }}/encrypt.password"
 
 bichon_release_asset: "bichon-server-{{ bichon_version }}-x86_64-unknown-linux-gnu.tar.gz"
 bichon_release_url: "https://github.com/rustmailer/bichon/releases/download/{{ bichon_version }}/{{ bichon_release_asset }}"
+bichon_release_sha256: "448d1ecb13867e29721f2303d1643570926fb1c77bf0e23c79ed5c6ed27d273a"
 
 bichon_archive_dir: /var/lib/bichon-archive
 bichon_archive_state_dir: "{{ bichon_archive_dir }}/.state"

@@ -44,22 +44,6 @@
          | regex_search('(?<=aoe )\S+')
          | default('', true) }}
 
-- name: Fetch the published checksum for the declared aoe release
-  when: aoe_installed_version != aoe_version
-  become: false
-  delegate_to: localhost
-  ansible.builtin.uri:
-    url: "{{ aoe_archive_url }}.sha256"
-    method: GET
-    return_content: true
-  register: aoe_published_checksum
-
-- name: Extract the aoe archive SHA256
-  when: aoe_installed_version != aoe_version
-  delegate_to: localhost
-  ansible.builtin.set_fact:
-    aoe_archive_sha256: "{{ aoe_published_checksum.content | split() | first }}"
-
 - name: Create the root-private download directory
   ansible.builtin.file:
     path: "{{ root_download_dir }}"

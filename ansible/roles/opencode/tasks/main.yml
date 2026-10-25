@@ -21,6 +21,7 @@
   when: opencode_installed_version != opencode_version
   ansible.builtin.get_url:
     url: "{{ opencode_archive_url }}"
+    checksum: "sha256:{{ opencode_archive_sha256 }}"
     dest: "{{ opencode_archive_download_path }}"
     owner: root
     group: root

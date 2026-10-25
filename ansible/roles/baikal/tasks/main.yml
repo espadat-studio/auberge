@@ -75,6 +75,7 @@
       when: baikal_installed_version != baikal_version
       ansible.builtin.get_url:
         url: "{{ baikal_download_url }}"
+        checksum: "sha256:{{ baikal_download_sha256 }}"
         dest: "{{ root_download_dir }}/baikal-{{ baikal_version }}.zip"
         owner: root
         group: root

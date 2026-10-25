@@ -4,6 +4,7 @@
     - name: Download Docker apt signing key
       ansible.builtin.get_url:
         url: "{{ docker_apt_key_url }}"
+        checksum: "sha256:{{ docker_apt_key_sha256 }}"
         dest: /etc/apt/keyrings/docker.asc
         mode: "0644"
 

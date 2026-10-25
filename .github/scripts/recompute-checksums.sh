@@ -38,23 +38,29 @@ emit_error() {
   fi
 }
 
-# Substitute {{ var }} references with assignments found in the same file.
-# The App Version is declared in the Playbook Meta rather than the defaults
-# file (ADR-0017), so {{ <app>_version }} resolves from the meta's `value:`.
+# Substitute {{ var }} and {{ var | replace('a', 'b') }} references with
+# assignments found in the same file. The App Version is declared in the
+# Playbook Meta rather than the defaults file (ADR-0017), so
+# {{ <app>_version }} resolves from the meta's `value:`.
 render_url() {
   local file="${1}" meta_file="${2}" app="${3}" value="${4}"
-  local iterations=0 var sub
+  local reference="\{\{ ([a-z0-9_]+)( \| replace\('([^']*)', '([^']*)'\))? \}\}"
+  local iterations=0 expr var filter from to sub
   while [[ "${value}" == *'{{'* ]]; do
     if ((iterations >= 10)); then
       emit_error "unresolved template after 10 passes: ${value}"
       return 1
     fi
     iterations=$((iterations + 1))
-    var="$(grep -oP '\{\{ \K[a-z0-9_]+(?= \}\})' <<<"${value}" | head -1 || true)"
-    if [[ -z "${var}" ]]; then
+    if [[ ! "${value}" =~ ${reference} ]]; then
       emit_error "cannot parse template reference in: ${value}"
       return 1
     fi
+    expr="${BASH_REMATCH[0]}"
+    var="${BASH_REMATCH[1]}"
+    filter="${BASH_REMATCH[2]}"
+    from="${BASH_REMATCH[3]}"
+    to="${BASH_REMATCH[4]}"
     sub="$(grep -oP "^${var}: \"?\K[^\"]+" "${file}" | head -1 || true)"
     if [[ -z "${sub}" && "${var}" == "${app}_version" && -n "${meta_file}" ]]; then
       sub="$(grep -oP '^  value: "?\K[^"]+' "${meta_file}" | head -1 || true)"
@@ -63,7 +69,10 @@ render_url() {
       emit_error "cannot resolve {{ ${var} }} from ${file}"
       return 1
     fi
-    value="${value//"{{ ${var} }}"/${sub}}"
+    if [[ -n "${filter}" ]]; then
+      sub="${sub//"${from}"/"${to}"}"
+    fi
+    value="${value//"${expr}"/"${sub}"}"
   done
   printf '%s\n' "${value}"
 }
@@ -167,4 +176,6 @@ main() {
   exit "${status}"
 }
 
-main "$@"
+if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
+  main "$@"
+fi

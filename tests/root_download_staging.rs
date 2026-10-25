@@ -25,10 +25,12 @@ const STAGING_ROLES: &[&str] = &[
     "blocky",
     "colporteur",
     "gokapi",
+    "grimmory",
     "headscale",
     "navidrome",
     "opencode",
     "paperless",
+    "stirling",
 ];
 
 fn vars(role: &str) -> BTreeMap<String, String> {

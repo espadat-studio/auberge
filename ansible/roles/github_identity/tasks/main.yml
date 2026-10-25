@@ -7,6 +7,7 @@
 - name: Download the GitHub CLI archive keyring
   ansible.builtin.get_url:
     url: "{{ github_identity_keyring_url }}"
+    checksum: "sha256:{{ github_identity_keyring_sha256 }}"
     dest: "{{ github_identity_keyring }}"
     owner: root
     group: root

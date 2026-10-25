@@ -41,32 +41,37 @@
          | regex_search('(?<=uv )\S+')
          | default('', true) }}
 
-- name: Create secure temp directory for uv installer
-  ansible.builtin.tempfile:
-    state: directory
-    suffix: _uv_install
-  register: tgtg_uv_tmpdir
+- name: Install the pinned uv release
   when: tgtg_uv_installed_version != tgtg_uv_version
+  block:
+    - name: Create a private staging directory for uv
+      ansible.builtin.tempfile:
+        state: directory
+        suffix: _uv
+      register: tgtg_uv_tmpdir
 
-- name: Download uv install script
-  ansible.builtin.get_url:
-    url: "https://astral.sh/uv/{{ tgtg_uv_version }}/install.sh"
-    dest: "{{ tgtg_uv_tmpdir.path }}/install.sh"
-    mode: "0755"
-  when: tgtg_uv_installed_version != tgtg_uv_version
+    - name: Download the uv release
+      ansible.builtin.get_url:
+        url: "{{ tgtg_uv_url }}"
+        dest: "{{ tgtg_uv_tmpdir.path }}/uv.tar.gz"
+        checksum: "sha256:{{ tgtg_uv_sha256 }}"
+        mode: "0600"
 
-- name: Install uv package manager
-  ansible.builtin.command: "{{ tgtg_uv_tmpdir.path }}/install.sh"
-  when: tgtg_uv_installed_version != tgtg_uv_version
-  changed_when: true
-  environment:
-    UV_INSTALL_DIR: /usr/local/bin
-
-- name: Clean up uv installer
-  ansible.builtin.file:
-    path: "{{ tgtg_uv_tmpdir.path }}"
-    state: absent
-  when: tgtg_uv_tmpdir.path is defined
+    - name: Unpack uv
+      ansible.builtin.unarchive:
+        src: "{{ tgtg_uv_tmpdir.path }}/uv.tar.gz"
+        dest: /usr/local/bin
+        remote_src: true
+        extra_opts: [--strip-components=1]
+        owner: root
+        group: root
+        mode: "0755"
+  always:
+    - name: Remove the uv staging directory
+      ansible.builtin.file:
+        path: "{{ tgtg_uv_tmpdir.path }}"
+        state: absent
+      when: tgtg_uv_tmpdir.path is defined
 
 - name: Mark install directory as git safe
   community.general.git_config:
