@@ -784,7 +784,7 @@ mod tests {
     }
 
     /// The Host's Zone set carries each Zone once with its pair, so the
-    /// drop-in writes one line per Zone and reads no token by name.
+    /// env file writes one line per Zone and reads no token by name.
     #[test]
     fn test_the_host_zone_set_carries_each_zone_once_with_its_pair() {
         let toml = format!("{ZONES_ANSWERED}\n[hosts.auberge]\nforgejo_zone = \"shop\"\n");

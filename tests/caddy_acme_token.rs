@@ -1,16 +1,16 @@
 //! The parent domain's ACME token never lands on the agent tier's Host.
 //!
-//! Caddy answers DNS-01 with whatever `CLOUDFLARE_DNS_API_TOKEN` its systemd
-//! drop-in carries. A Cloudflare API token is zone-scoped and not
+//! Caddy answers DNS-01 with whatever `CLOUDFLARE_DNS_API_TOKEN` its root-only
+//! env file carries. A Cloudflare API token is zone-scoped and not
 //! record-scoped, so the smallest token able to complete a challenge for the
 //! parent domain can also rewrite its MX and every other Host's records
 //! (ADR-0068). `ruche` is assumed compromisable (ADR-0054), which makes "which
-//! token is in that drop-in" a security property of the deploy and not a
+//! token is in that env file" a security property of the deploy and not a
 //! configuration detail.
 //!
 //! Three things hold it:
 //!
-//! - the drop-in reads `caddy_dns_api_token`, the indirection, and not a
+//! - the env file reads `caddy_dns_api_token`, the indirection, and not a
 //!   config key directly — a template that reads `cloudflare_dns_api_token`
 //!   cannot be pointed anywhere;
 //! - the role defaults that indirection to the parent domain's token, so the
@@ -37,7 +37,7 @@ use common::{
     defaults, field, parse_yaml, playbooks_dir, registry_keys, role_dir, role_template_files,
 };
 
-/// The role variable the drop-in reads: caddy's own name for "the token I
+/// The role variable the env file reads: caddy's own name for "the token I
 /// answer DNS-01 with", which is what makes it pointable.
 const INDIRECTION: &str = "caddy_dns_api_token";
 
@@ -115,13 +115,13 @@ fn resolved_token(gate: Option<&str>) -> String {
         .to_string()
 }
 
-// ── The drop-in reads the indirection ─────────────────────────────────────
+// ── The env file reads the indirection ────────────────────────────────────
 
 /// The one template that writes the token into caddy's environment, and its
-/// body. A drop-in that names the config key directly is the shape this whole
+/// body. An env file that names the config key directly is the shape this whole
 /// file exists to prevent: nothing can point it.
 #[test]
-fn test_the_env_dropin_reads_the_indirection_and_not_a_config_key() {
+fn test_the_env_file_reads_the_indirection_and_not_a_config_key() {
     let templates: Vec<String> = role_template_files("caddy")
         .iter()
         .map(|path| fs::read_to_string(path).expect("a caddy template must be readable"))
@@ -136,12 +136,12 @@ fn test_the_env_dropin_reads_the_indirection_and_not_a_config_key() {
     let body = &templates[0];
     assert!(
         body.contains(INDIRECTION),
-        "caddy's env drop-in must read `{INDIRECTION}`, so a Host serving another \
+        "caddy's env file must read `{INDIRECTION}`, so a Host serving another \
          zone can be pointed at another token:\n{body}"
     );
     assert!(
         !body.contains(&format!("{{{{ {FLEET_KEY} }}}}")),
-        "caddy's env drop-in must not read `{FLEET_KEY}` directly — that is the \
+        "caddy's env file must not read `{FLEET_KEY}` directly — that is the \
          parent domain's token, and it cannot be redirected:\n{body}"
     );
 }
@@ -161,8 +161,8 @@ fn test_the_indirection_defaults_to_the_parent_domains_token() {
     );
     assert!(
         defaults("caddy").contains_key(INDIRECTION),
-        "the shared defaults read must see `{INDIRECTION}`; the unit scan resolves \
-         the drop-in's value through it"
+        "the shared defaults read must see `{INDIRECTION}`; `secret_file_mode.rs` resolves \
+         the env file's token through it"
     );
 }
 

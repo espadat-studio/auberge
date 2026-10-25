@@ -138,10 +138,21 @@
         group: root
         mode: "0755"
 
-    - name: Deploy Caddy environment drop-in
+    - name: Require Zone DNS tokens systemd can carry verbatim
+      ansible.builtin.assert:
+        that:
+          - "\"'\" not in (host_zones | from_json | map(attribute='token') | join ~ caddy_dns_api_token)"
+        fail_msg: >-
+          A Zone DNS token carries a single quote, which would truncate the
+          value systemd reads from caddy's env file.
+      no_log: true
+
+    # A unit's `Environment=` is readable by every local user over D-Bus;
+    # an `EnvironmentFile=` is read by systemd alone.
+    - name: Deploy Caddy environment file
       ansible.builtin.template:
-        src: caddy-env.conf.j2
-        dest: /etc/systemd/system/caddy.service.d/caddy-env.conf
+        src: caddy.env.j2
+        dest: /etc/caddy/caddy.env
         owner: root
         group: root
         mode: "0600"
@@ -149,6 +160,15 @@
       # its name matches none of the suffixes a value is redacted by, so a
       # --diff run would print every one of them.
       no_log: true
+      notify: Restart caddy
+
+    - name: Deploy Caddy environment drop-in
+      ansible.builtin.copy:
+        src: files/caddy-env.conf
+        dest: /etc/systemd/system/caddy.service.d/caddy-env.conf
+        owner: root
+        group: root
+        mode: "0644"
       notify: Restart caddy
 
     - name: Copy Caddyfile from local path to /etc/caddy/Caddyfile
