@@ -10,7 +10,7 @@ standby_runner_run_script: "{{ standby_runner_install_dir }}/run.sh"
 standby_runner_work_dir: "{{ standby_runner_install_dir }}/_work"
 standby_runner_archive_name: "actions-runner-linux-x64-{{ standby_version }}.tar.gz"
 standby_runner_archive_url: "https://github.com/actions/runner/releases/download/v{{ standby_version }}/{{ standby_runner_archive_name }}"
-standby_runner_archive_download_path: "/tmp/{{ standby_runner_archive_name }}"
+standby_runner_archive_download_path: "{{ root_download_dir }}/{{ standby_runner_archive_name }}"
 
 standby_runner_memory_max: 4G
 standby_runner_cpu_quota: 200%

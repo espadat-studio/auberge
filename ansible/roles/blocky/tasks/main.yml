@@ -35,11 +35,21 @@
          | regex_search('(?<=lego version )\S+')
          | default('', true) }}
 
+- name: Create the root-private download directory
+  ansible.builtin.file:
+    path: "{{ root_download_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0700"
+
 - name: Download Lego binary
   when: blocky_lego_installed_version != blocky_lego_version
   ansible.builtin.get_url:
     url: "{{ blocky_lego_url }}"
-    dest: "/tmp/lego.tar.gz"
+    dest: "{{ root_download_dir }}/lego.tar.gz"
+    owner: root
+    group: root
     mode: "0644"
   args:
     checksum: "sha256:{{ blocky_lego_sha256 }}"
@@ -47,12 +57,17 @@
 - name: Unarchive Lego binary
   when: blocky_lego_installed_version != blocky_lego_version
   ansible.builtin.unarchive:
-    src: "/tmp/lego.tar.gz"
+    src: "{{ root_download_dir }}/lego.tar.gz"
     dest: "/usr/local/bin"
     remote_src: true
     owner: blocky
     group: blocky
     mode: "0755"
+
+- name: Remove the downloaded Lego archive
+  ansible.builtin.file:
+    path: "{{ root_download_dir }}/lego.tar.gz"
+    state: absent
 
 - name: Detect Lego v4 account layout
   ansible.builtin.find:
@@ -130,20 +145,27 @@
   when: blocky_installed_version != blocky_version
   ansible.builtin.get_url:
     url: "{{ blocky_archive_url }}"
-    dest: "/tmp/{{ blocky_archive_name }}"
+    dest: "{{ root_download_dir }}/{{ blocky_archive_name }}"
+    owner: root
+    group: root
     mode: "0644"
     checksum: "sha256:{{ blocky_checksum_sha256 }}"
 
 - name: Expand blocky archive
   when: blocky_installed_version != blocky_version
   ansible.builtin.unarchive:
-    src: "/tmp/{{ blocky_archive_name }}"
+    src: "{{ root_download_dir }}/{{ blocky_archive_name }}"
     dest: "{{ blocky_install_path }}"
     group: blocky
     owner: blocky
     mode: "0755"
     copy: false
   notify: Restart blocky
+
+- name: Remove the downloaded blocky archive
+  ansible.builtin.file:
+    path: "{{ root_download_dir }}/{{ blocky_archive_name }}"
+    state: absent
 
 - name: Ensure owner and mode of blocky binary
   ansible.builtin.file:

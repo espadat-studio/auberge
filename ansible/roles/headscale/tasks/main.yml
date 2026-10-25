@@ -56,17 +56,27 @@
              if headscale_version_file.stat.exists and headscale_binary_stat.stat.exists
              else '' }}
 
+    - name: Create the root-private download directory
+      ansible.builtin.file:
+        path: "{{ root_download_dir }}"
+        state: directory
+        owner: root
+        group: root
+        mode: "0700"
+
     - name: Download headscale binary
       ansible.builtin.get_url:
         url: "{{ headscale_release_url }}"
-        dest: /tmp/headscale
+        dest: "{{ root_download_dir }}/headscale"
+        owner: root
+        group: root
         mode: "0755"
         checksum: "{{ headscale_release_checksum }}"
       when: headscale_installed_version != headscale_version
 
     - name: Install headscale binary
       ansible.builtin.copy:
-        src: /tmp/headscale
+        src: "{{ root_download_dir }}/headscale"
         dest: "{{ headscale_binary_path }}"
         owner: root
         group: root
@@ -77,7 +87,7 @@
 
     - name: Remove temporary download
       ansible.builtin.file:
-        path: /tmp/headscale
+        path: "{{ root_download_dir }}/headscale"
         state: absent
       when: headscale_installed_version != headscale_version
 

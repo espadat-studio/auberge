@@ -17,19 +17,34 @@
           {{ ansible_facts.packages.navidrome[0].version
              if 'navidrome' in ansible_facts.packages else '' }}
 
+    - name: Create the root-private download directory
+      ansible.builtin.file:
+        path: "{{ root_download_dir }}"
+        state: directory
+        owner: root
+        group: root
+        mode: "0700"
+
     - name: Download Navidrome .deb package
       when: navidrome_installed_version != navidrome_version
       ansible.builtin.get_url:
         url: "{{ navidrome_deb_url }}"
-        dest: "/tmp/navidrome_{{ navidrome_version }}_linux_amd64.deb"
+        dest: "{{ root_download_dir }}/navidrome_{{ navidrome_version }}_linux_amd64.deb"
+        owner: root
+        group: root
         mode: "0644"
 
     - name: Install Navidrome from .deb package
       when: navidrome_installed_version != navidrome_version
       ansible.builtin.apt:
-        deb: "/tmp/navidrome_{{ navidrome_version }}_linux_amd64.deb"
+        deb: "{{ root_download_dir }}/navidrome_{{ navidrome_version }}_linux_amd64.deb"
         state: present
       notify: Restart navidrome
+
+    - name: Remove the downloaded Navidrome .deb package
+      ansible.builtin.file:
+        path: "{{ root_download_dir }}/navidrome_{{ navidrome_version }}_linux_amd64.deb"
+        state: absent
 
     - name: Add ansible user to navidrome group for music uploads
       ansible.builtin.user:

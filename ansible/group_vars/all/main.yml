@@ -3,3 +3,4 @@ dns_default_ttl: 300
 ssh_identities_dir: "{{ lookup('env', 'HOME') }}/.ssh/identities/{{ inventory_hostname }}"
 agent_user_name: agent
 agent_syncthing_user_name: syncthing
+root_download_dir: /var/cache/auberge

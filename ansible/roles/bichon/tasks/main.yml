@@ -98,15 +98,25 @@
     - name: Download and install binary
       when: bichon_installed_version != bichon_version
       block:
+        - name: Create the root-private download directory
+          ansible.builtin.file:
+            path: "{{ root_download_dir }}"
+            state: directory
+            owner: root
+            group: root
+            mode: "0700"
+
         - name: Download release tarball
           ansible.builtin.get_url:
             url: "{{ bichon_release_url }}"
-            dest: /tmp/bichon.tar.gz
+            dest: "{{ root_download_dir }}/bichon.tar.gz"
+            owner: root
+            group: root
             mode: "0644"
 
         - name: Extract binary from tarball
           ansible.builtin.unarchive:
-            src: /tmp/bichon.tar.gz
+            src: "{{ root_download_dir }}/bichon.tar.gz"
             dest: "{{ bichon_install_dir }}"
             remote_src: true
             owner: root
@@ -116,7 +126,7 @@
 
         - name: Remove tarball
           ansible.builtin.file:
-            path: /tmp/bichon.tar.gz
+            path: "{{ root_download_dir }}/bichon.tar.gz"
             state: absent
 
     # v2 renamed both binaries (bichon -> bichon-server, bichonctl -> bichon-cli)

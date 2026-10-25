@@ -493,6 +493,30 @@ pub fn defaults(role: &str) -> BTreeMap<String, String> {
     };
     let parsed: Mapping =
         serde_yaml::from_str(&raw).unwrap_or_else(|e| panic!("{} must parse: {e}", path.display()));
+    scalars(&parsed)
+}
+
+/// The scalars every host inherits from `group_vars/all/`, in the same table
+/// shape as [`defaults`], for a path a role states through a fleet-wide name.
+pub fn group_vars_all() -> BTreeMap<String, String> {
+    let files = yml_files(&ansible_dir().join("group_vars/all"));
+    assert!(
+        !files.is_empty(),
+        "ansible/group_vars/all must hold yml files"
+    );
+    files
+        .iter()
+        .flat_map(|path| {
+            let parsed = parse_yaml(path);
+            let mapping = parsed
+                .as_mapping()
+                .unwrap_or_else(|| panic!("{} must hold a mapping", relative(path)));
+            scalars(mapping)
+        })
+        .collect()
+}
+
+fn scalars(parsed: &Mapping) -> BTreeMap<String, String> {
     parsed
         .iter()
         .filter_map(|(key, value)| {

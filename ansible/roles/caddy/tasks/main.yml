@@ -6,21 +6,26 @@
         dest: /usr/share/keyrings/caddy-xcaddy-archive-keyring.gpg
         mode: "0644"
 
-    - name: Fetch xcaddy APT repository definition
-      ansible.builtin.get_url:
-        url: https://dl.cloudsmith.io/public/caddy/xcaddy/debian.deb.txt
-        dest: /tmp/caddy-xcaddy.list.tmp
-        mode: "0644"
-      register: caddy_xcaddy_repo_url_content
-
-    - name: Add xcaddy APT repository file
+    - name: Add xcaddy APT repository
       ansible.builtin.copy:
-        src: /tmp/caddy-xcaddy.list.tmp
-        dest: /etc/apt/sources.list.d/caddy-xcaddy.list
+        content: |
+          Types: deb
+          URIs: https://dl.cloudsmith.io/public/caddy/xcaddy/deb/debian
+          Suites: any-version
+          Components: main
+          Signed-By: /usr/share/keyrings/caddy-xcaddy-archive-keyring.gpg
+        dest: /etc/apt/sources.list.d/caddy-xcaddy.sources
         owner: root
         group: root
         mode: "0644"
-        remote_src: true
+
+    - name: Remove the superseded xcaddy source list and its download
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: absent
+      loop:
+        - /etc/apt/sources.list.d/caddy-xcaddy.list
+        - /tmp/caddy-xcaddy.list.tmp
 
     - name: Update apt cache after adding xcaddy repository
       ansible.builtin.apt:

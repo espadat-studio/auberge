@@ -390,6 +390,15 @@ const DECLARED_DIRECTORIES: &[DeclaredDirectory] = &[
     },
     DeclaredDirectory {
         role: "standby",
+        dir: "{{ root_download_dir }}",
+        kind: Kind::Staging,
+        writers: &[],
+        why: "the root-private download stage, declared here only because standby is the one \
+              staging role with a root strict unit; set in group_vars/all rather than the role's \
+              defaults; the runner seed lands here and is removed once unpacked",
+    },
+    DeclaredDirectory {
+        role: "standby",
         dir: "/usr/local/lib/standby-runner",
         kind: Kind::Install,
         writers: &[],

@@ -60,11 +60,21 @@
   ansible.builtin.set_fact:
     aoe_archive_sha256: "{{ aoe_published_checksum.content | split() | first }}"
 
+- name: Create the root-private download directory
+  ansible.builtin.file:
+    path: "{{ root_download_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0700"
+
 - name: Download the aoe release archive
   when: aoe_installed_version != aoe_version
   ansible.builtin.get_url:
     url: "{{ aoe_archive_url }}"
     dest: "{{ aoe_archive_path }}"
+    owner: root
+    group: root
     checksum: "sha256:{{ aoe_archive_sha256 }}"
     mode: "0644"
 

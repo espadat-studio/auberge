@@ -63,25 +63,36 @@
              | default('', true)
              if baikal_distrib_file.stat.exists else '' }}
 
+    - name: Create the root-private download directory
+      ansible.builtin.file:
+        path: "{{ root_download_dir }}"
+        state: directory
+        owner: root
+        group: root
+        mode: "0700"
+
     - name: Download Baikal release
       when: baikal_installed_version != baikal_version
       ansible.builtin.get_url:
         url: "{{ baikal_download_url }}"
-        dest: /tmp/baikal-{{ baikal_version }}.zip
+        dest: "{{ root_download_dir }}/baikal-{{ baikal_version }}.zip"
+        owner: root
+        group: root
         mode: "0644"
 
     - name: Install Baikal release (replaces Core, html, vendor; keeps Specific and config)
       when: baikal_installed_version != baikal_version
       ansible.builtin.shell: |
         set -euo pipefail
-        rm -rf /tmp/baikal-extract
-        mkdir /tmp/baikal-extract
-        unzip -q /tmp/baikal-{{ baikal_version }}.zip -d /tmp/baikal-extract
-        SRC=$(dirname "$(find /tmp/baikal-extract -maxdepth 2 -type d -name Core | head -1)")
+        EXTRACT={{ root_download_dir }}/baikal-extract
+        rm -rf "$EXTRACT"
+        mkdir "$EXTRACT"
+        unzip -q {{ root_download_dir }}/baikal-{{ baikal_version }}.zip -d "$EXTRACT"
+        SRC=$(dirname "$(find "$EXTRACT" -maxdepth 2 -type d -name Core | head -1)")
         rm -rf {{ baikal_install_dir }}/Core {{ baikal_install_dir }}/html {{ baikal_install_dir }}/vendor
         mv "$SRC/Core" "$SRC/html" "$SRC/vendor" {{ baikal_install_dir }}/
         chown -R {{ baikal_sys_user }}:{{ baikal_sys_user }} {{ baikal_install_dir }}
-        rm -rf /tmp/baikal-extract
+        rm -rf "$EXTRACT"
       args:
         executable: /bin/bash
       changed_when: true
@@ -90,7 +101,7 @@
     - name: Remove Baikal zip file
       when: baikal_installed_version != baikal_version
       ansible.builtin.file:
-        path: /tmp/baikal-{{ baikal_version }}.zip
+        path: "{{ root_download_dir }}/baikal-{{ baikal_version }}.zip"
         state: absent
 
     - name: Set proper permissions on Baikal directories
