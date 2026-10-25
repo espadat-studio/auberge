@@ -253,6 +253,20 @@ pub trait SshSession {
     fn rsync_from(&self, remote: &str, local: &Path) -> Result<()>;
     fn rsync_to(&self, local: &Path, remote: &str) -> Result<()>;
     fn set_ownership(&self, remote: &str, user: &str, group: &str) -> Result<()>;
+    /// A fresh directory only the ssh user can enter: `mktemp -d` picks an
+    /// unguessable name and creates it 0700, so nothing staged in it is
+    /// readable, or pre-creatable, by another local user.
+    fn private_dir(&self) -> Result<String> {
+        let made = self.run("mktemp -d")?;
+        let dir = made.stdout_str().trim().to_string();
+        if !made.success || !dir.starts_with('/') {
+            eyre::bail!(
+                "mktemp -d failed to create a private directory: {}",
+                made.stderr_str().trim()
+            );
+        }
+        Ok(dir)
+    }
 }
 
 pub struct LiveSshSession<'a> {
@@ -488,6 +502,7 @@ pub enum SshOp {
         user: String,
         group: String,
     },
+    PrivateDir,
 }
 
 #[cfg(test)]
@@ -566,6 +581,11 @@ impl MockSshSession {
 #[cfg(test)]
 pub const MOCK_RSYNC_E_ARG: &str = "ssh <mock>";
 
+/// What [`MockSshSession::private_dir`] answers, without consuming a staged
+/// run result.
+#[cfg(test)]
+pub const MOCK_PRIVATE_DIR: &str = "/tmp/tmp.mock";
+
 /// A stand-in Host for [`MockSshSession::reachable`] to word its failure
 /// against. The mock has no Host of its own, and the alternative — a second
 /// wording for the mock — is the thing [`unreachable_error`] exists to prevent.
@@ -636,6 +656,11 @@ impl SshSession for MockSshSession {
 
     fn rsync_e_arg(&self) -> String {
         MOCK_RSYNC_E_ARG.to_string()
+    }
+
+    fn private_dir(&self) -> Result<String> {
+        self.calls.borrow_mut().push(SshOp::PrivateDir);
+        Ok(MOCK_PRIVATE_DIR.to_string())
     }
 
     fn become_method(&self) -> &str {

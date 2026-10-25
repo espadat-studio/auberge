@@ -15,4 +15,3 @@ backup:
   db:
     name: yourls
     engine: mariadb
-    dump_path: /tmp/yourls_db.dump
