@@ -11,6 +11,57 @@
       - libnss3
     state: present
 
+- name: Create the hermes user, with no sudo and no ssh
+  ansible.builtin.user:
+    name: "{{ hermes_user }}"
+    comment: "Hermes gateway"
+    shell: /bin/bash
+    create_home: true
+    groups: []
+    append: false
+    state: present
+
+- name: Find the gateway unit the admin user ran before ADR-0087
+  ansible.builtin.stat:
+    path: "/home/{{ admin_user_name }}/.config/systemd/user/hermes-gateway.service"
+  register: hermes_admin_unit
+
+- name: Get the admin user's UID
+  ansible.builtin.command: id -u {{ admin_user_name }}
+  register: hermes_admin_uid
+  changed_when: false
+  when: hermes_admin_unit.stat.exists
+
+- name: Retire the admin user's gateway
+  when: hermes_admin_unit.stat.exists
+  become: true
+  become_user: "{{ admin_user_name }}"
+  environment:
+    XDG_RUNTIME_DIR: "/run/user/{{ hermes_admin_uid.stdout }}"
+  block:
+    - name: Stop and disable the admin user's gateway
+      ansible.builtin.systemd_service:
+        name: hermes-gateway
+        state: stopped
+        enabled: false
+        scope: user
+
+    - name: Remove the admin user's gateway unit file
+      ansible.builtin.file:
+        path: "/home/{{ admin_user_name }}/.config/systemd/user/hermes-gateway.service"
+        state: absent
+
+    - name: Reload the admin user's systemd after removing the gateway
+      ansible.builtin.systemd_service:
+        daemon_reload: true
+        scope: user
+
+    - name: Clear the failed state the admin user's gateway may latch
+      ansible.builtin.command: systemctl reset-failed --user hermes-gateway.service
+      register: hermes_admin_reset
+      changed_when: hermes_admin_reset.rc == 0
+      failed_when: false
+
 - name: Get user UID
   ansible.builtin.command: id -u {{ hermes_user }}
   register: hermes_user_uid
@@ -223,10 +274,10 @@
       - "Install Dir: {{ hermes_install_dir }}"
       - ""
       - "Next steps:"
-      - "1. Check service: systemctl --user status hermes-gateway"
-      - "2. View logs: journalctl --user -u hermes-gateway -f"
-      - "3. SSH to VPS: ssh {{ hermes_user }}@{{ inventory_hostname }}"
+      - "1. Check service: sudo systemctl --user -M {{ hermes_user }}@ status hermes-gateway"
+      - "2. View logs: sudo journalctl _UID={{ hermes_user_uid.stdout }} -f"
+      - "3. Become hermes on the host: sudo -iu {{ hermes_user }}"
       - "4. Test: send a message to your Telegram bot"
       - ""
-      - "Optional post-deploy (via SSH):"
+      - "Optional post-deploy (as {{ hermes_user }}):"
       - "  hermes skills           # browse available skills"
