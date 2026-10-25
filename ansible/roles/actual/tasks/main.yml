@@ -54,13 +54,30 @@
         group: "{{ actual_sys_group }}"
         mode: "0750"
 
+    # npm runs dependency lifecycle scripts, so the install is the service
+    # user's; ProtectSystem=strict keeps the tree read-only to the running unit.
     - name: Create Actual installation directory
       ansible.builtin.file:
         path: "{{ actual_install_dir }}"
         state: directory
-        owner: root
-        group: root
+        owner: "{{ actual_sys_user }}"
+        group: "{{ actual_sys_group }}"
         mode: "0755"
+
+    - name: Check for a root-owned install from before the service user owned it
+      ansible.builtin.stat:
+        path: "{{ actual_install_dir }}/node_modules"
+      register: actual_node_modules
+
+    - name: Hand a root-owned install to the service user
+      ansible.builtin.file:
+        path: "{{ actual_install_dir }}"
+        state: directory
+        recurse: true
+        follow: false
+        owner: "{{ actual_sys_user }}"
+        group: "{{ actual_sys_group }}"
+      when: actual_node_modules.stat.exists and actual_node_modules.stat.pw_name == 'root'
 
     - name: Download NodeSource signing key
       ansible.builtin.get_url:
@@ -99,6 +116,10 @@
         is version(actual_node_major ~ '.0.0', '<')
 
     - name: Install Actual sync server {{ actual_version }}
+      become: true
+      become_user: "{{ actual_sys_user }}"
+      environment:
+        HOME: "{{ actual_install_dir }}"
       community.general.npm:
         name: "@actual-app/sync-server"
         version: "{{ actual_version }}"

@@ -228,6 +228,14 @@ struct DeclaredDirectory {
 const DECLARED_DIRECTORIES: &[DeclaredDirectory] = &[
     DeclaredDirectory {
         role: "actual",
+        dir: "/opt/actual",
+        kind: Kind::Install,
+        writers: &[],
+        why: "the npm tree a deploy puts back; the service user owns it so npm lifecycle \
+              scripts never run as root, and the running unit cannot write it",
+    },
+    DeclaredDirectory {
+        role: "actual",
         dir: "/var/lib/actual",
         kind: Kind::Data,
         writers: &["actual.service"],
