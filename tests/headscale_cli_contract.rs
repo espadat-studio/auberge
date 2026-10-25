@@ -48,7 +48,7 @@ fn the_verified_cli_version_is_the_one_the_playbook_pins() {
          ansible/playbooks/{APP}.meta.yml now deploys {pinned}.\n\
          Read the new release's CLI surface before moving the const — \
          `headscale users create --help`, `preauthkeys create --help`, \
-         `users destroy --help`, `auth register --help`, `nodes tag --help` — plus \
+         `users destroy --help`, `auth register --help`, `nodes tag --help`, `nodes delete --help` — plus \
          the JSON its `-o json` prints. Four claims live outside `--help` and must \
          be re-read with it, all in `hscontrol`: `registerCacheExpiration` in \
          `state/state.go`, whose 15 minutes register's error message quotes; the \

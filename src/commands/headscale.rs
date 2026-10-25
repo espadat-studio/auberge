@@ -744,6 +744,93 @@ fn destroy_user(session: &dyn SshSession, username: &str) -> Result<()> {
     Ok(())
 }
 
+/// `nodes delete` asks before deleting and, unanswered, exits 0 having
+/// deleted nothing — `--force` is what makes the call act.
+fn delete_node(session: &dyn SshSession, node_id: u64) -> Result<()> {
+    run_headscale_cmd(
+        session,
+        &format!("nodes delete --identifier {} --force", node_id),
+    )?;
+    Ok(())
+}
+
+/// The node `host` enrolled as. The tailscale role enrolls a machine under its
+/// own hostname, which the roster name need not match, so a cached
+/// `tailscale_ip` decides when there is one; the name is the link only for a
+/// Host that never cached the fact.
+fn node_for_host<'a>(nodes: &'a [HeadscaleNode], host: &Host) -> Option<&'a HeadscaleNode> {
+    match &host.tailscale_ip {
+        Some(ip) => nodes.iter().find(|n| n.ip_addresses.contains(ip)),
+        None => nodes.iter().find(|n| n.given_name == host.name),
+    }
+}
+
+#[derive(Debug)]
+enum Revocation {
+    Deleted(HeadscaleNode),
+    /// The Host's cached address resolved to a node under another name. The
+    /// address may be stale and now held by a different machine, so the
+    /// delete is left to the operator.
+    Withheld(HeadscaleNode),
+    Absent,
+}
+
+/// Deletes the node `host` enrolled as, which revokes the tag reach it was
+/// granted — only when the node also carries the Host's name.
+fn revoke_node(session: &dyn SshSession, host: &Host) -> Result<Revocation> {
+    let nodes = list_nodes(session)?;
+    let Some(node) = node_for_host(&nodes, host).cloned() else {
+        return Ok(Revocation::Absent);
+    };
+    if node.given_name != host.name {
+        return Ok(Revocation::Withheld(node));
+    }
+    delete_node(session, node.id)?;
+    Ok(Revocation::Deleted(node))
+}
+
+/// Revokes a Host's tailnet membership as it leaves the roster (`host
+/// remove`). A roster with no headscale coordinator has nothing to revoke; one
+/// that declares a coordinator it cannot reach is an error, so the caller
+/// keeps the Host rather than forgetting a node that still holds its tags.
+pub fn revoke_host_node(host: &Host) -> Result<()> {
+    let config = Config::load()?;
+    let hosts = HostManager::load_hosts()?;
+    let Some(coordinator) = tailnet_coordinator(&hosts, &config)? else {
+        output::info("No roster host serves headscale — no tailnet node to revoke");
+        return Ok(());
+    };
+
+    let key = host_ssh_key(coordinator)?;
+    let route = crate::services::route::resolve(coordinator, Some(key))?;
+    let session = LiveSshSession::new(&route, &coordinator.become_method)?;
+    let revoked = revoke_node(&session, host).wrap_err_with(|| {
+        format!(
+            "Could not revoke '{}' on headscale on '{}'. '{}' stays in the roster. Retry once \
+             headscale answers, or run `auberge config set hosts.{}.headscale_subdomain \"\"` \
+             if '{}' no longer serves it",
+            host.name, coordinator.name, host.name, coordinator.name, coordinator.name
+        )
+    })?;
+
+    match revoked {
+        Revocation::Deleted(node) => output::success(&format!(
+            "Deleted headscale node '{}' (id {})",
+            node.given_name, node.id
+        )),
+        Revocation::Withheld(node) => output::warn(&format!(
+            "headscale node '{}' (id {}) holds {}'s cached address but not its name — not \
+             deleted. If it is {}, run on '{}': sudo headscale nodes delete --identifier {} --force",
+            node.given_name, node.id, host.name, host.name, coordinator.name, node.id
+        )),
+        Revocation::Absent => output::warn(&format!(
+            "headscale on '{}' holds no node for '{}' — `auberge headscale list-nodes` shows what is enrolled",
+            coordinator.name, host.name
+        )),
+    }
+    Ok(())
+}
+
 /// The expiration for a key about to be minted: the flag when given, a picker
 /// on a terminal, `24h` otherwise.
 fn resolve_expiration(expiration: Option<String>, is_tty: bool) -> Result<String> {
@@ -1018,21 +1105,21 @@ impl std::fmt::Debug for AutoMint {
     }
 }
 
-/// The one roster Host to mint against, read through the same ADR-0051 gate
-/// `auberge headscale` resolves its default target with.
+/// The one roster Host coordinating the tailnet, read through the same
+/// ADR-0051 gate `auberge headscale` resolves its default target with.
 ///
 /// Zero and several are different answers here, which is why this does not
-/// reuse [`only_serving_host`]: zero is the first-host case and falls back to
-/// config, while several is a roster the auto-mint cannot read — picking one
-/// would mint a key for a tailnet the target is not joining, and there is no
-/// operator mid-deploy to ask.
-fn mint_coordinator<'a>(hosts: &'a [Host], config: &Config) -> Result<Option<&'a Host>> {
+/// reuse [`only_serving_host`]: zero means no self-hosted tailnet (nothing to
+/// mint against, nothing to revoke), while several is a roster auberge cannot
+/// read — picking one would mint a key for, or delete a node from, a tailnet
+/// the Host may not be on.
+fn tailnet_coordinator<'a>(hosts: &'a [Host], config: &Config) -> Result<Option<&'a Host>> {
     match crate::hosts::serving_hosts(hosts, config, "headscale_subdomain").as_slice() {
         [] => Ok(None),
         [only] => Ok(Some(only)),
         several => eyre::bail!(
-            "{} roster hosts serve headscale ({}) — the auto-mint cannot tell which tailnet the \
-             target is joining. Run the command below for every host except the one that should \
+            "{} roster hosts serve headscale ({}) — auberge cannot tell which one coordinates \
+             the tailnet. Run the command below for every host except the one that should \
              serve, or mint by hand with `auberge headscale add-key`.\n{}",
             several.len(),
             several
@@ -1130,7 +1217,7 @@ fn mint_against_coordinator(
 fn auto_mint_for(target_name: &str, check: bool) -> Result<AutoMint> {
     let config = Config::load()?;
     let hosts = HostManager::load_hosts()?;
-    let Some(coordinator) = mint_coordinator(&hosts, &config)? else {
+    let Some(coordinator) = tailnet_coordinator(&hosts, &config)? else {
         return Ok(AutoMint::NoCoordinator);
     };
     if check {
@@ -2807,7 +2894,7 @@ mod tests {
     fn no_roster_host_serving_headscale_leaves_nothing_to_mint_against() {
         let config = Config::from_toml_str(r#"domain = "example.com""#).unwrap();
         let hosts = [named_host("auberge")];
-        assert!(mint_coordinator(&hosts, &config).unwrap().is_none());
+        assert!(tailnet_coordinator(&hosts, &config).unwrap().is_none());
     }
 
     /// Zero coordinators is the first-host case and falls back; several is a
@@ -2817,7 +2904,9 @@ mod tests {
     fn several_headscale_hosts_stop_the_run_rather_than_falling_back() {
         let config = Config::from_toml_str(r#"headscale_subdomain = "hs""#).unwrap();
         let hosts = [named_host("auberge"), named_host("ruche")];
-        let err = mint_coordinator(&hosts, &config).unwrap_err().to_string();
+        let err = tailnet_coordinator(&hosts, &config)
+            .unwrap_err()
+            .to_string();
         for name in ["auberge", "ruche"] {
             let command = format!("auberge config set hosts.{name}.headscale_subdomain \"\"");
             assert!(err.contains(&command), "{err}");
@@ -2840,7 +2929,7 @@ mod tests {
             named_host("ruche"),
         ];
         assert_eq!(
-            mint_coordinator(&hosts, &config).unwrap().unwrap().name,
+            tailnet_coordinator(&hosts, &config).unwrap().unwrap().name,
             "auberge"
         );
     }
@@ -2863,6 +2952,97 @@ mod tests {
         assert!(
             entry.injected,
             "{INJECTED_AUTHKEY} is injected by the auto-mint but the registry does not say so"
+        );
+    }
+
+    /// The tailscale role enrolls a Host under its *machine* hostname, which a
+    /// roster name need not match — `ruche` in the listing could be any roster
+    /// entry. A cached `tailscale_ip` is the fact that ties the two together.
+    #[test]
+    fn a_host_with_a_cached_tailnet_address_resolves_to_the_node_holding_it() {
+        let nodes: Vec<HeadscaleNode> = parse_list(NODES_LIST_JSON, "nodes list").unwrap();
+        let host = Host::fixture("renamed", Some("100.64.0.2"));
+        assert_eq!(node_for_host(&nodes, &host).unwrap().id, 2);
+    }
+
+    /// The address decides when it is cached: a node that merely shares the
+    /// name is some other machine, and deleting it would cut the wrong one off.
+    #[test]
+    fn a_cached_tailnet_address_no_node_holds_resolves_to_nothing_even_when_a_name_matches() {
+        let nodes: Vec<HeadscaleNode> = parse_list(NODES_LIST_JSON, "nodes list").unwrap();
+        let host = Host::fixture("ruche", Some("100.64.0.9"));
+        assert!(node_for_host(&nodes, &host).is_none());
+    }
+
+    #[test]
+    fn a_host_without_a_cached_address_resolves_by_name() {
+        let nodes: Vec<HeadscaleNode> = parse_list(NODES_LIST_JSON, "nodes list").unwrap();
+        assert_eq!(node_for_host(&nodes, &named_host("ruche")).unwrap().id, 2);
+        assert!(node_for_host(&nodes, &named_host("ghost")).is_none());
+    }
+
+    /// `nodes delete` asks for confirmation and, unanswered, exits 0 printing
+    /// "Node not deleted" — so `--force` is what makes the call do anything.
+    /// Only the listing's id reaches the command line.
+    #[test]
+    fn revoking_a_host_deletes_its_node_by_id_with_the_prompt_answered() {
+        let mock = MockSshSession::new();
+        mock.stage_run_result(CommandResult::from_stdout(NODES_LIST_JSON));
+        mock.stage_run_result(CommandResult::from_stdout("Node deleted\n"));
+        let Revocation::Deleted(revoked) = revoke_node(&mock, &named_host("ruche")).unwrap() else {
+            panic!("the node named after the Host must be deleted");
+        };
+        assert_eq!(revoked.id, 2);
+        assert_eq!(
+            mock.calls(),
+            vec![
+                SshOp::Run("sudo headscale nodes list -o json".to_string()),
+                SshOp::Run("sudo headscale nodes delete --identifier 2 --force".to_string()),
+            ]
+        );
+    }
+
+    #[test]
+    fn revoking_a_host_the_coordinator_holds_no_node_for_deletes_nothing() {
+        let mock = MockSshSession::new();
+        mock.stage_run_result(CommandResult::from_stdout(NODES_LIST_JSON));
+        assert!(matches!(
+            revoke_node(&mock, &named_host("ghost")).unwrap(),
+            Revocation::Absent
+        ));
+        assert_eq!(
+            mock.calls(),
+            vec![SshOp::Run("sudo headscale nodes list -o json".to_string())]
+        );
+    }
+
+    /// A cached address can go stale: headscale may since have handed it to
+    /// another machine. `--force` leaves no prompt to catch that, so a node
+    /// whose name disagrees with the Host is reported, never deleted.
+    #[test]
+    fn a_cached_address_held_by_a_differently_named_node_is_withheld_not_deleted() {
+        let mock = MockSshSession::new();
+        mock.stage_run_result(CommandResult::from_stdout(NODES_LIST_JSON));
+        let host = Host::fixture("renamed", Some("100.64.0.2"));
+        let Revocation::Withheld(node) = revoke_node(&mock, &host).unwrap() else {
+            panic!("a name mismatch must withhold the delete");
+        };
+        assert_eq!(node.id, 2);
+        assert_eq!(
+            mock.calls(),
+            vec![SshOp::Run("sudo headscale nodes list -o json".to_string())]
+        );
+    }
+
+    #[test]
+    fn a_refused_delete_is_an_error() {
+        let mock = MockSshSession::new();
+        mock.stage_run_result(CommandResult::from_stdout(NODES_LIST_JSON));
+        mock.stage_run_result(CommandResult::from_stderr("deleting node: boom"));
+        let err = revoke_node(&mock, &named_host("ruche")).unwrap_err();
+        assert!(
+            format!("{err:#}").contains("deleting node: boom"),
+            "{err:#}"
         );
     }
 }

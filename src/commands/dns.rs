@@ -3,8 +3,8 @@ use crate::output::{OutputArg, OutputFormat};
 use crate::prompt::{Choice, select_item};
 use crate::services::cloudflare_dns::CloudflareDns;
 use crate::services::dns::{
-    AppliedRecord, DiscoveredSubdomains, DnsRecords, MigrationOutcome, OffZoneApp, PlannedRecord,
-    SetAllOutcome, SetAllPlan, SkipReason, SkippedApp, WRITE_PACE, apply_set_all,
+    AppliedRecord, DiscoveredSubdomains, DnsRecord, DnsRecords, MigrationOutcome, OffZoneApp,
+    PlannedRecord, SetAllOutcome, SetAllPlan, SkipReason, SkippedApp, WRITE_PACE, apply_set_all,
     discover_all_subdomains, plan_set_all,
 };
 use clap::Subcommand;
@@ -353,6 +353,7 @@ struct DnsStatusJson {
     configured_subdomains: Vec<String>,
     active_a_records: Vec<StatusARecord>,
     missing_subdomains: Vec<String>,
+    off_roster_records: Vec<StatusARecord>,
     off_zone: Vec<OffZoneRow>,
 }
 
@@ -378,28 +379,24 @@ pub async fn run_dns_status(output: OutputFormat) -> Result<()> {
     let dns = CloudflareDns::connect().await?;
     let discovered = discover_all_subdomains();
     let configured = subdomain_names(&discovered);
-    let status = crate::services::dns::status(&dns, configured).await?;
+    let roster_ips: Vec<String> = crate::hosts::HostManager::load_hosts()?
+        .into_iter()
+        .flat_map(|h| std::iter::once(h.address).chain(h.tailscale_ip))
+        .collect();
+    let status = crate::services::dns::status(&dns, configured, &roster_ips).await?;
     let off_zone = discovered.off_zone;
 
-    let a_records: Vec<(&str, String)> = status
-        .active_records
-        .iter()
-        .filter_map(|r| r.a_ip().map(|ip| (r.name.as_str(), ip.to_string())))
-        .collect();
+    let a_records = status_a_records(&status.active_records);
+    let off_roster = status_a_records(&status.off_roster_records);
 
     match output {
         OutputFormat::Json => {
             let json_status = DnsStatusJson {
                 domain: status.domain.clone(),
                 configured_subdomains: status.configured_subdomains.clone(),
-                active_a_records: a_records
-                    .iter()
-                    .map(|(name, ip)| StatusARecord {
-                        name: (*name).to_string(),
-                        ip: ip.clone(),
-                    })
-                    .collect(),
+                active_a_records: a_records,
                 missing_subdomains: status.missing_subdomains.clone(),
+                off_roster_records: off_roster,
                 off_zone: off_zone_rows(&off_zone),
             };
             println!("{}", serde_json::to_string_pretty(&json_status)?);
@@ -413,8 +410,8 @@ pub async fn run_dns_status(output: OutputFormat) -> Result<()> {
                 status.configured_subdomains.join(", ")
             );
             eprintln!("\nActive A records: {}", a_records.len());
-            for (name, ip) in &a_records {
-                eprintln!("  {} -> {}", name, ip);
+            for r in &a_records {
+                eprintln!("  {} -> {}", r.name, r.ip);
             }
             if !status.missing_subdomains.is_empty() {
                 eprintln!(
@@ -424,6 +421,15 @@ pub async fn run_dns_status(output: OutputFormat) -> Result<()> {
             } else {
                 eprintln!("\nAll configured subdomains have A records");
             }
+            if !off_roster.is_empty() {
+                output::warn(&format!(
+                    "{} A record(s) point at an address no roster host holds:",
+                    off_roster.len()
+                ));
+                for r in &off_roster {
+                    eprintln!("  {} -> {}", r.name, r.ip);
+                }
+            }
             print_skipped(
                 OFF_ZONE_HEADER,
                 &off_zone_as_skipped(&off_zone, &status.domain),
@@ -432,6 +438,18 @@ pub async fn run_dns_status(output: OutputFormat) -> Result<()> {
     }
 
     Ok(())
+}
+
+fn status_a_records(records: &[DnsRecord]) -> Vec<StatusARecord> {
+    records
+        .iter()
+        .filter_map(|r| {
+            r.a_ip().map(|ip| StatusARecord {
+                name: r.name.clone(),
+                ip: ip.to_string(),
+            })
+        })
+        .collect()
 }
 
 fn resolve_subdomain(subdomain: Option<String>) -> Result<String> {
@@ -1208,6 +1226,7 @@ mod tests {
                 ip: "192.168.1.10".to_string(),
             }],
             missing_subdomains: vec![],
+            off_roster_records: vec![],
             off_zone: off_zone_rows(&[OffZoneApp {
                 app: "forgejo".to_string(),
                 subdomain: "git".to_string(),
