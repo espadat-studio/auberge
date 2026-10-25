@@ -386,8 +386,6 @@ pub const FLEET_UNIT_FILES: &[&str] = &[
     "radio/liquidsoap.service",
     "standby/standby-runner-flip.service",
     "standby/standby-runner-flip.timer",
-    "standby/standby-runner-prune.service",
-    "standby/standby-runner-prune.timer",
     "standby/standby-runner.service",
     "stirling/stirling.service",
     "tgtg/tgtg.service",

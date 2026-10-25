@@ -134,15 +134,6 @@
     mode: "0755"
   notify: Restart standby-runner-flip timer
 
-- name: Deploy the prune script
-  ansible.builtin.copy:
-    src: standby-runner-prune.sh
-    dest: "{{ standby_runner_prune_script_path }}"
-    owner: root
-    group: root
-    mode: "0755"
-  notify: Restart standby-runner-prune timer
-
 - name: Create the Runner Flip state directory
   ansible.builtin.file:
     path: "{{ standby_runner_flip_state_dir }}"
@@ -172,17 +163,38 @@
     - standby-runner-flip.timer
   notify: Restart standby-runner-flip timer
 
-- name: Deploy the prune units
-  ansible.builtin.template:
-    src: "{{ item }}.j2"
-    dest: "/etc/systemd/system/{{ item }}"
-    owner: root
-    group: root
-    mode: "0644"
+# The per-job reset leaves the weekly prune nothing to prune.
+- name: Stop and disable the retired prune units
+  ansible.builtin.systemd_service:
+    name: "{{ item }}"
+    state: stopped
+    enabled: false
   loop:
-    - standby-runner-prune.service
     - standby-runner-prune.timer
-  notify: Restart standby-runner-prune timer
+    - standby-runner-prune.service
+  failed_when: false
+
+- name: Remove the retired prune units and script
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: absent
+  loop:
+    - /etc/systemd/system/standby-runner-prune.timer
+    - /etc/systemd/system/standby-runner-prune.service
+    - /usr/local/bin/standby-runner-prune
+
+- name: Reload systemd after removing the retired units
+  ansible.builtin.systemd_service:
+    daemon_reload: true
+
+- name: Clear the failed state the retired prune units may latch
+  ansible.builtin.command: "systemctl reset-failed {{ item }}"
+  loop:
+    - standby-runner-prune.timer
+    - standby-runner-prune.service
+  register: standby_runner_prune_reset
+  changed_when: standby_runner_prune_reset.rc == 0
+  failed_when: false
 
 - name: Enable and start the Standby Runner
   ansible.builtin.systemd_service:
@@ -199,4 +211,3 @@
     daemon_reload: true
   loop:
     - standby-runner-flip.timer
-    - standby-runner-prune.timer

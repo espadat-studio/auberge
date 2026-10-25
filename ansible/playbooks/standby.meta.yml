@@ -8,5 +8,3 @@ units:
   - standby-runner
   - standby-runner-flip
   - standby-runner-flip.timer
-  - standby-runner-prune
-  - standby-runner-prune.timer

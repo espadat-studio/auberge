@@ -408,7 +408,7 @@ const DECLARED_DIRECTORIES: &[DeclaredDirectory] = &[
         role: "standby",
         dir: "/var/lib/standby-runner",
         kind: Kind::Expendable,
-        writers: &["standby-runner.service", "standby-runner-prune.service"],
+        writers: &["standby-runner.service"],
         why: "the runner user's home, emptied by the root reset before every job",
     },
     DeclaredDirectory {
