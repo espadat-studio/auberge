@@ -42,6 +42,21 @@
         validate: "/usr/sbin/sshd -t -f %s"
       notify: Restart sshd
 
+    - name: Read effective sshd config
+      ansible.builtin.command:
+        cmd: /usr/sbin/sshd -T
+      register: ssh_effective_config
+      changed_when: false
+      when: not ansible_check_mode
+
+    - name: Assert drop-ins did not re-enable password auth
+      ansible.builtin.assert:
+        that:
+          - "'passwordauthentication no' in ssh_effective_config.stdout_lines"
+          - "'kbdinteractiveauthentication no' in ssh_effective_config.stdout_lines"
+        fail_msg: "sshd -T reports password or keyboard-interactive auth enabled; check /etc/ssh/sshd_config.d"
+      when: not ansible_check_mode
+
     - name: Output configured SSH port
       ansible.builtin.debug:
         msg: "SSH port configured: {{ ssh_port }}"
