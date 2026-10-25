@@ -45,6 +45,7 @@
       ansible.builtin.file:
         path: "{{ syncthing_workspace_path }}"
         state: directory
+        follow: false
         owner: "{{ syncthing_workspace_owner }}"
         group: "{{ syncthing_workspace_group }}"
         mode: "{{ syncthing_workspace_mode }}"

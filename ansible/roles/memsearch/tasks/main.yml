@@ -68,6 +68,7 @@
   ansible.builtin.file:
     path: "{{ memsearch_store_dir }}"
     state: directory
+    follow: false
     owner: "{{ memsearch_user }}"
     group: "{{ memsearch_store_group }}"
     mode: "{{ memsearch_store_mode }}"
@@ -76,16 +77,18 @@
   ansible.builtin.file:
     path: "{{ memsearch_memory_dir }}"
     state: directory
+    follow: false
     owner: "{{ memsearch_user }}"
     group: "{{ memsearch_store_group }}"
     mode: "{{ memsearch_store_mode }}"
 
 - name: Create the memsearch state directory
+  become: true
+  become_user: "{{ memsearch_user }}"
   ansible.builtin.file:
     path: "{{ memsearch_state_dir }}"
     state: directory
-    owner: "{{ memsearch_user }}"
-    group: "{{ memsearch_user }}"
+    follow: false
     mode: "0750"
 
 - name: Read installed memsearch version
@@ -123,11 +126,11 @@
     state: link
 
 - name: Pin the store, the index and the embedder
+  become: true
+  become_user: "{{ memsearch_user }}"
   ansible.builtin.template:
     src: config.toml.j2
     dest: "{{ memsearch_state_dir }}/config.toml"
-    owner: "{{ memsearch_user }}"
-    group: "{{ memsearch_user }}"
     mode: "0640"
 
 - name: Index the store, downloading the ONNX model on a fresh box
