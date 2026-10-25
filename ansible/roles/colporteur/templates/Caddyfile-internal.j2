@@ -1,4 +1,5 @@
 http://localhost:{{ colporteur_internal_port }} {
+	bind 127.0.0.1 [::1]
 	root * {{ colporteur_feeds_dir }}
 	file_server
 
