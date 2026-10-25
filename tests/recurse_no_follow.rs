@@ -7,7 +7,9 @@
 //!
 //! A recursive octal mode is the other half. It gives every file the
 //! directory's bits, so a database inside the tree ends up as readable as the
-//! directory holding it. A symbolic mode with `X` keeps the two apart.
+//! directory holding it. A symbolic mode with `X` keeps the two apart, but `X`
+//! also keeps an `x` a file already has, so a database tree's mode opens with
+//! `a-x` to clear what the old `0755` left. Clauses apply in order, as `chmod`.
 //!
 //! The domain is [`runnable_files`], the widest one: a recursive chown is as
 //! dangerous in a handler or a playbook's own tasks as in a role's `tasks/`.
@@ -152,13 +154,19 @@ fn every_recursive_mode_keeps_files_apart_from_directories() {
 }
 
 #[test]
-fn database_trees_grant_nothing_to_other() {
+fn database_trees_are_private_and_execute_nothing() {
     let tasks = recursive_file_tasks();
     for (role, tree) in DATABASE_TREES {
         for task in tasks.iter().filter(|task| task.covers(role, tree)) {
             let mode = task
                 .arg("mode")
                 .unwrap_or_else(|| panic!("{}: no mode", task.label));
+            assert!(
+                mode.starts_with("a-x,"),
+                "{}: `{mode}` keeps the execute bit an old octal mode left on the files in \
+                 `{tree}`; open it with `a-x,` so `X` only marks directories",
+                task.label
+            );
             let other = mode
                 .split(',')
                 .find_map(|clause| clause.strip_prefix("o="))

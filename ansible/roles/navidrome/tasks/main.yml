@@ -67,7 +67,7 @@
         state: directory
         owner: "{{ navidrome_sys_user }}"
         group: "{{ navidrome_sys_group }}"
-        mode: "u=rwX,g=rX,o="
+        mode: "a-x,u=rwX,g=rX,o="
         recurse: true
         follow: false
 

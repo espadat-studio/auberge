@@ -124,7 +124,7 @@
         state: directory
         owner: "{{ baikal_sys_user }}"
         group: "{{ baikal_sys_user }}"
-        mode: "u=rwX,g=rwX,o="
+        mode: "a-x,u=rwX,g=rwX,o="
         recurse: true
         follow: false
 

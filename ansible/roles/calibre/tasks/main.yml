@@ -26,7 +26,7 @@
         state: directory
         owner: "{{ calibre_sys_user }}"
         group: "{{ calibre_sys_group }}"
-        mode: "u=rwX,g=rwX,o="
+        mode: "a-x,u=rwX,g=rwX,o="
         recurse: true
         follow: false
 
