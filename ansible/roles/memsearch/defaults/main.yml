@@ -30,6 +30,7 @@ memsearch_uv_environment:
   UV_PYTHON_INSTALL_DIR: "{{ memsearch_install_dir }}/python"
   UV_CACHE_DIR: "{{ memsearch_install_dir }}/cache"
   UV_COMPILE_BYTECODE: "1"
+  UV_NO_BUILD: "1"
 
 memsearch_legacy_paths:
   - .local/bin/memsearch
