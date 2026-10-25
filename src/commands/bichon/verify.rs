@@ -176,6 +176,12 @@ fn emit_output(
                     report.unverifiable.store_synthetic, report.unverifiable.archive_sha256
                 );
             }
+            for c in &report.unverifiable.contested {
+                println!(
+                    "contested: {} claimed by {} store message(s) vs {} archived body(ies)",
+                    c.message_id, c.store, c.archive
+                );
+            }
             println!("status: {}", status.as_str());
         }
     }

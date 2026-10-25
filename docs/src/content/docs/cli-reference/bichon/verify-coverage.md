@@ -18,6 +18,8 @@ Bichon's Internal Store syncs by UID and has no date blindspot, so it knows that
 
 A message with no `Message-ID` header is unverifiable by identity — the store holds a synthetic id that regenerates on re-import, the sidecar a `sha256:` body hash, and neither side can compute the other's. Those are bounded by count instead: more synthetic store messages in the window than `sha256:`-keyed sidecars in scope is a gap, and both counts appear in the report.
 
+A Message-ID claimed more than once is also unverifiable by identity. That covers two store messages in the folder sharing one, or two archived bodies sharing one. Any sender can write any Message-ID, so a match cannot show which body belongs to which message. Each such id is listed under `unverifiable.contested` with both counts, and is a gap when the store count is higher.
+
 Refuses to answer (exit 2) when a scoped sidecar lacks `message_id` — that is an unknown, not a zero — naming the file; one `bichon-archive.service` run backfills it.
 
 What this does **not** prove: that the live Upstream Mailbox holds nothing the store has never ingested. That residual needs per-message identity from IMAP, which himalaya cannot provide cheaply (#400); `examples/bichon-expunge.sh` keeps its count comparison against the live mailbox alongside this verdict.
@@ -63,7 +65,7 @@ An `--account` Bichon does not report is an error naming the accounts it does.
   "store_messages": 388,
   "matched": 388,
   "missing": [],
-  "unverifiable": { "store_synthetic": 0, "archive_sha256": 0 }
+  "unverifiable": { "store_synthetic": 0, "archive_sha256": 0, "contested": [] }
 }
 ```
 
