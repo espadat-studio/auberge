@@ -138,6 +138,16 @@ parse_identity_verdict <<<"${UNVERIFIABLE_VERDICT}"
 assert_eq 'header-less store messages are extracted' '5' "${IDENTITY_SYNTHETIC}"
 assert_eq 'sha256-keyed sidecars are extracted' '2' "${IDENTITY_SHA256}"
 
+# Only a contested id with more store claimants than archived bodies is short;
+# one the archive holds enough bodies for is counted, not a gap.
+CONTESTED_VERDICT='{"status":"gap","store_messages":3,"matched":0,"missing":[],"unverifiable":{"store_synthetic":0,"archive_sha256":0,"contested":[{"message_id":"x@example.com","store":2,"archive":1},{"message_id":"y@example.com","store":1,"archive":2}]}}'
+
+parse_identity_verdict <<<"${CONTESTED_VERDICT}"
+assert_eq 'only short contested ids are counted' '1' "${IDENTITY_CONTESTED}"
+
+parse_identity_verdict <<<"${UNVERIFIABLE_VERDICT}"
+assert_eq 'a verdict from before contested ids reads as none' '0' "${IDENTITY_CONTESTED}"
+
 assert_fails 'non-JSON input is refused' identity_verdict_of 'not json at all'
 
 NO_STATUS_VERDICT='{"store_messages":5,"missing":[],"unverifiable":{"store_synthetic":0,"archive_sha256":0}}'
