@@ -33,8 +33,7 @@ DISABLE_MIGRATIONS = true
 ALLOW_LOCALNETWORKS = false
 
 [webhook]
-; Forgejo's own default, declared. "external" excludes loopback, RFC 1918, ULA
-; and CGNAT, so a webhook cannot reach a tailnet or Host-local address.
+; Forgejo's own default, declared. See the role README's Scope section.
 ALLOWED_HOST_LIST = external
 
 [database]

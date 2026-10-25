@@ -28,10 +28,10 @@ Deliberately not deployed:
 
 - **Forgejo Actions.** `ENABLED = false`; upstream turns the subsystem on by default.
 - **Postgres, and any container.** One editor does not need either.
-- **Migrations.** `DISABLE_MIGRATIONS = true`. Onboarding migrates nothing.
+- **Migrations.** `DISABLE_MIGRATIONS = true`. Onboarding migrates nothing. `ALLOW_LOCALNETWORKS = false` stays declared as a second guard if migrations are ever turned back on. `BLOCKED_DOMAINS` takes host globs only, not CIDR ranges, so it cannot block an address range.
 - **Repositories owned by editors.** `MAX_CREATION_LIMIT = 0`. Editors get write access to the admin's repositories, and admins are exempt from the limit.
 
-Webhooks are limited to `ALLOWED_HOST_LIST = external`. That is Forgejo's own default, written out. Since Forgejo 17 the `external` match leaves out loopback, RFC 1918, ULA and CGNAT addresses, so a webhook cannot call a tailnet or Host-local address.
+Webhooks are limited to `ALLOWED_HOST_LIST = external`. That is Forgejo's own default, written out. In the pinned Forgejo 17, the `external` match leaves out loopback, RFC 1918, ULA and CGNAT addresses, so a webhook cannot call a tailnet or Host-local address.
 
 ## Variables
 
