@@ -540,7 +540,26 @@ fn mint_preauth_key(
     )?;
     let key: HeadscalePreAuthKey =
         serde_json::from_str(raw.trim()).wrap_err("Failed to parse pre-auth key response")?;
+    validate_preauth_key(&key.key)?;
     Ok(key.key)
+}
+
+/// headscale generates both halves of a key with `base64.RawURLEncoding`, so
+/// anything outside that alphabet did not come from headscale. The key rides
+/// into `ansible-playbook` as an extra var, and ansible renders `{{ }}` in an
+/// extra var's value. Refusing it here stops a hostile coordinator injecting
+/// Jinja into the operator's run.
+fn validate_preauth_key(key: &str) -> Result<()> {
+    if key.is_empty()
+        || !key
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
+    {
+        eyre::bail!(
+            "headscale returned a pre-auth key outside its own alphabet; refusing to use it"
+        );
+    }
+    Ok(())
 }
 
 fn list_users(session: &dyn SshSession) -> Result<Vec<HeadscaleUser>> {
@@ -2380,6 +2399,32 @@ mod tests {
         assert!(validate_tag("tag:a b").is_err());
         assert!(validate_tag("tag:").is_err());
         assert!(validate_tag("tag:a,b").is_err());
+    }
+
+    #[test]
+    fn validate_preauth_key_accepts_headscales_alphabet_only() {
+        assert!(validate_preauth_key("hskey-auth-AbC_12-xyz09").is_ok());
+        assert!(validate_preauth_key("abcdef123456").is_ok());
+        for hostile in [
+            "",
+            "abc def",
+            "abc\ndef",
+            "abc=def",
+            "abc\"def",
+            "abc'def",
+            "abc{{def}}",
+        ] {
+            assert!(validate_preauth_key(hostile).is_err(), "{hostile:?}");
+        }
+    }
+
+    #[test]
+    fn a_minted_key_outside_the_alphabet_is_rejected() {
+        let mock = MockSshSession::new();
+        mock.stage_run_result(CommandResult::from_stdout(
+            &PREAUTHKEY_JSON.replace("abcdef123456", "abc x=1"),
+        ));
+        assert!(mint_preauth_key(&mock, 7, "24h", &[]).is_err());
     }
 
     /// `--user` is a `uint` on 0.29.3, so a username there is a value cobra
