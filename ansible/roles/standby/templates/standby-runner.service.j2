@@ -9,7 +9,7 @@ StartLimitBurst=300
 Type=simple
 User={{ standby_runner_user }}
 Group={{ standby_runner_group }}
-WorkingDirectory={{ standby_runner_install_dir }}
+WorkingDirectory={{ standby_runner_home }}
 RuntimeDirectory=standby-runner
 RuntimeDirectoryMode=0700
 Environment=HOME={{ standby_runner_home }}
@@ -19,6 +19,18 @@ Environment=STANDBY_RUNNER_ORG={{ standby_runner_org }}
 Environment=STANDBY_RUNNER_GROUP_ID={{ standby_runner_group_id }}
 Environment=STANDBY_RUNNER_LABEL={{ standby_runner_label }}
 Environment=STANDBY_RUNNER_JIT_ENV=/run/standby-runner/jit.env
+Environment=STANDBY_RUNNER_RELEASE_DIR={{ standby_runner_release_dir }}
+Environment=STANDBY_RUNNER_JOB_DIR={{ standby_runner_job_dir }}
+Environment=STANDBY_RUNNER_HOME={{ standby_runner_home }}
+Environment=STANDBY_RUNNER_USER={{ standby_runner_user }}
+Environment=STANDBY_RUNNER_GROUP={{ standby_runner_group }}
+# `+` runs the reset as root: before every job it rebuilds the job dir from the
+# root-owned release, moving that to GitHub's latest first, and empties HOME.
+# Nothing one job writes reaches the next.
+ExecStartPre=+{{ standby_runner_reset_script_path }}
+# A version bump downloads the release and a reset deletes a HOME full of
+# toolchains, both before the runner starts; 90s is not always enough.
+TimeoutStartSec=10min
 # `+` runs the registration as root: it reads the App key the runner user cannot.
 # The JIT config lands in a root-only file that systemd reads, so the runner gets
 # it as ACTIONS_RUNNER_INPUT_JITCONFIG. No file holds it for the job, though its
@@ -40,7 +52,7 @@ ProtectSystem=strict
 ProtectKernelTunables=true
 ProtectKernelModules=true
 ProtectControlGroups=true
-ReadWritePaths={{ standby_runner_install_dir }} {{ standby_runner_home }}
+ReadWritePaths={{ standby_runner_job_dir }} {{ standby_runner_home }}
 # Job code is org-repo code on the agent Host: it must not reach the loopback
 # control planes beside it (Syncthing, aoe, Caddy admin). The resolver stub is
 # the one exception, because every lookup on the Host goes through it. Egress
@@ -49,6 +61,9 @@ IPAddressDeny=localhost
 IPAddressAllow=127.0.0.53
 StandardOutput=journal
 StandardError=journal
+# POSIX shared memory and message queues live outside HOME and the job dir;
+# dropping them at every stop keeps them from carrying over to the next job.
+RemoveIPC=yes
 UMask=0027
 
 [Install]
