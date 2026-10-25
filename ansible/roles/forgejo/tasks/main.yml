@@ -94,30 +94,12 @@
              if forgejo_marker_stat.stat.exists and forgejo_binary_stat.stat.exists
              else '' }}
 
-    # Fetched rather than pinned in defaults: Renovate bumps the App Version in
-    # the Meta and cannot recompute a literal beside it, and Forgejo publishes a
-    # .sha256 sidecar for every asset (ADR-0017).
-    - name: Fetch the sha256 sidecar for the declared Forgejo release
-      when: forgejo_installed_version != forgejo_version
-      become: false
-      delegate_to: localhost
-      ansible.builtin.uri:
-        url: "{{ forgejo_checksum_url }}"
-        method: GET
-        return_content: true
-      register: forgejo_checksum_sidecar
-
-    - name: Read the Forgejo sha256 out of the sidecar
-      when: forgejo_installed_version != forgejo_version
-      ansible.builtin.set_fact:
-        forgejo_sha256: "{{ forgejo_checksum_sidecar.content | trim | split() | first }}"
-
     - name: Download the Forgejo binary
       when: forgejo_installed_version != forgejo_version
       ansible.builtin.get_url:
         url: "{{ forgejo_binary_url }}"
         dest: "{{ forgejo_binary_path }}"
-        checksum: "sha256:{{ forgejo_sha256 }}"
+        checksum: "sha256:{{ forgejo_binary_sha256 }}"
         owner: root
         group: root
         mode: "0755"

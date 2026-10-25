@@ -233,8 +233,8 @@ fn notified_handlers(task: &Mapping) -> Vec<String> {
 /// the target's own sshd *from* the controller, so `delegate_to` says nothing.
 /// `wait_for` always lands on the host being converged — a path on its disk, or a
 /// port on an address it owns. `uri` reaches wherever its URL points, and only a
-/// loopback URL is this host: blocky and colporteur fetch release checksums,
-/// blocky drives the Tailscale API, dns_record drives Cloudflare's.
+/// loopback URL is this host: blocky drives the Tailscale API, dns_record
+/// drives Cloudflare's.
 ///
 /// `wait_for_connection` is absent on purpose. It probes SSH reachability, not a
 /// managed service, and cockpit uses it to survive a `netplan apply`.

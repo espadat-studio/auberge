@@ -145,7 +145,6 @@
     owner: root
     group: root
     mode: "0644"
-  args:
     checksum: "sha256:{{ blocky_lego_sha256 }}"
 
 - name: Unarchive Lego binary
@@ -222,25 +221,6 @@
          | regex_search('(?<=Version: v)\S+')
          | default('', true) }}
 
-- name: Fetch checksums.txt for the declared Blocky release
-  when: blocky_installed_version != blocky_version
-  become: false
-  register: blocky_checksum_file_content
-  delegate_to: localhost
-  ansible.builtin.uri:
-    url: "{{ blocky_checksums_url }}"
-    method: GET
-    return_content: true
-
-- name: Extract SHA256 checksum for the Blocky archive from checksums.txt
-  when: blocky_installed_version != blocky_version
-  delegate_to: localhost
-  ansible.builtin.set_fact:
-    blocky_checksum_sha256: >-
-      {{ blocky_checksum_file_content.content.splitlines()
-         | select('contains', blocky_archive_name)
-         | first | split() | first }}
-
 - name: Download blocky archive
   when: blocky_installed_version != blocky_version
   ansible.builtin.get_url:
@@ -249,7 +229,7 @@
     owner: root
     group: root
     mode: "0644"
-    checksum: "sha256:{{ blocky_checksum_sha256 }}"
+    checksum: "sha256:{{ blocky_archive_sha256 }}"
 
 - name: Expand blocky archive
   when: blocky_installed_version != blocky_version

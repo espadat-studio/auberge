@@ -6,7 +6,7 @@ blocky_target_arch: "Linux_x86_64"
 blocky_binary_file_extension: "tar.gz"
 blocky_archive_name: "blocky_v{{ blocky_version }}_{{ blocky_target_arch }}.{{ blocky_binary_file_extension }}"
 blocky_archive_url: "https://github.com/0xERR0R/blocky/releases/download/v{{ blocky_version }}/{{ blocky_archive_name }}"
-blocky_checksums_url: "https://github.com/0xERR0R/blocky/releases/download/v{{ blocky_version }}/blocky_checksums.txt"
+blocky_archive_sha256: "97ae4257e4f2ea7ee4e0622fca152019eb92224d81b41b2549f064e4cef5584e"
 
 # renovate: datasource=github-releases depName=go-acme/lego extractVersion=^v(?<version>.+)$
 blocky_lego_version: "5.5.2"

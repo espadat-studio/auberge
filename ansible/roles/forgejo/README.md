@@ -191,4 +191,4 @@ Two caveats. It was taken on a development machine; the role had not been deploy
 
 ## Upstream
 
-Releases come from `code.forgejo.org`, Renovate's default registry for the `forgejo-releases` datasource. The pin in `forgejo.meta.yml` and `auberge versions --check-upstream` therefore resolve the same list, which is ADR-0080. Each asset ships a `.sha256` sidecar, and the role fetches it at deploy rather than carrying a literal: Renovate bumps the App Version and cannot recompute a digest beside it (ADR-0017).
+Releases come from `code.forgejo.org`, Renovate's default registry for the `forgejo-releases` datasource. The pin in `forgejo.meta.yml` and `auberge versions --check-upstream` therefore resolve the same list, which is ADR-0080. The binary is checked against `forgejo_binary_sha256`, a literal `recompute-checksums.sh` rewrites on a version bump; the upstream `.sha256` sidecar is not trusted, since whoever can swap the asset can swap it too (ADR-0017).
