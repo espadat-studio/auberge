@@ -49,15 +49,38 @@
         path: "{{ stirling_java_home }}/bin/java"
       register: stirling_java_binary
 
-    - name: Download and extract Eclipse Temurin JRE
+    - name: Create the root-private download directory
+      ansible.builtin.file:
+        path: "{{ root_download_dir }}"
+        state: directory
+        owner: root
+        group: root
+        mode: "0700"
+
+    - name: Download Eclipse Temurin JRE
+      when: not stirling_java_binary.stat.exists
+      ansible.builtin.get_url:
+        url: "{{ stirling_java_url }}"
+        dest: "{{ root_download_dir }}/{{ stirling_java_archive }}"
+        checksum: "sha256:{{ stirling_java_sha256 }}"
+        owner: root
+        group: root
+        mode: "0644"
+
+    - name: Extract Eclipse Temurin JRE
       when: not stirling_java_binary.stat.exists
       ansible.builtin.unarchive:
-        src: "{{ stirling_java_url }}"
+        src: "{{ root_download_dir }}/{{ stirling_java_archive }}"
         dest: "{{ stirling_java_home }}"
         remote_src: true
         extra_opts:
           - --strip-components=1
       notify: Restart stirling
+
+    - name: Remove the downloaded JRE archive
+      ansible.builtin.file:
+        path: "{{ root_download_dir }}/{{ stirling_java_archive }}"
+        state: absent
 
     - name: Create Stirling-PDF system group
       ansible.builtin.group:

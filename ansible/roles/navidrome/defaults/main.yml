@@ -10,3 +10,4 @@ navidrome_enable_downloads: true
 navidrome_enable_sharing: true
 
 navidrome_deb_url: "https://github.com/navidrome/navidrome/releases/download/v{{ navidrome_version }}/navidrome_{{ navidrome_version }}_linux_amd64.deb"
+navidrome_deb_sha256: "b9ecb35eb6e042d6b019d504c0df40fa676f9a5a18db6513f551e124af7085e3"

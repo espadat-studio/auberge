@@ -28,15 +28,38 @@
         path: "{{ grimmory_java_home }}/bin/java"
       register: grimmory_java_binary
 
-    - name: Download and extract Eclipse Temurin JRE
+    - name: Create the root-private download directory
+      ansible.builtin.file:
+        path: "{{ root_download_dir }}"
+        state: directory
+        owner: root
+        group: root
+        mode: "0700"
+
+    - name: Download Eclipse Temurin JRE
+      when: not grimmory_java_binary.stat.exists
+      ansible.builtin.get_url:
+        url: "{{ grimmory_java_url }}"
+        dest: "{{ root_download_dir }}/{{ grimmory_java_archive }}"
+        checksum: "sha256:{{ grimmory_java_sha256 }}"
+        owner: root
+        group: root
+        mode: "0644"
+
+    - name: Extract Eclipse Temurin JRE
       when: not grimmory_java_binary.stat.exists
       ansible.builtin.unarchive:
-        src: "{{ grimmory_java_url }}"
+        src: "{{ root_download_dir }}/{{ grimmory_java_archive }}"
         dest: "{{ grimmory_java_home }}"
         remote_src: true
         extra_opts:
           - --strip-components=1
       notify: Restart grimmory
+
+    - name: Remove the downloaded JRE archive
+      ansible.builtin.file:
+        path: "{{ root_download_dir }}/{{ grimmory_java_archive }}"
+        state: absent
 
     - name: Install Grimmory dependencies
       ansible.builtin.apt:
@@ -126,6 +149,7 @@
       when: not grimmory_jar_stat.stat.exists
       ansible.builtin.get_url:
         url: "{{ grimmory_jar_url }}"
+        checksum: "sha256:{{ grimmory_jar_sha256 }}"
         dest: "{{ grimmory_jar_path }}"
         owner: "{{ grimmory_sys_user }}"
         group: "{{ grimmory_sys_group }}"

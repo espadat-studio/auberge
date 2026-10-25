@@ -216,6 +216,7 @@
         - name: Download release tarball
           ansible.builtin.get_url:
             url: "{{ paperless_release_url }}"
+            checksum: "sha256:{{ paperless_release_sha256 }}"
             dest: "{{ root_download_dir }}/paperless-ngx.tar.xz"
             owner: root
             group: root

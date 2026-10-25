@@ -109,6 +109,7 @@
         - name: Download release tarball
           ansible.builtin.get_url:
             url: "{{ bichon_release_url }}"
+            checksum: "sha256:{{ bichon_release_sha256 }}"
             dest: "{{ root_download_dir }}/bichon.tar.gz"
             owner: root
             group: root

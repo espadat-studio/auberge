@@ -127,6 +127,23 @@ fn sole_task_using(tasks: &[Mapping], module: &str) -> (usize, Mapping) {
     (index, task.clone())
 }
 
+/// Index and body of the download that fetches the jar. The JRE is fetched by
+/// a `get_url` too, so the module alone no longer names it.
+fn jar_download(tasks: &[Mapping]) -> (usize, Mapping) {
+    let mut found = tasks.iter().enumerate().filter(|(_, task)| {
+        string_at(task, &["ansible.builtin.get_url", "url"]).as_deref()
+            == Some("{{ grimmory_jar_url }}")
+    });
+    let (index, task) = found
+        .next()
+        .expect("the grimmory role must download {{ grimmory_jar_url }}");
+    assert!(
+        found.next().is_none(),
+        "more than one task downloads the jar; this test can no longer identify the task under test"
+    );
+    (index, task.clone())
+}
+
 /// An install task, and the stat task whose registered fact its `when`
 /// consults. Neither is selected by the path it names, so comparing those
 /// paths is a real assertion rather than a restatement of how they were found.
@@ -138,9 +155,8 @@ struct Guard {
     when: String,
 }
 
-fn install_guard(module: &str) -> Guard {
+fn install_guard(module: &str, (download_index, download): (usize, Mapping)) -> Guard {
     let tasks = role_tasks();
-    let (download_index, download) = sole_task_using(&tasks, module);
     let when =
         string_at(&download, &["when"]).unwrap_or_else(|| panic!("the {module} must be guarded"));
 
@@ -172,11 +188,14 @@ fn install_guard(module: &str) -> Guard {
 }
 
 fn jar_guard() -> Guard {
-    install_guard("ansible.builtin.get_url")
+    install_guard("ansible.builtin.get_url", jar_download(&role_tasks()))
 }
 
 fn jre_guard() -> Guard {
-    install_guard("ansible.builtin.unarchive")
+    install_guard(
+        "ansible.builtin.unarchive",
+        sole_task_using(&role_tasks(), "ansible.builtin.unarchive"),
+    )
 }
 
 /// Evaluate the download's `when` the way ansible would. The only fact modelled
@@ -426,7 +445,7 @@ fn test_the_download_resolves_the_jar_through_the_shared_default() {
 
 #[test]
 fn test_a_redownloaded_jar_is_flagged_for_a_restart() {
-    let (_, download) = sole_task_using(&role_tasks(), "ansible.builtin.get_url");
+    let (_, download) = jar_download(&role_tasks());
     assert_eq!(
         string_at(&download, &["notify"]).as_deref(),
         Some("Restart grimmory"),

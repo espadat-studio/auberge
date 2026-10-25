@@ -29,6 +29,7 @@
       when: navidrome_installed_version != navidrome_version
       ansible.builtin.get_url:
         url: "{{ navidrome_deb_url }}"
+        checksum: "sha256:{{ navidrome_deb_sha256 }}"
         dest: "{{ root_download_dir }}/navidrome_{{ navidrome_version }}_linux_amd64.deb"
         owner: root
         group: root
