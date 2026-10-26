@@ -52,7 +52,13 @@ ProtectSystem=strict
 ProtectKernelTunables=true
 ProtectKernelModules=true
 ProtectControlGroups=true
-ReadWritePaths={{ standby_runner_job_dir }} {{ standby_runner_home }}
+# Every ReadWritePaths entry is its own mount, even for the `+` reset, and link()
+# fails across mounts. The reset hard-links the release into the job dir, so the
+# grant is the install dir that holds both. Ownership keeps job code out of the
+# release; ReadOnlyPaths closes it at the mount as well. systemd skips
+# ReadOnlyPaths for `+` commands, so the reset can still replace the release.
+ReadWritePaths={{ standby_runner_install_dir }} {{ standby_runner_home }}
+ReadOnlyPaths={{ standby_runner_release_dir }}
 # Job code is org-repo code on the agent Host: it must not reach the loopback
 # control planes beside it (Syncthing, aoe, Caddy admin). The resolver stub is
 # the one exception, because every lookup on the Host goes through it. Egress

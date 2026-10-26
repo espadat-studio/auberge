@@ -55,8 +55,10 @@ if ! [[ -f "${installed}" && "$(<"${installed}")" == "${version}" ]]; then
   install_release "${release}" "${version}"
 fi
 
-rm -rf "${STANDBY_RUNNER_JOB_DIR}"
-cp -al "${STANDBY_RUNNER_RELEASE_DIR}" "${STANDBY_RUNNER_JOB_DIR}"
+# Emptied and refilled in place, never removed: the role creates it, and were
+# it a ReadWritePaths entry it would be a mount point here and rm would hit EBUSY.
+find "${STANDBY_RUNNER_JOB_DIR}" -mindepth 1 -delete
+cp -al "${STANDBY_RUNNER_RELEASE_DIR}/." "${STANDBY_RUNNER_JOB_DIR}"
 chown "${STANDBY_RUNNER_USER}:${STANDBY_RUNNER_GROUP}" "${STANDBY_RUNNER_JOB_DIR}"
 chmod 0750 "${STANDBY_RUNNER_JOB_DIR}"
 

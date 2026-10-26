@@ -141,6 +141,32 @@ impl InstalledUnit {
         self.all_in(section, key).pop()
     }
 
+    /// Every path a list-valued `[Service]` setting names, `ReadWritePaths` or
+    /// `ReadOnlyPaths`, resolved through `vars`. A path the defaults cannot
+    /// resolve panics: a fence that cannot see a path would fail open.
+    pub fn service_paths(&self, key: &str, vars: &BTreeMap<String, String>) -> Vec<String> {
+        let paths: Vec<String> = self
+            .all_in("Service", key)
+            .into_iter()
+            .flat_map(|value| {
+                resolve(value, vars)
+                    .split_whitespace()
+                    .map(str::to_string)
+                    .collect::<Vec<_>>()
+            })
+            .collect();
+        for path in &paths {
+            assert!(
+                path.starts_with('/'),
+                "{}: `{}` {key} `{path}`, which the role's defaults cannot resolve to a path; \
+                 a path a fence cannot see would fail open, so it fails loud instead",
+                self.role,
+                self.name
+            );
+        }
+        paths
+    }
+
     /// Every section `key` is assigned under, so a setting written where
     /// systemd does not read it can be named rather than silently believed.
     pub fn sections_assigning(&self, key: &str) -> Vec<&str> {
