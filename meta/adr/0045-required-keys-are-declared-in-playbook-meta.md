@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted, 2026-08-27. **Completes the trajectory ADR-0017, ADR-0021 and ADR-0042 set** — App Versions, Memory Budgets and Unit Ownership all declare in the Playbook Meta; `required_keys` was the one section that declared there and was read somewhere else.
+Accepted, 2026-08-27. **Completes the trajectory ADR-0017, ADR-0021 and ADR-0042 set** — App Versions, Memory Budgets and Unit Ownership all declare in the Playbook Meta; `required_keys` was the one section that declared there and was read somewhere else. Its first rule is amended on 2026-10-26 (#1199): only a tag that singles a guarded role out lifts its guard.
 
 ## Decision
 
@@ -10,7 +10,7 @@ Preflight validation resolves a run's required config keys from the Playbook Met
 
 Three rules make the union answerable:
 
-- **An untagged run resolves every unguarded roster role.** It enters the whole roster, so it demands what the whole roster needs — the case the drift left failing mid-play, and the one a category tag cannot cover. The exception is an entry carrying a `when:`, which turns on Host facts no caller can evaluate before the play runs: `hermes` carries `when: "'hermes' in group_names"` and `headscale` a `headscale_subdomain is defined`, so demanding their keys would fail every Host that never enters them. A guard makes a role's keys unaskable, not optional — naming its tag is the operator asserting it runs, and then they are asked.
+- **An untagged run resolves every unguarded roster role.** It enters the whole roster, so it demands what the whole roster needs — the case the drift left failing mid-play, and the one a category tag cannot cover. The exception is an entry carrying a `when:`, which turns on Host facts no caller can evaluate before the play runs: `hermes` carries `when: "'hermes' in group_names"` and `headscale` a `headscale_subdomain is defined`, so demanding their keys would fail every Host that never enters them. A guard makes a role's keys unaskable, not optional — naming its tag is the operator asserting it runs, and then they are asked. **Amended (#1199)**: "naming its tag" means a tag that singles the role out — its own name, or a tag no other roster role carries (`dns` for blocky). A tag shared across roles (`infrastructure`, `network`, `vpn`) asserts no one of them runs, so it keeps their guards as an untagged run does; otherwise `-t infrastructure` refused every Host that blanks blocky's and headscale's gates (ADR-0058, ADR-0060).
 - **A tag selects a role when the tag is one of the role's declared tags, or is the role's own name.** This is what gives category tags (`media`, `web`, `storage`) their first real validation: `--tags media` now resolves calibre, grimmory, immich, navidrome and radio and demands what all five need.
 - **An App that is also a standalone playbook declares the shared base itself.** `gokapi.yml` and `immich.yml` are runnable directly, where `apps.meta.yml` is not in the union at all. Their Metas therefore carry `domain` and `cloudflare_dns_api_token` alongside their app-specific keys; roster-only Apps declare app-specific keys only, and the redundancy costs nothing because the union deduplicates.
 

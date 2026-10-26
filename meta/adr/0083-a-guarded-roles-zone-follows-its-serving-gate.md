@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted, 2026-09-22. Completes [ADR-0081](./0081-an-apps-zone-is-a-named-pair-the-cli-resolves.md), whose "Preflight demands the effective Zone of every App in the run" was true of every App the run's source list reached — and that list reached no `when:`-guarded role.
+Accepted, 2026-09-22. Completes [ADR-0081](./0081-an-apps-zone-is-a-named-pair-the-cli-resolves.md), whose "Preflight demands the effective Zone of every App in the run" was true of every App the run's source list reached — and that list reached no `when:`-guarded role. Its last Decision paragraph is amended on 2026-10-26 (#1199).
 
 ## Decision
 
@@ -12,7 +12,7 @@ Accepted, 2026-09-22. Completes [ADR-0081](./0081-an-apps-zone-is-a-named-pair-t
 
 **A guarded role that publishes a name carries no `<app>_subdomain` role default.** Ansible's own gate reads the merged variables, defaults included; the Zone demand reads config alone. A default satisfies the first and not the second, so the role would run on a Host Preflight asked for no Zone. `aoe` carried one; it is dropped here, and `tests/guarded_role_serving_gate.rs` refuses the next.
 
-**Naming a role by tag removes the guard from the question.** The operator asserting a role runs is a stronger claim than any gate, so a tagged run demands the Zone of whatever the Meta says publishes a name.
+**Naming a role by tag removes the guard from the question.** The operator asserting a role runs is a stronger claim than any gate, so a tagged run demands the Zone of whatever the Meta says publishes a name. **Amended (#1199)**: only a tag that singles the role out names it, as [ADR-0045](./0045-required-keys-are-declared-in-playbook-meta.md) now reads. A shared tag leaves the role behind its guard, so it is asked about its serving gate, just as an untagged run asks.
 
 ## Why
 
