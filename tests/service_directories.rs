@@ -233,6 +233,13 @@ const DECLARED_DIRECTORIES: &[DeclaredDirectory] = &[
     },
     DeclaredDirectory {
         role: "baikal",
+        dir: "/opt/baikal/Core",
+        kind: Kind::Install,
+        writers: &[],
+        why: "Baikal's PHP sources, replaced wholesale by every version upgrade",
+    },
+    DeclaredDirectory {
+        role: "baikal",
         dir: "/opt/baikal/Specific",
         kind: Kind::Data,
         writers: &[],
@@ -265,6 +272,21 @@ const DECLARED_DIRECTORIES: &[DeclaredDirectory] = &[
         kind: Kind::Install,
         writers: &[],
         why: "ansible renders baikal.yaml into it; a deploy puts it back",
+    },
+    DeclaredDirectory {
+        role: "baikal",
+        dir: "/opt/baikal/html",
+        kind: Kind::Install,
+        writers: &[],
+        why: "the web root php-fpm serves, replaced wholesale by every version upgrade",
+    },
+    DeclaredDirectory {
+        role: "baikal",
+        dir: "/opt/baikal/vendor",
+        kind: Kind::Install,
+        writers: &[],
+        why: "Baikal's bundled composer dependencies, replaced wholesale by every version \
+              upgrade",
     },
     DeclaredDirectory {
         role: "bichon",
