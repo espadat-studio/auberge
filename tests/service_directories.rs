@@ -407,10 +407,20 @@ const DECLARED_DIRECTORIES: &[DeclaredDirectory] = &[
         role: "standby",
         dir: "/opt/standby-runner",
         kind: Kind::Expendable,
-        writers: &[],
+        writers: &["standby-runner.service"],
         why: "the root-owned release and the job dir the root reset rebuilds from it before \
-              every job; job code must not write the release, and a lost tree is reinstalled \
-              by the next start",
+              every job; granted whole because the reset hard-links one into the other and \
+              link() fails across mounts, while root ownership and ReadOnlyPaths keep job \
+              code out of the release; a lost tree is reinstalled by the next start",
+    },
+    DeclaredDirectory {
+        role: "standby",
+        dir: "/opt/standby-runner/job",
+        kind: Kind::Expendable,
+        writers: &["standby-runner.service"],
+        why: "the job dir the root reset empties and refills from the release before every \
+              job; the runner writes its registration, logs and _work here, and the \
+              hard-linked release files inside stay root-owned and read-only",
     },
     DeclaredDirectory {
         role: "standby",
@@ -775,6 +785,27 @@ fn test_write_access_matches_the_declared_writers() {
                     unit.name,
                     declaration.dir,
                     declaration.why
+                );
+            }
+        }
+    }
+}
+
+/// systemd bind-mounts every `ReadWritePaths` entry before the unit runs any
+/// command, root `ExecStartPre=+` included, so a grant on a path that does not
+/// exist fails the start with status=226/NAMESPACE. Nothing the unit runs can
+/// create its own grant; the role must, before the unit first starts (#1203).
+#[test]
+fn test_every_granted_path_is_a_directory_the_role_creates() {
+    for (role, units, dirs) in scanned_roles() {
+        for unit in &units {
+            for grant in &unit.grants {
+                assert!(
+                    dirs.contains(grant),
+                    "{role}: `{}` grants `{grant}`, which no task of the role creates for a \
+                     service user; systemd cannot mount a missing path and the unit fails \
+                     with status=226/NAMESPACE before its first command",
+                    unit.name
                 );
             }
         }

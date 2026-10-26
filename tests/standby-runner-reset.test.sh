@@ -127,6 +127,7 @@ inode() {
 
 new_case
 stage_release 2.338.1
+mkdir "${JOB}"
 assert_eq "fresh box: reset succeeds" 0 "$(reset)"
 assert_eq "fresh box: release installed at the latest version" 2.338.1 "$(cat "${RELEASE}/.version")"
 assert_eq "fresh box: archive modes lose group and other write" 755 "$(stat -c %a "${RELEASE}/run.sh")"
@@ -152,6 +153,21 @@ assert_fails "previous job left state: planted file in job root gone" test -e "$
 assert_eq "previous job left state: HOME emptied" "" "$(ls -A "${RUNNER_HOME}")"
 assert_eq "previous job left state: HOME closed again" 700 "$(stat -c %a "${RUNNER_HOME}")"
 assert_eq "previous job left state: symlink target outside HOME untouched" kept "$(cat "${WORK}/outside/target")"
+
+# Inside the unit the job dir is a mount point and cannot be removed; a parent
+# without write permission stands in for that without root.
+new_case
+stage_release 2.338.1
+job_inode="$(inode "${JOB}")"
+mkdir -p "${JOB}/_work"
+echo private >"${JOB}/_work/leftover"
+chmod 0555 "${WORK}/opt"
+assert_eq "mounted job dir: reset succeeds" 0 "$(reset)"
+chmod 0755 "${WORK}/opt"
+assert_eq "mounted job dir: same directory rebuilt in place" "${job_inode}" "$(inode "${JOB}")"
+assert_fails "mounted job dir: previous job's files gone" test -e "${JOB}/_work"
+assert_eq "mounted job dir: job runs the release's run.sh" "$(inode "${RELEASE}/run.sh")" "$(inode "${JOB}/run.sh")"
+assert_eq "mounted job dir: release not nested inside" "" "$(ls -d "${JOB}/release" 2>/dev/null)"
 
 new_case
 stage_release 2.339.0

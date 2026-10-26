@@ -71,6 +71,16 @@
     group: root
     mode: "0755"
 
+# The reset empties and refills the job dir but never creates it, so the first
+# start needs it here. Owner and mode are what the reset sets.
+- name: Create the runner job directory
+  ansible.builtin.file:
+    path: "{{ standby_runner_job_dir }}"
+    state: directory
+    owner: "{{ standby_runner_user }}"
+    group: "{{ standby_runner_group }}"
+    mode: "0750"
+
 - name: Create the root-only credentials directory
   ansible.builtin.file:
     path: "{{ standby_runner_conf_dir }}"
