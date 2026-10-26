@@ -351,20 +351,32 @@ impl UpstreamClient {
             .ok_or_else(|| eyre::eyre!("npm packument for {dep_name} has no dist-tags.latest"))
     }
 
+    /// Follows `Link: rel="next"` until the releases seen so far yield a
+    /// version: a monorepo tag (grimmory's `grimmory/vX.Y.Z`) sinks past the
+    /// first page as the host repo keeps releasing.
     async fn github_latest(&self, version: &VersionPin) -> Result<String> {
-        let url = format!(
+        let mut url = format!(
             "{}/repos/{}/releases?per_page=100",
             self.github_base, version.dep_name
         );
-        let mut request = self
-            .http
-            .get(&url)
-            .header(reqwest::header::ACCEPT, "application/vnd.github+json");
-        if let Ok(token) = std::env::var("GITHUB_TOKEN") {
-            request = request.bearer_auth(token);
+        let mut releases = Vec::new();
+        loop {
+            let mut request = self
+                .http
+                .get(&url)
+                .header(reqwest::header::ACCEPT, "application/vnd.github+json");
+            if let Ok(token) = std::env::var("GITHUB_TOKEN") {
+                request = request.bearer_auth(token);
+            }
+            let response = request.send().await?.error_for_status()?;
+            let next = next_page(response.headers());
+            releases.extend(response.json::<Vec<Release>>().await?);
+            let latest = latest_through_pin(&releases, version);
+            match next {
+                Some(next) if latest.is_err() => url = next,
+                _ => return latest,
+            }
         }
-        let releases: Vec<Release> = request.send().await?.error_for_status()?.json().await?;
-        latest_through_pin(&releases, version)
     }
 
     /// Renovate's `forgejo-releases` datasource. The API is Gitea's, which is
@@ -473,6 +485,24 @@ pub async fn require_built_releases(
 }
 
 /// The newest version a release list yields through a pin's coordinates.
+fn next_page(headers: &reqwest::header::HeaderMap) -> Option<String> {
+    headers
+        .get(reqwest::header::LINK)?
+        .to_str()
+        .ok()?
+        .split(',')
+        .find_map(|link| {
+            let (target, params) = link.split_once(';')?;
+            params.contains(r#"rel="next""#).then(|| {
+                target
+                    .trim()
+                    .trim_start_matches('<')
+                    .trim_end_matches('>')
+                    .to_string()
+            })
+        })
+}
+
 fn latest_through_pin(releases: &[Release], version: &VersionPin) -> Result<String> {
     let extract = version
         .extract_version
@@ -642,7 +672,7 @@ fn render_json(report: &VersionsReport, checked_upstream: bool) -> Result<String
 #[cfg(test)]
 mod tests {
     use super::*;
-    use wiremock::matchers::{method, path};
+    use wiremock::matchers::{method, path, query_param, query_param_is_missing};
     use wiremock::{Mock, MockServer, ResponseTemplate};
 
     fn report(app: &str, declared: &str, latest: Option<&str>) -> AppReport {
@@ -931,6 +961,52 @@ mod tests {
             .await?;
 
         assert_eq!(latest, "2.4.0");
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn github_latest_follows_pagination_until_a_tag_matches() -> Result<()> {
+        let server = MockServer::start().await;
+        let releases = "/repos/espadat-studio/auberge/releases";
+        Mock::given(method("GET"))
+            .and(path(releases))
+            .and(query_param_is_missing("page"))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .insert_header(
+                        "link",
+                        format!(
+                            "<{}{releases}?per_page=100&page=2>; rel=\"next\", \
+                             <{}{releases}?per_page=100&page=2>; rel=\"last\"",
+                            server.uri(),
+                            server.uri()
+                        ),
+                    )
+                    .set_body_json(serde_json::json!([{ "tag_name": "v0.21.2" }])),
+            )
+            .mount(&server)
+            .await;
+        Mock::given(method("GET"))
+            .and(path(releases))
+            .and(query_param("page", "2"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!([
+                { "tag_name": "v0.12.2" },
+                { "tag_name": "grimmory/v2.3.0" },
+            ])))
+            .mount(&server)
+            .await;
+        let client =
+            UpstreamClient::with_bases(server.uri(), server.uri(), server.uri(), server.uri())?;
+
+        let latest = client
+            .latest(&pin(
+                "github-releases",
+                "espadat-studio/auberge",
+                Some("^grimmory/v(?<version>.+)$"),
+            ))
+            .await?;
+
+        assert_eq!(latest, "2.3.0");
         Ok(())
     }
 
