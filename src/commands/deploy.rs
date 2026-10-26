@@ -66,9 +66,11 @@ fn select_host(host_arg: Option<String>) -> Result<Host> {
     select_or_arg(host_arg, HOST_FLAG)
 }
 
-/// The menu's selectable rows: the roster in `apps.yml`'s own declaration
-/// order, then the standalone playbooks the roster does not already hold,
-/// sorted and marked.
+/// The menu's selectable rows: the roster sorted, then the standalone
+/// playbooks the roster does not already hold, sorted and marked.
+///
+/// Sorting the roster is display-only: tags resolve against `apps.yml`, so
+/// roles still run in its declaration order whatever order they were picked.
 ///
 /// A name that is both — calibre, forgejo, gokapi, hermes, immich — appears once
 /// and bare, because [`split_routes`] sends it through the roster whichever way
@@ -88,6 +90,7 @@ fn menu_targets(roster: &[String], playbooks: &[String]) -> Vec<String> {
     standalone.dedup();
 
     let mut targets: Vec<String> = roster.to_vec();
+    targets.sort_unstable();
     targets.extend(
         standalone
             .into_iter()
@@ -757,7 +760,7 @@ mod tests {
     }
 
     #[test]
-    fn test_menu_offers_the_roster_then_the_playbooks_the_roster_does_not_hold() {
+    fn test_menu_offers_the_sorted_roster_then_the_playbooks_the_roster_does_not_hold() {
         let roster = vec!["paperless".to_string(), "calibre".to_string()];
         let playbooks = vec![
             "ruche".to_string(),
@@ -768,9 +771,8 @@ mod tests {
             menu_items(menu_targets(&roster, &playbooks)),
             vec![
                 "[all apps]",
-                // Roster order, not sorted: it is apps.yml's own.
-                "paperless",
                 "calibre",
+                "paperless",
                 // calibre is both and appears once, bare — `split_routes`
                 // sends it through the roster either way.
                 "aoe (playbook)",

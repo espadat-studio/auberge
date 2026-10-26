@@ -1,4 +1,5 @@
 use crate::output::should_use_colors;
+use dialoguer::console::style;
 use dialoguer::{
     Confirm, FuzzySelect, Input, MultiSelect, Select, theme::ColorfulTheme, theme::SimpleTheme,
 };
@@ -21,7 +22,11 @@ fn theme_kind() -> ThemeKind {
 
 fn dialoguer_theme() -> Box<dyn dialoguer::theme::Theme> {
     match theme_kind() {
-        ThemeKind::Colorful => Box::new(ColorfulTheme::default()),
+        ThemeKind::Colorful => Box::new(ColorfulTheme {
+            checked_item_prefix: style("[x]".to_string()).for_stderr().green(),
+            unchecked_item_prefix: style("[ ]".to_string()).for_stderr().dim(),
+            ..ColorfulTheme::default()
+        }),
         ThemeKind::Simple => Box::new(SimpleTheme),
     }
 }
