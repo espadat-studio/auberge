@@ -16,9 +16,29 @@
         state: present
         filename: tailscale
 
-    - name: Install Tailscale
+    - name: Gather package facts
+      ansible.builtin.package_facts:
+        manager: apt
+
+    - name: Set installed Tailscale version fact
+      ansible.builtin.set_fact:
+        tailscale_installed_version: >-
+          {{ ansible_facts.packages.tailscale[0].version
+             if 'tailscale' in ansible_facts.packages else '' }}
+
+    - name: Refuse to downgrade the Tailscale client
+      ansible.builtin.assert:
+        that: >-
+          tailscale_installed_version == ''
+          or tailscale_installed_version is version(tailscale_client_version, '<=')
+        fail_msg: >-
+          {{ inventory_hostname }} runs tailscale {{ tailscale_installed_version }},
+          newer than the pinned tailscale_client_version {{ tailscale_client_version }}.
+          Bump the pin in roles/tailscale/defaults/main.yml rather than downgrading the host.
+
+    - name: Install Tailscale {{ tailscale_client_version }}
       ansible.builtin.apt:
-        name: tailscale
+        name: "tailscale={{ tailscale_client_version }}"
         state: present
         update_cache: true
 
