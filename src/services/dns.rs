@@ -717,6 +717,7 @@ mod tests {
         "memsearch",
         "opencode",
         "ruche",
+        "ssh",
         "standby",
         "syncthing",
         "tgtg",
