@@ -178,7 +178,7 @@ watchdog() {
 
   local ledger=''
   if [[ -e "${LEDGER}" ]]; then
-    ledger=$(<"${LEDGER}") || die 2 "cannot read the ledger: ${LEDGER}"
+    ledger=$(cat -- "${LEDGER}") || die 2 "cannot read the ledger: ${LEDGER}"
   else
     alert "no ledger at ${LEDGER} — trusting the box's snapshot times once; expected on the first run only"
   fi
