@@ -1,5 +1,7 @@
 required_keys: [headscale_subdomain]
 subdomain: hs
+memory:
+  headscale: { high: 160M, max: 256M }
 version:
   value: "0.29.6"
   datasource: github-releases
