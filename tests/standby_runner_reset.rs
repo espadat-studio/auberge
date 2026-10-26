@@ -8,7 +8,7 @@ use std::fs;
 
 mod common;
 
-use common::units::{InstalledUnit, fleet_units};
+use common::units::fleet_units;
 use common::{defaults, resolve, role_dir};
 
 const UNIT: &str = "standby-runner.service";
@@ -37,19 +37,6 @@ fn removed_operands(line: &str) -> Vec<String> {
     }
 }
 
-/// A directive's paths, resolved through the role's defaults.
-fn paths(unit: &InstalledUnit, key: &str, vars: &BTreeMap<String, String>) -> Vec<String> {
-    unit.all_in("Service", key)
-        .into_iter()
-        .flat_map(|value| {
-            resolve(value, vars)
-                .split_whitespace()
-                .map(str::to_string)
-                .collect::<Vec<_>>()
-        })
-        .collect()
-}
-
 /// The unit's `ReadWritePaths`, its `ReadOnlyPaths`, and its `Environment`
 /// keyed as the reset spells a variable, `${NAME}`.
 fn unit_paths() -> (Vec<String>, Vec<String>, BTreeMap<String, String>) {
@@ -66,8 +53,8 @@ fn unit_paths() -> (Vec<String>, Vec<String>, BTreeMap<String, String>) {
         .map(|(key, value)| (format!("${{{key}}}"), resolve(value, &vars)))
         .collect();
     (
-        paths(unit, "ReadWritePaths", &vars),
-        paths(unit, "ReadOnlyPaths", &vars),
+        unit.service_paths("ReadWritePaths", &vars),
+        unit.service_paths("ReadOnlyPaths", &vars),
         env,
     )
 }
@@ -91,8 +78,10 @@ fn test_the_reset_removes_no_path_the_unit_mounts() {
 
     for path in &removed {
         assert!(
-            !grants.contains(path),
-            "the reset removes `{path}`, which {UNIT} lists under ReadWritePaths; inside the \
+            !grants
+                .iter()
+                .any(|grant| grant == path || grant.starts_with(&format!("{path}/"))),
+            "the reset removes `{path}`, which is or holds a path {UNIT} lists under ReadWritePaths; inside the \
              unit's namespace that is a mount point and `rm` fails with EBUSY on every start \
              -- empty it instead"
         );

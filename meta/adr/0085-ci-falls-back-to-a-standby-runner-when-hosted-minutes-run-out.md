@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted, 2026-10-22. Decided in #1111. Amended 2026-10-25: every job starts from a root-owned release and an empty HOME, and a root step does the self-update (Self-updating, below). Extends [ADR-0054](./0054-agent-workloads-run-on-a-dedicated-disposable-host.md): `ruche` is still assumed compromisable, and the runner is shaped around that.
+Accepted, 2026-10-22. Decided in #1111. Amended 2026-10-25: every job starts from a root-owned release and an empty HOME, and a root step does the self-update (Self-updating, below). Amended 2026-10-26: the runner is granted the whole install dir, with the release under `ReadOnlyPaths`, because a `ReadWritePaths` entry is its own mount even for the root step and `link()` fails across mounts; the reset empties the job dir in place instead of removing it (#1203). Extends [ADR-0054](./0054-agent-workloads-run-on-a-dedicated-disposable-host.md): `ruche` is still assumed compromisable, and the runner is shaped around that.
 
 ## Decision
 

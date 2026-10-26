@@ -60,29 +60,10 @@ fn strict_units(
         if directive("ProtectSystem").as_deref() != Some("strict") {
             continue;
         }
-        let name = unit.name.clone();
-        let grants: Vec<String> = unit
-            .all_in("Service", "ReadWritePaths")
-            .into_iter()
-            .flat_map(|value| {
-                resolve(value, vars)
-                    .split_whitespace()
-                    .map(str::to_string)
-                    .collect::<Vec<_>>()
-            })
-            .collect();
-        for grant in &grants {
-            assert!(
-                grant.starts_with('/'),
-                "{role}: `{name}` grants `{grant}`, which the role's defaults \
-                 cannot resolve to a path; a grant this fence cannot see would \
-                 fail open, so it fails loud instead"
-            );
-        }
         units.push(StrictUnit {
-            name,
+            name: unit.name.clone(),
             user: directive("User").unwrap_or_else(|| "root".to_string()),
-            grants,
+            grants: unit.service_paths("ReadWritePaths", vars),
         });
     }
     units
@@ -411,7 +392,8 @@ const DECLARED_DIRECTORIES: &[DeclaredDirectory] = &[
         why: "the root-owned release and the job dir the root reset rebuilds from it before \
               every job; granted whole because the reset hard-links one into the other and \
               link() fails across mounts, while root ownership and ReadOnlyPaths keep job \
-              code out of the release; a lost tree is reinstalled by the next start",
+              code out of the release; a lost release is reinstalled by the next start, a \
+              lost install or job dir by the next deploy",
     },
     DeclaredDirectory {
         role: "standby",
