@@ -351,14 +351,16 @@ impl UpstreamClient {
             .ok_or_else(|| eyre::eyre!("npm packument for {dep_name} has no dist-tags.latest"))
     }
 
-    /// Follows `Link: rel="next"` until the releases seen so far yield a
-    /// version: a monorepo tag (grimmory's `grimmory/vX.Y.Z`) sinks past the
-    /// first page as the host repo keeps releasing.
+    /// Renovate's `github-releases` datasource. Follows `Link: rel="next"`
+    /// until the releases seen so far yield a version: a monorepo tag
+    /// (grimmory's `grimmory/vX.Y.Z`) sinks past the first page as the host
+    /// repo keeps releasing.
     async fn github_latest(&self, version: &VersionPin) -> Result<String> {
         let mut url = format!(
             "{}/repos/{}/releases?per_page=100",
             self.github_base, version.dep_name
         );
+        let extract = pin_extract(version)?;
         let mut releases = Vec::new();
         loop {
             let mut request = self
@@ -371,11 +373,10 @@ impl UpstreamClient {
             let response = request.send().await?.error_for_status()?;
             let next = next_page(response.headers());
             releases.extend(response.json::<Vec<Release>>().await?);
-            let latest = latest_through_pin(&releases, version);
-            match next {
-                Some(next) if latest.is_err() => url = next,
-                _ => return latest,
+            if let Some(latest) = latest_release_version(&releases, extract.as_ref()) {
+                return Ok(latest);
             }
+            url = next.ok_or_else(|| no_version_through_pin(version))?;
         }
     }
 
@@ -484,7 +485,7 @@ pub async fn require_built_releases(
     Ok(())
 }
 
-/// The newest version a release list yields through a pin's coordinates.
+/// The `rel="next"` target of GitHub's `Link` pagination header.
 fn next_page(headers: &reqwest::header::HeaderMap) -> Option<String> {
     headers
         .get(reqwest::header::LINK)?
@@ -503,19 +504,27 @@ fn next_page(headers: &reqwest::header::HeaderMap) -> Option<String> {
         })
 }
 
+/// The newest version a release list yields through a pin's coordinates.
 fn latest_through_pin(releases: &[Release], version: &VersionPin) -> Result<String> {
-    let extract = version
+    let extract = pin_extract(version)?;
+    latest_release_version(releases, extract.as_ref())
+        .ok_or_else(|| no_version_through_pin(version))
+}
+
+fn pin_extract(version: &VersionPin) -> Result<Option<Regex>> {
+    version
         .extract_version
         .as_deref()
         .map(Regex::new)
         .transpose()
-        .wrap_err_with(|| format!("Invalid extractVersion for {}", version.dep_name))?;
-    latest_release_version(releases, extract.as_ref()).ok_or_else(|| {
-        eyre::eyre!(
-            "no release of {} yields a version through its coordinates",
-            version.dep_name
-        )
-    })
+        .wrap_err_with(|| format!("Invalid extractVersion for {}", version.dep_name))
+}
+
+fn no_version_through_pin(version: &VersionPin) -> eyre::Report {
+    eyre::eyre!(
+        "no release of {} yields a version through its coordinates",
+        version.dep_name
+    )
 }
 
 /// Renovate's github-releases semantics: the newest stable release whose tag
@@ -964,49 +973,95 @@ mod tests {
         Ok(())
     }
 
-    #[tokio::test]
-    async fn github_latest_follows_pagination_until_a_tag_matches() -> Result<()> {
+    const AUBERGE_RELEASES: &str = "/repos/espadat-studio/auberge/releases";
+
+    async fn two_release_pages(
+        page_one: serde_json::Value,
+        page_two: serde_json::Value,
+        page_two_hits: u64,
+    ) -> MockServer {
         let server = MockServer::start().await;
-        let releases = "/repos/espadat-studio/auberge/releases";
+        let page_two_url = format!("{}{AUBERGE_RELEASES}?per_page=100&page=2", server.uri());
         Mock::given(method("GET"))
-            .and(path(releases))
+            .and(path(AUBERGE_RELEASES))
             .and(query_param_is_missing("page"))
             .respond_with(
                 ResponseTemplate::new(200)
                     .insert_header(
                         "link",
-                        format!(
-                            "<{}{releases}?per_page=100&page=2>; rel=\"next\", \
-                             <{}{releases}?per_page=100&page=2>; rel=\"last\"",
-                            server.uri(),
-                            server.uri()
-                        ),
+                        format!("<{page_two_url}>; rel=\"next\", <{page_two_url}>; rel=\"last\""),
                     )
-                    .set_body_json(serde_json::json!([{ "tag_name": "v0.21.2" }])),
+                    .set_body_json(page_one),
             )
             .mount(&server)
             .await;
         Mock::given(method("GET"))
-            .and(path(releases))
+            .and(path(AUBERGE_RELEASES))
             .and(query_param("page", "2"))
-            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!([
-                { "tag_name": "v0.12.2" },
-                { "tag_name": "grimmory/v2.3.0" },
-            ])))
+            .respond_with(ResponseTemplate::new(200).set_body_json(page_two))
+            .expect(page_two_hits)
             .mount(&server)
             .await;
-        let client =
-            UpstreamClient::with_bases(server.uri(), server.uri(), server.uri(), server.uri())?;
+        server
+    }
 
-        let latest = client
+    async fn grimmory_latest(server: &MockServer, extract_version: &str) -> Result<String> {
+        UpstreamClient::with_bases(server.uri(), server.uri(), server.uri(), server.uri())?
             .latest(&pin(
                 "github-releases",
                 "espadat-studio/auberge",
-                Some("^grimmory/v(?<version>.+)$"),
+                Some(extract_version),
             ))
-            .await?;
+            .await
+    }
+
+    #[tokio::test]
+    async fn github_latest_follows_pagination_until_a_tag_matches() -> Result<()> {
+        let server = two_release_pages(
+            serde_json::json!([{ "tag_name": "v0.21.2" }]),
+            serde_json::json!([{ "tag_name": "v0.12.2" }, { "tag_name": "grimmory/v2.3.0" }]),
+            1,
+        )
+        .await;
+
+        let latest = grimmory_latest(&server, "^grimmory/v(?<version>.+)$").await?;
 
         assert_eq!(latest, "2.3.0");
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn github_latest_stops_paging_once_a_tag_matches() -> Result<()> {
+        let server = two_release_pages(
+            serde_json::json!([{ "tag_name": "grimmory/v2.4.0" }]),
+            serde_json::json!([{ "tag_name": "grimmory/v2.3.0" }]),
+            0,
+        )
+        .await;
+
+        let latest = grimmory_latest(&server, "^grimmory/v(?<version>.+)$").await?;
+
+        assert_eq!(latest, "2.4.0");
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn github_latest_fails_on_an_invalid_extract_version_before_paging() -> Result<()> {
+        let server = two_release_pages(
+            serde_json::json!([{ "tag_name": "v0.21.2" }]),
+            serde_json::json!([{ "tag_name": "grimmory/v2.3.0" }]),
+            0,
+        )
+        .await;
+
+        let result = grimmory_latest(&server, "^grimmory/v(?<version>.+$").await;
+
+        assert!(
+            result
+                .unwrap_err()
+                .to_string()
+                .contains("Invalid extractVersion")
+        );
         Ok(())
     }
 
