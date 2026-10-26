@@ -10,6 +10,10 @@
 //! it can do is hold the subcommand list a human read out of the pinned release,
 //! fail every role call outside it, and fail when the pin moves without that
 //! list being read again.
+//!
+//! ADR-0050 puts the verified release next to the code that calls the CLI. The
+//! callers here are Ansible files, not a crate module, so the consts live in
+//! the fence.
 
 use auberge::playbook_meta::declared_app_versions;
 
@@ -19,12 +23,12 @@ use common::{playbooks_dir, relative, role_template_files, role_yml_files};
 
 const APP: &str = "hermes";
 
-/// The release [`SUBCOMMANDS`] was read from.
+/// The release [`SUBCOMMANDS`] and [`FLAGS`] were read from.
 const VERIFIED_RELEASE: &str = "v2026.9.24";
 
-/// The top-level subcommands of hermes 0.21.5, read from the
-/// `subparsers.add_parser(...)` calls under `hermes_cli/` at [`VERIFIED_RELEASE`].
-/// `version` is not among them; `--version` is a top-level flag.
+/// The top-level subcommands of hermes 0.21.5, aliases included: upstream's own
+/// `_BUILTIN_SUBCOMMANDS` in `hermes_cli/main.py` at [`VERIFIED_RELEASE`].
+/// `version` is not among them; `--version` is a flag.
 const SUBCOMMANDS: &[&str] = &[
     "acp",
     "approvals",
@@ -50,16 +54,22 @@ const SUBCOMMANDS: &[&str] = &[
     "egress",
     "fallback",
     "gateway",
+    "gui",
+    "help",
     "hooks",
     "import",
     "import-agent",
     "insights",
     "journey",
+    "kanban",
+    "learning",
     "login",
     "logout",
     "logs",
+    "lsp",
     "mcp",
     "memory",
+    "memory-graph",
     "migrate",
     "moa",
     "model",
@@ -71,6 +81,7 @@ const SUBCOMMANDS: &[&str] = &[
     "plugins",
     "portal",
     "profile",
+    "project",
     "prompt-size",
     "proxy",
     "resume",
@@ -97,9 +108,30 @@ const SUBCOMMANDS: &[&str] = &[
     "worktree",
 ];
 
-/// The word after each `bin/hermes ` in the role's tasks, handlers and
-/// templates, with the file it sits in. A path without a following space is the
-/// binary named as a file, not called.
+/// The top-level flags of hermes 0.21.5: `_add_top_level_flags` in
+/// `hermes_cli/_parser.py` at [`VERIFIED_RELEASE`].
+const FLAGS: &[&str] = &[
+    "--continue",
+    "--in",
+    "--no-restore-cwd",
+    "--oneshot",
+    "--resume",
+    "--toolsets",
+    "--usage-file",
+    "--version",
+    "--worktree",
+    "-V",
+    "-c",
+    "-r",
+    "-t",
+    "-w",
+    "-z",
+];
+
+/// The word after each `bin/hermes ` in every role file ansible renders and in
+/// the role's templates, with the file it sits in. A path without a following
+/// space is the binary named as a file, not called. A bare `hermes <word>` off
+/// `PATH` is not seen; the role calls the binary by path everywhere.
 fn role_calls() -> Vec<(String, String)> {
     let mut files = role_yml_files(APP);
     files.extend(role_template_files(APP));
@@ -123,13 +155,15 @@ fn role_calls() -> Vec<(String, String)> {
 }
 
 #[test]
-fn every_role_call_names_a_subcommand_the_pinned_release_lists() {
+fn every_role_call_names_a_subcommand_or_flag_the_pinned_release_lists() {
     for (file, word) in role_calls() {
-        if word.starts_with('-') {
-            continue;
-        }
+        let known = if word.starts_with('-') {
+            FLAGS
+        } else {
+            SUBCOMMANDS
+        };
         assert!(
-            SUBCOMMANDS.contains(&word.as_str()),
+            known.contains(&word.as_str()),
             "{file} calls `hermes {word}`, which hermes {VERIFIED_RELEASE} does not list"
         );
     }
@@ -155,12 +189,14 @@ fn the_verified_release_is_the_one_the_playbook_pins() {
         .find(|(app, _)| app == APP)
         .unwrap_or_else(|| panic!("{APP}.meta.yml must declare an App Version (ADR-0017)"));
     assert_eq!(pin.dep_name, "NousResearch/hermes-agent");
+    assert_eq!(pin.datasource, "github-releases");
     assert_eq!(
         VERIFIED_RELEASE, pin.value,
         "\nSUBCOMMANDS was read from hermes {VERIFIED_RELEASE}, but \
          ansible/playbooks/{APP}.meta.yml now deploys {}.\n\
-         Re-read the `subparsers.add_parser(...)` calls under `hermes_cli/` at the new \
-         tag, update SUBCOMMANDS, then move VERIFIED_RELEASE.",
+         Re-read `_BUILTIN_SUBCOMMANDS` in `hermes_cli/main.py` and \
+         `_add_top_level_flags` in `hermes_cli/_parser.py` at the new tag, update \
+         SUBCOMMANDS and FLAGS, then move VERIFIED_RELEASE.",
         pin.value
     );
 }
