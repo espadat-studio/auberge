@@ -55,8 +55,8 @@
       failed_when: ingress_gate_binds.rc > 1
       when: ingress_gate_vhosts.matched > 0
 
-    - name: Read the IPv4 addresses this host holds
-      ansible.builtin.command: ip -family inet -oneline address show
+    - name: Read the addresses this host holds
+      ansible.builtin.command: ip -oneline address show
       register: ingress_gate_host_addresses
       changed_when: false
       when: ingress_gate_vhosts.matched > 0
@@ -69,8 +69,9 @@
         ingress_gate_wanted: >-
           {{ ingress_gate_binds.stdout_lines
              | map('regex_replace', '^\s*bind\s+', '')
-             | map('split') | flatten | unique | list }}
-        ingress_gate_held: "{{ ingress_gate_host_addresses.stdout | regex_findall('inet ([0-9.]+)/') }}"
+             | map('split') | flatten
+             | map('regex_replace', '^\[(.*)\]$', '\1') | unique | list }}
+        ingress_gate_held: "{{ ingress_gate_host_addresses.stdout | regex_findall('inet6? ([0-9a-f.:]+)/') }}"
       ansible.builtin.assert:
         that: ingress_gate_wanted | difference(ingress_gate_held) | length == 0
         fail_msg: >-

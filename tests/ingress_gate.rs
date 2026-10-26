@@ -171,9 +171,21 @@ fn test_caddy_can_bind_tailnet_addresses_before_they_exist() {
 fn test_the_gate_checks_vhost_bind_addresses_are_held() {
     let tasks = fs::read_to_string(role_dir(GATE_ROLE).join("tasks/main.yml")).unwrap();
     assert!(
-        tasks.contains("ip -family inet -oneline address show")
+        tasks.contains("ip -oneline address show")
             && tasks.contains("difference(ingress_gate_held)"),
         "{GATE_ROLE} must compare every vhost `bind` address against the addresses the \
          host holds, now that caddy starts with an address it does not own (#568)."
+    );
+}
+
+/// A vhost may bind `[::1]`; a gate that reads only IPv4 addresses reports it as unheld
+/// and fails a healthy deploy.
+#[test]
+fn test_the_gate_reads_ipv6_addresses_and_unbrackets_binds() {
+    let tasks = fs::read_to_string(role_dir(GATE_ROLE).join("tasks/main.yml")).unwrap();
+    assert!(
+        tasks.contains("inet6? ") && tasks.contains(r"'^\[(.*)\]$'"),
+        "{GATE_ROLE} must collect IPv6 addresses and strip the brackets from `bind` values, \
+         or a vhost binding `[::1]` fails the gate on a host that holds it."
     );
 }
