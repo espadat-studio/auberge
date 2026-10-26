@@ -8,7 +8,7 @@
 //!
 //! The scan looks for `ansible_port` as a key (a play var, a `set_fact`, a
 //! module arg), never as a value: the guard reads it, and reading is fine.
-//! `bootstrap.yml` is the witness that the scan finds a pin when one is there.
+//! `bootstrap.yml` is the witness that the scan finds each key when one is set.
 
 use serde_yaml::Value;
 
@@ -16,7 +16,9 @@ use auberge::services::dependency_resolver::{parse_roster, standalone_stem};
 
 mod common;
 
-use common::{parse_yaml, playbooks_dir};
+use common::{Plays, parse_yaml, playbooks_dir, strings, tasks_in};
+
+const CONNECTION_KEYS: [&str; 3] = ["ansible_port", "ansible_user", "remote_user"];
 
 fn sets_key(value: &Value, key: &str) -> bool {
     match value {
@@ -42,17 +44,20 @@ fn test_ssh_is_a_standalone_playbook_holding_the_ssh_role() {
 }
 
 #[test]
-fn test_bootstrap_pins_port_22_so_the_scan_is_not_vacuous() {
-    assert!(sets_key(
-        &parse_yaml(&playbooks_dir().join("bootstrap.yml")),
-        "ansible_port"
-    ));
+fn test_bootstrap_pins_the_connection_so_the_scan_is_not_vacuous() {
+    let playbook = parse_yaml(&playbooks_dir().join("bootstrap.yml"));
+    for key in CONNECTION_KEYS {
+        assert!(
+            sets_key(&playbook, key),
+            "bootstrap.yml no longer sets `{key}`"
+        );
+    }
 }
 
 #[test]
 fn test_ssh_connects_on_the_inventory_port_not_22() {
     let playbook = parse_yaml(&playbooks_dir().join("ssh.yml"));
-    for key in ["ansible_port", "ansible_user", "remote_user"] {
+    for key in CONNECTION_KEYS {
         assert!(
             !sets_key(&playbook, key),
             "ssh.yml sets `{key}`; the connection must come from the Inventory"
@@ -61,11 +66,23 @@ fn test_ssh_connects_on_the_inventory_port_not_22() {
 }
 
 #[test]
-fn test_ssh_refuses_to_move_the_port_from_under_its_connection() {
-    let playbook = serde_yaml::to_string(&parse_yaml(&playbooks_dir().join("ssh.yml"))).unwrap();
+fn test_ssh_refuses_to_move_the_port() {
+    let guarded = tasks_in(&playbooks_dir().join("ssh.yml"), Plays::Descend)
+        .iter()
+        .any(|task| {
+            let that = strings(
+                task.body
+                    .get("ansible.builtin.assert")
+                    .and_then(|a| a.get("that")),
+            );
+            let tags = strings(task.body.get("tags"));
+            that.iter()
+                .any(|c| c.contains("ssh_port") && c.contains("ansible_port"))
+                && tags.iter().any(|t| t == "always")
+        });
     assert!(
-        playbook.contains("ssh_port | int == ansible_port | int"),
-        "ssh.yml must assert ssh_port matches the connection port: it does not \
-         open a new port in ufw, so restarting sshd elsewhere locks the Host out"
+        guarded,
+        "ssh.yml must assert, tagged always, that ssh_port is the Host's port: \
+         it re-applies sshd, and a port it moved would strand every later run"
     );
 }

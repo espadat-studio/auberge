@@ -8,8 +8,8 @@
         that:
           - ssh_port | int == ansible_port | int
         fail_msg: >-
-          ssh_port {{ ssh_port }} differs from the connection port {{ ansible_port }}.
-          This playbook does not open a port in ufw, so restarting sshd on a new one locks the Host out.
+          ssh_port {{ ssh_port }} differs from the Host's port {{ ansible_port }} in hosts.toml.
+          This playbook re-applies sshd on its current port; moving the port would strand every later run on the old one.
       tags: [always]
   roles:
     - role: ssh

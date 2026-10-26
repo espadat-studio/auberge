@@ -74,7 +74,7 @@ List all tags for a playbook with `cd ansible && ansible-playbook playbooks/apps
 | `security` / `network` / `storage` / `web`            | Category                 |
 
 :::caution
-**ssh.yml** re-applies the `ssh` role to a bootstrapped host on its configured port. It refuses to run when `ssh_port` differs from that port, since it does not open a new one in ufw. **bootstrap.yml**: configure your VPS provider firewall to allow your custom `ssh_port` _before_ running, or you'll be locked out. **apps.yml**: requires `cloudflare_dns_api_token` (Zone:Read + DNS:Edit) and port 853/tcp open in the provider firewall (Blocky DoT).
+**ssh.yml** re-applies the `ssh` role to a bootstrapped host on its configured port. It refuses to run when `ssh_port` differs from the port in `hosts.toml`: it re-applies sshd, it does not move it. **bootstrap.yml**: configure your VPS provider firewall to allow your custom `ssh_port` _before_ running, or you'll be locked out. **apps.yml**: requires `cloudflare_dns_api_token` (Zone:Read + DNS:Edit) and port 853/tcp open in the provider firewall (Blocky DoT).
 :::
 
 <details>
