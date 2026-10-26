@@ -1767,6 +1767,14 @@ units:
     }
 
     #[test]
+    fn test_headscale_meta_memory_budget() {
+        let memory = load_meta("headscale").memory;
+        let budget = memory.get("headscale").unwrap();
+        assert_eq!(budget.high, "160M");
+        assert_eq!(budget.max.as_deref(), Some("256M"));
+    }
+
+    #[test]
     fn test_navidrome_meta_memory_budget() {
         let memory = load_meta("navidrome").memory;
         let budget = memory.get("navidrome").unwrap();
