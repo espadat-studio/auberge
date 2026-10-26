@@ -181,7 +181,7 @@
 - name: Verify hermes binary
   become: true
   become_user: "{{ hermes_user }}"
-  ansible.builtin.command: "{{ hermes_home }}/.local/bin/hermes version"
+  ansible.builtin.command: "{{ hermes_home }}/.local/bin/hermes --version"
   register: hermes_installed_version
   changed_when: false
   failed_when: hermes_installed_version.rc != 0
@@ -190,7 +190,7 @@
 
 - name: Display hermes version
   ansible.builtin.debug:
-    msg: "Hermes version: {{ hermes_installed_version.stdout }}"
+    msg: "Hermes version: {{ hermes_installed_version.stdout_lines | first }}"
 
 - name: Create systemd user directory
   ansible.builtin.file:
