@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.21.1](https://github.com/espadat-studio/auberge/compare/v0.21.0...v0.21.1) - 2026-10-26
+
+### Fixed
+
+- *(ansible)* count IPv6 addresses in the ingress gate ([#1209](https://github.com/espadat-studio/auberge/pull/1209))
+- *(hermes)* probe the install with --version ([#1208](https://github.com/espadat-studio/auberge/pull/1208))
+- *(standby)* let the per-job reset start the runner ([#1207](https://github.com/espadat-studio/auberge/pull/1207))
+- *(ssh)* add a standalone playbook to re-apply the ssh role ([#1206](https://github.com/espadat-studio/auberge/pull/1206))
+- *(ansible)* keep role guards on a tag shared across the roster ([#1205](https://github.com/espadat-studio/auberge/pull/1205))
+- *(deploy)* sort the app menu and draw checkboxes in ascii ([#1202](https://github.com/espadat-studio/auberge/pull/1202))
+
+### Other
+
+- *(deps)* bump undici from 8.10.2 to 8.12.3 in /docs in the npm_and_yarn group across 1 directory ([#1174](https://github.com/espadat-studio/auberge/pull/1174))
+- *(uv)* bump to 0.13.4 ([#1198](https://github.com/espadat-studio/auberge/pull/1198))
+
 ## [0.21.0](https://github.com/espadat-studio/auberge/compare/v0.20.4...v0.21.0) - 2026-10-25
 
 ### Fixed
