@@ -1,0 +1,16 @@
+---
+- name: Re-apply the SSH daemon configuration to a bootstrapped Host
+  hosts: vps
+  become: true
+  pre_tasks:
+    - name: Refuse to move the SSH port from under this connection
+      ansible.builtin.assert:
+        that:
+          - ssh_port | int == ansible_port | int
+        fail_msg: >-
+          ssh_port {{ ssh_port }} differs from the Host's port {{ ansible_port }} in hosts.toml.
+          This playbook re-applies sshd on its current port; moving the port would strand every later run on the old one.
+      tags: [always]
+  roles:
+    - role: ssh
+      tags: [ssh]

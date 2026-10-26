@@ -34,10 +34,9 @@ fn declared_keys(playbooks_dir: &Path, stem: &str, registry: &KeyRegistry) -> Re
 /// behind a `when:` guard.
 struct RunSource {
     name: String,
-    /// True only when an untagged run reached this role through the roster and
-    /// it carries a `when:`. The Playbook's own Meta is never behind a guard,
-    /// and neither is a role a tag named — naming a role is the operator
-    /// asserting it runs.
+    /// True when the role carries a `when:` and no tag the run named singles
+    /// it out. The Playbook's own Meta is never behind a guard, and neither is
+    /// a role a tag singled out — that is the operator asserting it runs.
     behind_a_guard: bool,
 }
 
@@ -45,33 +44,39 @@ struct RunSource {
 /// between the run and it.
 ///
 /// A tagged run selects a role when one of its declared tags was named, or when
-/// the tag is the role's own name. An untagged run enters the whole roster, so
-/// it returns every entry — the guarded ones flagged rather than dropped,
-/// because a guard is not one question. "Which keys does this run read" cannot
-/// look behind one; "which Zone does this App need" can, for the guards that
-/// gate on config (ADR-0083). Dropping the entry here answered both at once,
+/// the tag is the role's own name. Only a tag that singles the role out — its
+/// name, or a tag no other roster role carries — lifts its guard. A tag
+/// shared across roles (`infrastructure`, `network`, `vpn`) asserts no one of
+/// them runs, so the guarded ones it sweeps in stay flagged, exactly as an
+/// untagged run leaves them (#1199).
+///
+/// An untagged run enters the whole roster, so it returns every entry — the
+/// guarded ones flagged rather than dropped, because a guard is not one
+/// question. "Which keys does this run read" cannot look behind one; "which
+/// Zone does this App need" can, for the guards that gate on config
+/// (ADR-0083). Dropping the entry here answered both at once,
 /// and only the first correctly.
 fn selected_roles(playbook_path: &Path, tags: &[String]) -> Result<Vec<RunSource>> {
     if !playbook_path.is_file() {
         return Ok(Vec::new());
     }
+    let roster = parse_roster(playbook_path)?;
+    let carried_by_one = |tag: &String| roster.iter().filter(|r| r.tags.contains(tag)).count() == 1;
     let mut selected = Vec::new();
-    for role in parse_roster(playbook_path)? {
-        let behind_a_guard = match tags {
-            [] => role.guarded,
-            tags => {
-                if !tags
-                    .iter()
-                    .any(|tag| *tag == role.name || role.tags.contains(tag))
-                {
-                    continue;
-                }
-                false
-            }
-        };
+    for role in &roster {
+        let matched: Vec<&String> = tags
+            .iter()
+            .filter(|tag| **tag == role.name || role.tags.contains(tag))
+            .collect();
+        if !tags.is_empty() && matched.is_empty() {
+            continue;
+        }
+        let singled_out = matched
+            .iter()
+            .any(|tag| **tag == role.name || carried_by_one(tag));
         selected.push(RunSource {
-            name: role.name,
-            behind_a_guard,
+            name: role.name.clone(),
+            behind_a_guard: role.guarded && !singled_out,
         });
     }
     Ok(selected)
@@ -362,6 +367,46 @@ mod tests {
         assert!(keys.contains(&"guarded_token".to_string()), "{keys:?}");
     }
 
+    /// A tag shared across the roster names no one role, so the blocky and
+    /// headscale guards still stand: a Host that blanks both gates passes the
+    /// key check and the Zone check alike, and neither key is demanded (#1199).
+    #[test]
+    fn test_repo_shared_infrastructure_tags_keep_the_guards() {
+        let blank = Config::from_toml_str(
+            "admin_user_name = \"admin\"\nadmin_user_email = \"a@fleet.example\"\n\
+             domain = \"fleet.example\"\n\
+             cloudflare_dns_api_token = \"t\"\n\n\
+             [hosts.ruche]\nblocky_subdomain = \"\"\nheadscale_subdomain = \"\"\n",
+        )
+        .unwrap();
+        for tag in ["infrastructure", "network", "vpn"] {
+            let tags = vec![tag.to_string()];
+            let keys =
+                required_keys_for(&repo_ansible_dir(), "infrastructure.yml", Some(&tags)).unwrap();
+            for key in ["blocky_subdomain", "headscale_subdomain"] {
+                assert!(
+                    !keys.contains(&key.to_string()),
+                    "-t {tag} demands {key}: {keys:?}"
+                );
+            }
+            assert!(
+                blank.preflight_with_keys(&keys, Some("ruche")).is_ok(),
+                "-t {tag}: {keys:?}"
+            );
+            assert!(
+                assert_zones_resolve(
+                    &repo_ansible_dir(),
+                    &blank,
+                    "infrastructure.yml",
+                    Some(&tags),
+                    "ruche"
+                )
+                .is_ok(),
+                "-t {tag}"
+            );
+        }
+    }
+
     #[test]
     fn test_tagged_run_unions_the_selected_roles_meta() {
         let dir = fixture_ansible_dir(
@@ -548,12 +593,12 @@ mod tests {
 
     /// The gate reads `headscale_subdomain` from config alone (#710), so a run
     /// that names the tag without the key would skip every task it asked for.
-    /// Naming the tag is the operator asserting the role runs, and then they
-    /// are asked. Any selecting tag counts, category tags included — ADR-0045's
-    /// selection rule, pinned here so a change to it is deliberate.
+    /// Naming the role is the operator asserting it runs, and then they are
+    /// asked. A tag shared with tailscale (`vpn`) does not name it (#1199),
+    /// so only the role's own name is pinned here.
     #[test]
     fn test_repo_headscale_tag_demands_the_gate_key() {
-        for tag in ["headscale", "vpn"] {
+        for tag in ["headscale"] {
             let tags = vec![tag.to_string()];
             let keys =
                 required_keys_for(&repo_ansible_dir(), "infrastructure.yml", Some(&tags)).unwrap();
@@ -564,6 +609,7 @@ mod tests {
         }
     }
 
+    /// `dns` rides on blocky alone, so it singles blocky out as its name does.
     #[test]
     fn test_repo_blocky_tag_demands_the_gate_key() {
         for tag in ["blocky", "dns"] {
