@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.21.3](https://github.com/espadat-studio/auberge/compare/v0.21.2...v0.21.3) - 2026-10-26
+
+### Added
+
+- *(tailscale)* pin the client as a Tool Version ([#1217](https://github.com/espadat-studio/auberge/pull/1217))
+
+### Fixed
+
+- *(versions)* paginate github-releases so grimmory resolves upstream ([#1219](https://github.com/espadat-studio/auberge/pull/1219))
+- *(headscale)* cap the unit's memory at 256M ([#1215](https://github.com/espadat-studio/auberge/pull/1215))
+
 ## [0.21.2](https://github.com/espadat-studio/auberge/compare/v0.21.1...v0.21.2) - 2026-10-26
 
 ### Fixed
