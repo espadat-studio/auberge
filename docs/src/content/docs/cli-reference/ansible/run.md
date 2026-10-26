@@ -29,6 +29,7 @@ auberge ansible run [OPTIONS]
 auberge ansible run                                                      # interactive
 auberge ansible run --host my-vps --tags paperless                       # auto-resolves infra + apps
 auberge ansible run --host my-vps --tags hermes                          # standalone playbook by name
+auberge ansible run --host my-vps --tags ssh                             # re-apply the ssh role on the configured port
 auberge ansible run --host my-vps --playbook ansible/playbooks/apps.yml --tags freshrss,baikal --check
 auberge ansible run --host my-vps --skip-tags navidrome -f               # CI/CD
 ```
@@ -45,6 +46,7 @@ The first is the playbook's own declaration:
 | -------------------- | ----------------------------- |
 | `bootstrap.yml`      | `admin_user_name`, `ssh_port` |
 | `hardening.yml`      | none                          |
+| `ssh.yml`            | `admin_user_name`, `ssh_port` |
 | `infrastructure.yml` | `admin_user_name`, `domain`   |
 | `apps.yml`           | `admin_user_name`             |
 | other                | the app's own keys            |
@@ -72,7 +74,7 @@ List all tags for a playbook with `cd ansible && ansible-playbook playbooks/apps
 | `security` / `network` / `storage` / `web`            | Category                 |
 
 :::caution
-**bootstrap.yml**: configure your VPS provider firewall to allow your custom `ssh_port` _before_ running, or you'll be locked out. **apps.yml**: requires `cloudflare_dns_api_token` (Zone:Read + DNS:Edit) and port 853/tcp open in the provider firewall (Blocky DoT).
+**ssh.yml** re-applies the `ssh` role to a bootstrapped host on its configured port. It refuses to run when `ssh_port` differs from that port, since it does not open a new one in ufw. **bootstrap.yml**: configure your VPS provider firewall to allow your custom `ssh_port` _before_ running, or you'll be locked out. **apps.yml**: requires `cloudflare_dns_api_token` (Zone:Read + DNS:Edit) and port 853/tcp open in the provider firewall (Blocky DoT).
 :::
 
 <details>

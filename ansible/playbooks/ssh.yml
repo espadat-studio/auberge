@@ -1,0 +1,16 @@
+---
+- name: Re-apply the SSH daemon configuration to a bootstrapped Host
+  hosts: vps
+  become: true
+  pre_tasks:
+    - name: Refuse to move the SSH port from under this connection
+      ansible.builtin.assert:
+        that:
+          - ssh_port | int == ansible_port | int
+        fail_msg: >-
+          ssh_port {{ ssh_port }} differs from the connection port {{ ansible_port }}.
+          This playbook does not open a port in ufw, so restarting sshd on a new one locks the Host out.
+      tags: [always]
+  roles:
+    - role: ssh
+      tags: [ssh]
