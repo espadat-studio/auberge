@@ -26,7 +26,7 @@ forgejo_admin_email: "{{ forgejo_admin_user }}@{{ domain }}"
 forgejo_app_name: "Forgejo"
 forgejo_binary_name: "forgejo-{{ forgejo_version }}-linux-amd64"
 forgejo_binary_url: "https://code.forgejo.org/forgejo/forgejo/releases/download/v{{ forgejo_version }}/{{ forgejo_binary_name }}"
-forgejo_binary_sha256: "5a3b07e124ed70b4e46ee3939515f003bd3cc85352257a9a4607a527251042ca"
+forgejo_binary_sha256: "51a8cdf4a1252e79f4b3855d7a7891af6c6635105420768c460e2f0690385d6f"
 forgejo_admin_marker: "{{ forgejo_data_dir }}/.admin_created"
 # The three signing secrets, generated once per Host by the binary itself so
 # each lands in the format forgejo parses it back from, and read through
