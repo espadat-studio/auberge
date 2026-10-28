@@ -11,7 +11,7 @@ blocky_archive_sha256: "97ae4257e4f2ea7ee4e0622fca152019eb92224d81b41b2549f064e4
 # renovate: datasource=github-releases depName=go-acme/lego extractVersion=^v(?<version>.+)$
 blocky_lego_version: "5.6.0"
 blocky_lego_url: "https://github.com/go-acme/lego/releases/download/v{{ blocky_lego_version }}/lego_v{{ blocky_lego_version }}_linux_amd64.tar.gz"
-blocky_lego_sha256: "2a35505089e7772c92e1e9ac144df91151ef2eca8568630db0ff91fca06d9bef"
+blocky_lego_sha256: "f02fc11b6f56b97e387fa7caa0268f86f5a336953b22458e6430e4651fea439a"
 # --dns.propagation.disable-rns drops lego's recursive-nameserver propagation
 # check. A recursor that negative-caches the challenge name for the zone's SOA
 # minimum (1800s on Cloudflare) can never clear inside lego's 2m poll window,
