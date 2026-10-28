@@ -8,7 +8,7 @@ tailscale_accept_dns: false # Disabled on server to prevent DNS loop when Blocky
 tailscale_login_server: "" # Headscale URL (empty = Tailscale SaaS)
 tailscale_extra_args: "" # Additional arguments for tailscale up command
 # renovate: datasource=github-releases depName=tailscale/tailscale extractVersion=^v(?<version>.+)$
-tailscale_client_version: "1.104.2"
+tailscale_client_version: "1.104.4"
 # One key serves every codename; the digest holds across releases.
 # recompute-checksums.sh cannot render a fact, so a rotation is edited by hand.
 tailscale_key_url: "https://pkgs.tailscale.com/stable/debian/{{ ansible_facts['distribution_release'] }}.noarmor.gpg"
