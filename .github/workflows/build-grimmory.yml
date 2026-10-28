@@ -34,7 +34,7 @@ jobs:
 
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
         with:
-          node-version: "24"
+          node-version: "26"
           package-manager-cache: false
 
       - name: Fetch the tarball and check it against its pinned digest
