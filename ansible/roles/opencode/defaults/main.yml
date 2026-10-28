@@ -7,7 +7,7 @@ opencode_install_dir: /usr/local/bin
 opencode_binary_path: "{{ opencode_install_dir }}/opencode"
 opencode_archive_name: "opencode-linux-x64.tar.gz"
 opencode_archive_url: "https://github.com/anomalyco/opencode/releases/download/v{{ opencode_version }}/{{ opencode_archive_name }}"
-opencode_archive_sha256: "13a8fb2978302071b86f9d7e00da9c8895f9cd846978379c3bdc6a5333536c9b"
+opencode_archive_sha256: "849bd6b3d959a1d2ef200ed1634a51c79a45ca236aa26665d75debd694805cce"
 opencode_archive_download_path: "{{ root_download_dir }}/opencode-{{ opencode_version }}-linux-x64.tar.gz"
 
 opencode_managed_config_dir: /etc/opencode
