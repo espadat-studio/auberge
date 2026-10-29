@@ -394,16 +394,16 @@ impl Config {
     /// the top level minus the reserved `hosts` table, with the Host's
     /// `[hosts.<name>]` overrides merged on top (ADR-0058).
     ///
-    /// Top-level values that fail to resolve are dropped (the run may never
-    /// read them); an override that fails is an error — dropping it would
-    /// silently fall back to the fleet-wide value the Host meant to replace.
+    /// Any value that fails to resolve is an error naming its key: dropping
+    /// it would silently hand the role its default, or for an override the
+    /// fleet-wide value the Host meant to replace.
     pub fn flatten_for_ansible(&self, host: Option<&str>) -> Result<HashMap<String, String>> {
         let mut flat = HashMap::new();
         for (key, value) in &self.values {
             if key == HOSTS_TABLE {
                 continue;
             }
-            flatten_entry(key, value, &mut flat);
+            flatten_entry(key, value, &mut flat)?;
         }
         let Some(h) = host else {
             return Ok(flat);
@@ -413,7 +413,7 @@ impl Config {
         };
         for (key, value) in overrides {
             match value {
-                toml::Value::Table(inner) => flat.extend(flatten_toml(inner)),
+                toml::Value::Table(inner) => flat.extend(flatten_toml(inner)?),
                 other => {
                     let raw = value_to_string(other).ok_or_else(|| {
                         eyre::eyre!("[hosts.{h}] override '{key}' is not a scalar value")
@@ -510,7 +510,7 @@ pub(crate) fn resolve_value(v: &str) -> Result<String> {
             .arg(cmd)
             .stdin(Stdio::null())
             .stdout(Stdio::piped())
-            .stderr(Stdio::null())
+            .stderr(Stdio::piped())
             .output()
             .wrap_err("Failed to execute shell command")?;
         if !output.status.success() {
@@ -518,7 +518,8 @@ pub(crate) fn resolve_value(v: &str) -> Result<String> {
                 .status
                 .code()
                 .map_or("signal".to_string(), |c| c.to_string());
-            eyre::bail!("Shell command failed (exit {code})");
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            eyre::bail!("Shell command failed (exit {code}): {}", stderr.trim());
         }
         let stdout =
             String::from_utf8(output.stdout).wrap_err("Shell command output is not valid UTF-8")?;
@@ -531,25 +532,30 @@ pub(crate) fn resolve_value(v: &str) -> Result<String> {
     Ok(v.to_string())
 }
 
-fn flatten_toml(table: &toml::Table) -> HashMap<String, String> {
+fn flatten_toml(table: &toml::Table) -> Result<HashMap<String, String>> {
     let mut result = HashMap::new();
     for (key, value) in table {
-        flatten_entry(key, value, &mut result);
+        flatten_entry(key, value, &mut result)?;
     }
-    result
+    Ok(result)
 }
 
-fn flatten_entry(key: &str, value: &toml::Value, result: &mut HashMap<String, String>) {
+fn flatten_entry(
+    key: &str,
+    value: &toml::Value,
+    result: &mut HashMap<String, String>,
+) -> Result<()> {
     match value {
-        toml::Value::Table(inner) => result.extend(flatten_toml(inner)),
+        toml::Value::Table(inner) => result.extend(flatten_toml(inner)?),
         other => {
-            if let Some(s) = value_to_string(other)
-                && let Ok(resolved) = resolve_value(&s)
-            {
+            if let Some(s) = value_to_string(other) {
+                let resolved = resolve_value(&s)
+                    .wrap_err_with(|| format!("Failed to resolve config key '{key}'"))?;
                 result.insert(key.to_string(), resolved);
             }
         }
     }
+    Ok(())
 }
 
 #[cfg(test)]
@@ -769,7 +775,7 @@ mod tests {
             admin_user_name = "alice"
         "#,
         );
-        let flat = flatten_toml(&config.values);
+        let flat = flatten_toml(&config.values).unwrap();
         assert_eq!(flat.get("domain").unwrap(), "example.com");
         assert_eq!(flat.get("ssh_port").unwrap(), "22022");
         assert_eq!(flat.get("admin_user_name").unwrap(), "alice");
@@ -818,16 +824,16 @@ mod tests {
 
     #[cfg(unix)]
     #[test]
-    fn test_flatten_for_ansible_skips_failed_shell_commands() {
+    fn test_flatten_for_ansible_fails_on_failed_shell_command() {
         let config = make_config(
             r#"
             domain = "example.com"
-            broken_key = "!false"
+            broken_key = "!echo leaked-stdout; exit 1"
         "#,
         );
-        let flat = config.flatten_for_ansible(None).unwrap();
-        assert_eq!(flat.get("domain").unwrap(), "example.com");
-        assert!(flat.get("broken_key").is_none());
+        let err = format!("{:?}", config.flatten_for_ansible(None).unwrap_err());
+        assert!(err.contains("'broken_key'"), "{err}");
+        assert!(!err.contains("leaked-stdout"), "{err}");
     }
 
     // ── get_resolved ──────────────────────────────────────────────────────────
@@ -905,6 +911,28 @@ mod tests {
     fn test_resolve_value_shell_command_nonzero_exit_fails() {
         let err = resolve_value("!false").unwrap_err();
         assert!(err.to_string().contains("Shell command failed"));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn test_resolve_value_shell_command_failure_carries_stderr() {
+        let err = resolve_value("!echo 'A PIN is required' >&2; exit 1").unwrap_err();
+        assert!(err.to_string().contains("A PIN is required"), "{err}");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn test_resolve_value_shell_command_stays_in_callers_foreground_group() {
+        let ours = std::process::Command::new("ps")
+            .args(["-o", "sid=,pgid=", "-p", &std::process::id().to_string()])
+            .output()
+            .unwrap();
+        let ours = String::from_utf8(ours.stdout).unwrap();
+        let theirs = resolve_value("!ps -o sid=,pgid= -p $$").unwrap();
+        assert_eq!(
+            ours.split_whitespace().collect::<Vec<_>>(),
+            theirs.split_whitespace().collect::<Vec<_>>()
+        );
     }
 
     #[cfg(unix)]
