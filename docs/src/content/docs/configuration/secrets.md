@@ -65,6 +65,10 @@ some_literal_bang = "!!not-a-cmd"
 
 **Requirements:** the command must exit 0 and produce non-empty UTF-8 output. The operation fails with a clear error if either condition is not met.
 
+A run resolves every `!` value in `config.toml`, optional keys included. If any of them fails, the run stops before Ansible starts. The error names the key and shows the command's stderr, never its stdout. Fix the command or remove the key.
+
+The command's stdin is closed, but it keeps your terminal, so tools that prompt on `/dev/tty` still work (for example an age YubiKey PIN prompt).
+
 ## Viewing Config
 
 ```bash

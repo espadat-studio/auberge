@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.21.4](https://github.com/espadat-studio/auberge/compare/v0.21.3...v0.21.4) - 2026-10-28
+
+### Other
+
+- *(tailscale)* bump to 1.104.4 ([#1232](https://github.com/espadat-studio/auberge/pull/1232))
+- *(opencode)* bump to 1.19.4 ([#1230](https://github.com/espadat-studio/auberge/pull/1230))
+- *(deps)* update dependency node to v26 ([#1233](https://github.com/espadat-studio/auberge/pull/1233))
+- *(paperless)* bump to 3.3.4 ([#1231](https://github.com/espadat-studio/auberge/pull/1231))
+- *(deps)* update release-plz/action digest to f67a7e7 ([#1228](https://github.com/espadat-studio/auberge/pull/1228))
+- *(uv)* bump to 0.13.5 ([#1225](https://github.com/espadat-studio/auberge/pull/1225))
+- *(deps)* update jdx/hk to 2.9.0 ([#1226](https://github.com/espadat-studio/auberge/pull/1226))
+- *(agent_users)* bump to 2026.10.20 ([#1221](https://github.com/espadat-studio/auberge/pull/1221))
+- *(forgejo)* bump to 17.0.1 ([#1222](https://github.com/espadat-studio/auberge/pull/1222))
+- *(memsearch)* bump to 0.4.23 ([#1223](https://github.com/espadat-studio/auberge/pull/1223))
+- *(deps)* update taiki-e/install-action digest to 42b98ff ([#1220](https://github.com/espadat-studio/auberge/pull/1220))
+
 ## [0.21.3](https://github.com/espadat-studio/auberge/compare/v0.21.2...v0.21.3) - 2026-10-26
 
 ### Added
