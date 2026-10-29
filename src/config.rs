@@ -922,13 +922,17 @@ mod tests {
 
     #[cfg(unix)]
     #[test]
-    fn test_resolve_value_shell_command_stays_in_callers_session() {
+    fn test_resolve_value_shell_command_stays_in_callers_foreground_group() {
         let ours = std::process::Command::new("ps")
-            .args(["-o", "sid=", "-p", &std::process::id().to_string()])
+            .args(["-o", "sid=,pgid=", "-p", &std::process::id().to_string()])
             .output()
             .unwrap();
-        let theirs = resolve_value("!ps -o sid= -p $$").unwrap();
-        assert_eq!(String::from_utf8(ours.stdout).unwrap().trim(), theirs);
+        let ours = String::from_utf8(ours.stdout).unwrap();
+        let theirs = resolve_value("!ps -o sid=,pgid= -p $$").unwrap();
+        assert_eq!(
+            ours.split_whitespace().collect::<Vec<_>>(),
+            theirs.split_whitespace().collect::<Vec<_>>()
+        );
     }
 
     #[cfg(unix)]
