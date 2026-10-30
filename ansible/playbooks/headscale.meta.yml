@@ -3,7 +3,7 @@ subdomain: hs
 memory:
   headscale: { high: 160M, max: 256M }
 version:
-  value: "0.29.6"
+  value: "0.29.7"
   datasource: github-releases
   depName: "juanfont/headscale"
   extractVersion: "^v(?<version>.+)$"
