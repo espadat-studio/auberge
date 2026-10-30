@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.21.6](https://github.com/espadat-studio/auberge/compare/v0.21.5...v0.21.6) - 2026-10-30
+
+### Fixed
+
+- *(standby)* give jobs a loopback address of their own ([#1244](https://github.com/espadat-studio/auberge/pull/1244))
+
+### Other
+
+- *(headscale)* bump to 0.29.7 ([#1246](https://github.com/espadat-studio/auberge/pull/1246))
+- *(agent_users)* bump to 2026.10.24 ([#1245](https://github.com/espadat-studio/auberge/pull/1245))
+- *(docs)* update dependency @astrojs/starlight to v0.42.8 ([#1247](https://github.com/espadat-studio/auberge/pull/1247))
+
 ## [0.21.5](https://github.com/espadat-studio/auberge/compare/v0.21.4...v0.21.5) - 2026-10-30
 
 ### Fixed
