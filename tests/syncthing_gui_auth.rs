@@ -27,6 +27,7 @@ use common::{field, parse_yaml, playbooks_dir, role_dir, role_tasks};
 const PASSWORD_KEY: &str = "syncthing_gui_password";
 const LOGIN_PROBE: &str = "syncthing_gui_auth_is_current";
 const RESOLVER_STUB: &str = "127.0.0.53";
+const JOB_LOOPBACK: &str = "127.77.0.1";
 
 fn directive_values(unit: &str, key: &str) -> BTreeSet<String> {
     directives(unit)
@@ -124,8 +125,14 @@ fn test_the_standby_runner_reaches_no_loopback_service() {
     );
     assert_eq!(
         directive_values(&unit, "IPAddressAllow"),
-        BTreeSet::from([RESOLVER_STUB.to_string()]),
-        "the Standby Runner may reach only the resolver stub on the loopback"
+        BTreeSet::from([RESOLVER_STUB.to_string(), JOB_LOOPBACK.to_string()]),
+        "the Standby Runner may reach only the resolver stub and its own job range on the loopback"
+    );
+    assert!(
+        directives(&unit).iter().any(|d| d.section == "Service"
+            && d.key == "ExecStartPre"
+            && d.value == format!("+/usr/sbin/ip address replace {JOB_LOOPBACK}/32 dev lo")),
+        "the job loopback must be a lo address, or replies to it leave from 127.0.0.1 and are denied"
     );
     for closer in ["PrivateNetwork", "RestrictAddressFamilies"] {
         assert!(
