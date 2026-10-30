@@ -39,6 +39,9 @@ TimeoutStartSec=10min
 # is what lets the first registration run; a runner started without a config
 # exits at once and Restart= retries.
 ExecStartPre=+{{ standby_runner_register_script_path }}
+# The job loopback below only works as a real lo address: without one the
+# kernel picks 127.0.0.1 as the source, and the deny drops the reply.
+ExecStartPre=+/usr/sbin/ip address replace 127.77.0.1/32 dev lo
 EnvironmentFile=-/run/standby-runner/jit.env
 ExecStart={{ standby_runner_run_script }}
 # The runner exits after its one job; the next start registers a fresh one.
@@ -61,10 +64,12 @@ ReadWritePaths={{ standby_runner_install_dir }} {{ standby_runner_home }}
 ReadOnlyPaths={{ standby_runner_release_dir }}
 # Job code is org-repo code on the agent Host: it must not reach the loopback
 # control planes beside it (Syncthing, aoe, Caddy admin). The resolver stub is
-# the one exception, because every lookup on the Host goes through it. Egress
-# stays open; the jobs need GitHub.
+# one exception, because every lookup on the Host goes through it. 127.77.0.1
+# is the other: no Host service binds it, so jobs get a loopback of their own
+# for test servers (recordreel's wiremock mocks). Egress stays open; the jobs
+# need GitHub.
 IPAddressDeny=localhost
-IPAddressAllow=127.0.0.53
+IPAddressAllow=127.0.0.53 127.77.0.1
 StandardOutput=journal
 StandardError=journal
 # POSIX shared memory and message queues live outside HOME and the job dir;
