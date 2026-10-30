@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.21.5](https://github.com/espadat-studio/auberge/compare/v0.21.4...v0.21.5) - 2026-10-30
+
+### Fixed
+
+- *(deps)* bump rustls to 0.23.46 ([#1243](https://github.com/espadat-studio/auberge/pull/1243))
+- *(config)* fail on unresolved ! commands and show their stderr ([#1240](https://github.com/espadat-studio/auberge/pull/1240))
+
+### Other
+
+- *(agent_users)* bump to 2026.10.23 ([#1242](https://github.com/espadat-studio/auberge/pull/1242))
+- *(deps)* update jdx/mise-action digest to 6be3c7e ([#1227](https://github.com/espadat-studio/auberge/pull/1227))
+- *(agent_users)* bump to 2026.10.21 ([#1229](https://github.com/espadat-studio/auberge/pull/1229))
+- *(deps)* update jdx/hk to 2.10.0 ([#1241](https://github.com/espadat-studio/auberge/pull/1241))
+- *(docs)* update dependency astro to v7.4.4 ([#1235](https://github.com/espadat-studio/auberge/pull/1235))
+- *(deps)* update taiki-e/install-action digest to d042af6 ([#1234](https://github.com/espadat-studio/auberge/pull/1234))
+- *(blocky)* bump to 5.6.0 ([#1236](https://github.com/espadat-studio/auberge/pull/1236))
+
 ## [0.21.4](https://github.com/espadat-studio/auberge/compare/v0.21.3...v0.21.4) - 2026-10-28
 
 ### Other
