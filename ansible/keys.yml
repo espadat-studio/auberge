@@ -51,7 +51,7 @@ keys:
 
   baikal_admin_password:
     secret: true
-    doc: "Password for the Baïkal CalDAV/CardDAV admin interface"
+    doc: "Password for the Baïkal web admin UI (/admin/). Grants no DAV access; DAV clients use baikal_dav_password."
 
   baikal_busy_feed_token:
     secret: true
@@ -68,6 +68,10 @@ keys:
   baikal_busy_icloud_username:
     secret: false
     doc: "Apple ID email for the iCloud CalDAV account whose calendar feeds the Busy Feed (optional)."
+
+  baikal_dav_password:
+    secret: true
+    doc: "CalDAV/CardDAV password of admin_user_name, the one DAV clients hold. Each deploy sets it, overwriting a change made in the Baïkal admin UI."
 
   baikal_subdomain:
     secret: false

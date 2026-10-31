@@ -16,10 +16,11 @@ auberge deploy baikal
 
 ## Required config
 
-| Key                     | Purpose                    |
-| ----------------------- | -------------------------- |
-| `baikal_subdomain`      | Subdomain for HTTPS access |
-| `baikal_admin_password` | Admin password             |
+| Key                     | Purpose                                                                                  |
+| ----------------------- | ---------------------------------------------------------------------------------------- |
+| `baikal_subdomain`      | Subdomain for HTTPS access                                                               |
+| `baikal_admin_password` | Web admin UI (`/admin/`), which manages every user and the server config. No DAV access. |
+| `baikal_dav_password`   | CalDAV/CardDAV login of `admin_user_name`. The one DAV clients hold. No admin access.    |
 
 ## Notes
 
@@ -38,6 +39,20 @@ sudo systemctl start baikal-birthday-sync.service
 Backed up by default (`/opt/baikal/Specific`). See [Backup & Restore](/backup-restore/overview/).
 
 The role is upgrade-capable: deploy reads the installed version from `Core/Distrib.php` and compares it against the declared App Version. When they differ, it downloads that release and replaces the `Core`, `html`, and `vendor` directories, leaving `Specific/` (your data) untouched, then restarts `php-fpm`. Re-run `auberge deploy baikal` after upgrading auberge to apply a new declared version.
+
+## Rotate the DAV password
+
+1. Update `baikal_dav_password` in `config.toml`.
+2. `auberge deploy baikal`.
+3. Point DAV clients at the new password.
+
+Clients get `401` from the deploy until you repoint them. The admin UI is not affected: `baikal_admin_password` keeps working throughout.
+
+The same steps migrate a server from before the two logins were split. Deploys stop at Preflight until `baikal_dav_password` is set. Set it to a new value, not the admin password.
+
+:::caution
+`baikal_dav_password` is the source of truth. A password set for this user in the Baikal admin UI is overwritten by the next deploy.
+:::
 
 ## Keep in touch
 

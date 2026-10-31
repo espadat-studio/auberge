@@ -191,6 +191,16 @@
           Ensure mise environment is activated or run with: mise x ansible-playbook ...
         success_msg: "Baikal admin password is set"
 
+    - name: Validate Baikal DAV password is set
+      ansible.builtin.assert:
+        that:
+          - baikal_dav_password is defined
+          - baikal_dav_password | length > 0
+        fail_msg: |
+          BAIKAL_DAV_PASSWORD is not set or empty.
+          Ensure mise environment is activated or run with: mise x ansible-playbook ...
+        success_msg: "Baikal DAV password is set"
+
     - name: Generate Baikal admin web interface password hash
       ansible.builtin.shell: |
         set -o pipefail
@@ -209,7 +219,7 @@
         printf '%s' "${BAIKAL_USERNAME}:BaikalDAV:${BAIKAL_PASSWORD}" | md5sum | cut -d' ' -f1
       environment:
         BAIKAL_USERNAME: "{{ admin_user_name }}"
-        BAIKAL_PASSWORD: "{{ baikal_admin_password }}"
+        BAIKAL_PASSWORD: "{{ baikal_dav_password }}"
       args:
         executable: /bin/bash
       register: baikal_dav_user_hash_result
@@ -271,25 +281,17 @@
         executable: /bin/bash
         creates: "{{ baikal_data_dir }}/db/db.sqlite"
 
-    - name: Check if admin user exists in database
+    - name: Converge DAV user digest in database
       ansible.builtin.shell: |
         set -o pipefail
-        sqlite3 {{ baikal_data_dir }}/db/db.sqlite \
-          "SELECT COUNT(*) FROM users WHERE username='{{ admin_user_name }}';"
+        sqlite3 -cmd ".timeout 5000" {{ baikal_data_dir }}/db/db.sqlite \
+          "INSERT INTO users (username, digesta1) VALUES ('{{ admin_user_name }}', '{{ baikal_dav_user_password_hash }}') \
+          ON CONFLICT(username) DO UPDATE SET digesta1 = excluded.digesta1 WHERE digesta1 <> excluded.digesta1; \
+          SELECT changes();"
       args:
         executable: /bin/bash
-      register: baikal_admin_exists
-      changed_when: false
-
-    - name: Insert admin user into database
-      when: baikal_admin_exists.stdout == "0"
-      ansible.builtin.shell: |
-        set -o pipefail
-        sqlite3 {{ baikal_data_dir }}/db/db.sqlite \
-          "INSERT INTO users (username, digesta1) VALUES ('{{ admin_user_name }}', '{{ baikal_dav_user_password_hash }}');"
-      args:
-        executable: /bin/bash
-      changed_when: true
+      register: baikal_dav_user_upsert
+      changed_when: baikal_dav_user_upsert.stdout != "0"
       no_log: true
 
     - name: Check if admin principal exists in database
