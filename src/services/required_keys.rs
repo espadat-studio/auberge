@@ -641,6 +641,7 @@ mod tests {
                 "admin_user_email",
                 "baikal_admin_password",
                 "baikal_busy_feed_token",
+                "baikal_dav_password",
                 "baikal_subdomain",
             ],
         ),
