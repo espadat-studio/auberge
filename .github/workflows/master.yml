@@ -139,7 +139,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
         with:
           components: llvm-tools-preview
-      - uses: taiki-e/install-action@3b728f3d612841223d50b6bc8f2addad110e6918 # nextest
+      - uses: taiki-e/install-action@97888a140839b7239d62fbf6af4e20adb5be3666 # nextest
       - run: cargo nextest run
 
   test:
