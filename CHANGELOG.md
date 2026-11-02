@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.21.6](https://github.com/espadat-studio/auberge/compare/v0.21.5...v0.21.6) - 2026-11-02
+
+### Fixed
+
+- *(headscale)* mark cli verified against 0.29.7 ([#1257](https://github.com/espadat-studio/auberge/pull/1257))
+- *(standby)* give jobs a loopback address of their own ([#1244](https://github.com/espadat-studio/auberge/pull/1244))
+
+### Other
+
+- *(actual)* bump to 26.11.0 ([#1259](https://github.com/espadat-studio/auberge/pull/1259))
+- *(deps)* update taiki-e/install-action digest to 3b728f3 ([#1258](https://github.com/espadat-studio/auberge/pull/1258))
+- *(opencode)* bump to 2.2.0 ([#1256](https://github.com/espadat-studio/auberge/pull/1256))
+- *(uv)* bump to 0.13.6 ([#1253](https://github.com/espadat-studio/auberge/pull/1253))
+- *(bichon)* bump to 2.3.0 ([#1254](https://github.com/espadat-studio/auberge/pull/1254))
+- *(deps)* update jdx/hk to 2.11.0 ([#1255](https://github.com/espadat-studio/auberge/pull/1255))
+- *(deps)* update taiki-e/install-action digest to 040ce91 ([#1249](https://github.com/espadat-studio/auberge/pull/1249))
+- *(agent_users)* bump to 2026.10.25 ([#1251](https://github.com/espadat-studio/auberge/pull/1251))
+- *(deps)* update jdx/mise-action digest to 6612f0e ([#1250](https://github.com/espadat-studio/auberge/pull/1250))
+- *(headscale)* bump to 0.29.7 ([#1246](https://github.com/espadat-studio/auberge/pull/1246))
+- *(agent_users)* bump to 2026.10.24 ([#1245](https://github.com/espadat-studio/auberge/pull/1245))
+- *(docs)* update dependency @astrojs/starlight to v0.42.8 ([#1247](https://github.com/espadat-studio/auberge/pull/1247))
+
 ## [0.21.5](https://github.com/espadat-studio/auberge/compare/v0.21.4...v0.21.5) - 2026-10-30
 
 ### Fixed
