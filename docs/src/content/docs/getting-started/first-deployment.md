@@ -48,6 +48,7 @@ Bootstrap names the server after your `hosts.toml` entry (`my-vps`), creates an 
 auberge config set domain example.com
 auberge config set cloudflare_dns_api_token your-token
 auberge config set baikal_admin_password your-password
+auberge config set baikal_dav_password your-other-password
 auberge config set gokapi_admin_user admin
 auberge config set gokapi_admin_password your-password
 ```
