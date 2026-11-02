@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.22.0](https://github.com/espadat-studio/auberge/compare/v0.21.6...v0.22.0) - 2026-11-02
+
+### Added
+
+- *(baikal)* [**breaking**] give the DAV user its own password ([#1264](https://github.com/espadat-studio/auberge/pull/1264))
+
+### Other
+
+- *(docs)* update dependency astro to v7.4.5 ([#1263](https://github.com/espadat-studio/auberge/pull/1263))
+- *(deps)* update release-plz/action digest to 66b324f ([#1262](https://github.com/espadat-studio/auberge/pull/1262))
+- *(colporteur)* bump to 0.6.10 ([#1260](https://github.com/espadat-studio/auberge/pull/1260))
+
 ## [0.21.6](https://github.com/espadat-studio/auberge/compare/v0.21.5...v0.21.6) - 2026-11-02
 
 ### Fixed
