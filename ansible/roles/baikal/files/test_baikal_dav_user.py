@@ -1,12 +1,14 @@
-"""The role's DAV user convergence, run against the SQL the role ships.
+"""The role's DAV user convergence, run against the input the role ships.
 
-The statement is read out of `tasks/main.yml` rather than restated, and the
-fixture carries Baikal 0.13.0's real `users` table verbatim: the upsert leans
-on its `UNIQUE(username)`.
+The stdin is read out of `tasks/main.yml` rather than restated and goes through
+the sqlite3 CLI as on the host, so the assertions see the stdout `changed_when`
+reads. The fixture carries Baikal 0.13.0's real `users` table verbatim: the
+upsert leans on its `UNIQUE(username)`.
 """
 
-import re
 import sqlite3
+import subprocess
+import textwrap
 from pathlib import Path
 
 import pytest
@@ -28,52 +30,64 @@ def task(name):
     return TASKS[start:end]
 
 
+def converge_stdin():
+    body = task("Converge DAV user digest in database")
+    return textwrap.dedent(body.split("stdin: |\n")[1].split("\n      register:")[0])
+
+
 def converge(db, username, digest):
-    body = re.search(
-        r'"(INSERT INTO users .*?SELECT changes\(\);)"', TASKS, re.DOTALL
-    ).group(1)
-    sql = (
-        body.replace("\\\n", " ")
-        .replace("{{ admin_user_name }}", username)
-        .replace("{{ baikal_dav_user_password_hash }}", digest)
+    sql = converge_stdin().replace("{{ admin_user_name }}", username).replace(
+        "{{ baikal_dav_user_password_hash }}", digest
     )
-    upsert, select_changes, _ = sql.split(";")
-    db.execute(upsert)
-    return db.execute(select_changes).fetchone()[0]
+    return subprocess.run(
+        ["sqlite3", db], input=sql, capture_output=True, text=True, check=True
+    ).stdout.strip()
 
 
 def digests(db):
-    return dict(db.execute("SELECT username, digesta1 FROM users"))
+    connection = sqlite3.connect(db)
+    rows = dict(connection.execute("SELECT username, digesta1 FROM users"))
+    connection.close()
+    return rows
 
 
 @pytest.fixture
-def db():
-    connection = sqlite3.connect(":memory:", isolation_level=None)
+def db(tmp_path):
+    path = str(tmp_path / "db.sqlite")
+    connection = sqlite3.connect(path)
     connection.executescript(USERS_SCHEMA)
-    yield connection
     connection.close()
+    return path
 
 
 def test_fresh_database_creates_the_dav_user(db):
-    assert converge(db, "alice", "digest") == 1
+    assert converge(db, "alice", "digest") == "1"
     assert digests(db) == {"alice": "digest"}
 
 
 def test_changed_password_rewrites_only_the_dav_user(db):
-    db.execute("INSERT INTO users (username, digesta1) VALUES ('bob', 'bob-digest')")
+    converge(db, "bob", "bob-digest")
     converge(db, "alice", "old")
-    assert converge(db, "alice", "new") == 1
+    assert converge(db, "alice", "new") == "1"
     assert digests(db) == {"alice": "new", "bob": "bob-digest"}
 
 
 def test_unchanged_password_reports_no_change(db):
     converge(db, "alice", "digest")
-    assert converge(db, "alice", "digest") == 0
+    assert converge(db, "alice", "digest") == "0"
     assert digests(db) == {"alice": "digest"}
 
 
-def test_changed_when_reads_the_changes_count():
-    assert 'changed_when: baikal_dav_user_upsert.stdout != "0"' in TASKS
+def test_a_locked_database_fails_the_task(db):
+    holder = sqlite3.connect(db, isolation_level=None)
+    holder.execute("BEGIN EXCLUSIVE")
+    stdin = converge_stdin()
+    fast = stdin.replace(".timeout 30000", ".timeout 1")
+    assert fast != stdin
+    result = subprocess.run(["sqlite3", db], input=fast, capture_output=True, text=True)
+    holder.rollback()
+    holder.close()
+    assert result.returncode != 0
 
 
 def test_each_login_hashes_its_own_password():

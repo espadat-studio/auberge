@@ -196,9 +196,10 @@
         that:
           - baikal_dav_password is defined
           - baikal_dav_password | length > 0
+          - baikal_dav_password != baikal_admin_password
         fail_msg: |
-          BAIKAL_DAV_PASSWORD is not set or empty.
-          Ensure mise environment is activated or run with: mise x ansible-playbook ...
+          baikal_dav_password is unset, empty, or equal to baikal_admin_password.
+          Set a distinct value with: auberge config set baikal_dav_password <value>
         success_msg: "Baikal DAV password is set"
 
     - name: Generate Baikal admin web interface password hash
@@ -282,14 +283,13 @@
         creates: "{{ baikal_data_dir }}/db/db.sqlite"
 
     - name: Converge DAV user digest in database
-      ansible.builtin.shell: |
-        set -o pipefail
-        sqlite3 -cmd ".timeout 5000" {{ baikal_data_dir }}/db/db.sqlite \
-          "INSERT INTO users (username, digesta1) VALUES ('{{ admin_user_name }}', '{{ baikal_dav_user_password_hash }}') \
-          ON CONFLICT(username) DO UPDATE SET digesta1 = excluded.digesta1 WHERE digesta1 <> excluded.digesta1; \
-          SELECT changes();"
-      args:
-        executable: /bin/bash
+      ansible.builtin.command:
+        cmd: sqlite3 {{ baikal_data_dir }}/db/db.sqlite
+        stdin: |
+          .timeout 30000
+          INSERT INTO users (username, digesta1) VALUES ('{{ admin_user_name }}', '{{ baikal_dav_user_password_hash }}')
+          ON CONFLICT(username) DO UPDATE SET digesta1 = excluded.digesta1 WHERE digesta1 <> excluded.digesta1;
+          SELECT changes();
       register: baikal_dav_user_upsert
       changed_when: baikal_dav_user_upsert.stdout != "0"
       no_log: true
