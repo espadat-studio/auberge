@@ -16,10 +16,13 @@ auberge deploy baikal
 
 ## Required config
 
-| Key                     | Purpose                    |
-| ----------------------- | -------------------------- |
-| `baikal_subdomain`      | Subdomain for HTTPS access |
-| `baikal_admin_password` | Admin password             |
+| Key                     | Purpose                                                                                          |
+| ----------------------- | ------------------------------------------------------------------------------------------------ |
+| `baikal_subdomain`      | Subdomain for HTTPS access                                                                       |
+| `baikal_admin_password` | Web admin UI (`/admin/`), which manages every user and the server config. Not a DAV login.       |
+| `baikal_dav_password`   | CalDAV/CardDAV login of `admin_user_name`. The one DAV clients hold. Must differ from the above. |
+
+The split is one-way. A leaked DAV password does not reach the admin UI. A leaked admin password does reach your calendars and contacts, because the UI can reset any DAV password until the next deploy.
 
 ## Notes
 
@@ -38,6 +41,22 @@ sudo systemctl start baikal-birthday-sync.service
 Backed up by default (`/opt/baikal/Specific`). See [Backup & Restore](/backup-restore/overview/).
 
 The role is upgrade-capable: deploy reads the installed version from `Core/Distrib.php` and compares it against the declared App Version. When they differ, it downloads that release and replaces the `Core`, `html`, and `vendor` directories, leaving `Specific/` (your data) untouched, then restarts `php-fpm`. Re-run `auberge deploy baikal` after upgrading auberge to apply a new declared version.
+
+## Rotate the DAV password
+
+1. Update `baikal_dav_password` in `config.toml`.
+2. `auberge deploy baikal`.
+3. Point DAV clients at the new password.
+
+Clients get `401` from the deploy until you repoint them. The admin UI is not affected: `baikal_admin_password` keeps working throughout.
+
+The same steps migrate a server from before the two logins were split. Deploys stop at Preflight until `baikal_dav_password` is set, and the role refuses a value equal to `baikal_admin_password`.
+
+:::caution
+`baikal_dav_password` is the source of truth at deploy time. A password set for this user in the Baikal admin UI is overwritten by the next deploy. Restoring a backup brings back the digest from that backup, so deploy again after a restore.
+:::
+
+Each deploy manages `admin_user_name` only. If you renamed that user, the old row keeps its digest, which came from the admin password on servers from before the split. Delete it in the admin UI.
 
 ## Keep in touch
 
