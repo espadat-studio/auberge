@@ -94,6 +94,16 @@ recompute_digest() {
     emit_error "${file}: ${var_name} has no paired ${url_var}"
     return 1
   fi
+
+  if [[ "${head_tmpl}" == *"{{ ansible_facts["* ]] && ! grep -qP '\{\{ (?!ansible_facts\[)' <<<"${head_tmpl}"; then
+    if [[ -n "${base_file}" && "${head_tmpl}" == "$(raw_value "${base_file}" "${url_var}")" ]]; then
+      echo "${file}: ${url_var} renders from host facts only and is unchanged, leaving ${var_name} alone"
+      return 0
+    fi
+    emit_error "${file}: ${url_var} renders from host facts; edit ${var_name} by hand"
+    return 1
+  fi
+
   head_url="$(render_url "${file}" "${meta_file}" "${app}" "${head_tmpl}")" || return 1
 
   if [[ -n "${base_file}" ]]; then
