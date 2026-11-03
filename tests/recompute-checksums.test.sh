@@ -68,4 +68,20 @@ assert_eq "a new URL gets the digest of the bytes it serves" \
   "demo_java_sha256: \"$(printf 'asset bytes' | sha256sum | cut -d' ' -f1)\"" \
   "$(grep '^demo_java_sha256:' "${FIXTURES}/defaults.yml")"
 
+cat >"${FIXTURES}/facts.yml" <<'YAML'
+demo_key_url: "https://example.test/{{ ansible_facts['distribution_release'] }}.gpg"
+demo_key_sha256: "1111111111111111111111111111111111111111111111111111111111111111"
+YAML
+cp "${FIXTURES}/facts.yml" "${FIXTURES}/facts-base.yml"
+
+recompute_digest "${FIXTURES}/facts.yml" "${FIXTURES}/facts-base.yml" "" "" demo demo_key_sha256 \
+  "1111111111111111111111111111111111111111111111111111111111111111" >/dev/null
+assert_eq "a fact-only URL unchanged against the base keeps its digest" \
+  "$(cat "${FIXTURES}/facts-base.yml")" "$(cat "${FIXTURES}/facts.yml")"
+
+sed -i 's|\.gpg|.noarmor.gpg|' "${FIXTURES}/facts.yml"
+assert_fails "a changed fact-only URL is refused for a hand edit" \
+  recompute_digest "${FIXTURES}/facts.yml" "${FIXTURES}/facts-base.yml" "" "" demo demo_key_sha256 \
+  "1111111111111111111111111111111111111111111111111111111111111111"
+
 report recompute-checksums
