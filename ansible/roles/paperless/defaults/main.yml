@@ -16,7 +16,7 @@ paperless_ocr_language: deu+fra+spa+eng
 paperless_time_zone: Europe/Berlin
 
 paperless_release_url: "https://github.com/paperless-ngx/paperless-ngx/releases/download/v{{ paperless_version }}/paperless-ngx-v{{ paperless_version }}.tar.xz"
-paperless_release_sha256: "21adc0f1b9966605bde9d097b366ea65bd86ebe406b649e21cfe04356307a0c2"
+paperless_release_sha256: "2f16770417e1b1f3f74865cfb96bf4c696190d13751a11b0864f978df207aeff"
 
 paperless_subdomain: paperless
 paperless_domain: "{{ paperless_subdomain }}.{{ paperless_parent_domain }}"
