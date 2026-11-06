@@ -12,6 +12,7 @@ git_release_draft = true
 
 [changelog]
 commit_parsers = [
+  { message = "^[a-z]+\\(ci\\)", skip = true },
   { message = "^feat", group = "added" },
   { message = "^fix", group = "fixed" },
   { message = "^build", group = "apps" },
