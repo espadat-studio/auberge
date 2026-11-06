@@ -257,6 +257,7 @@
             argv:
               - "{{ bichon_install_dir }}/bichon-admin"
               - reindex
+              - --yes
               - --root
               - "{{ bichon_root_dir }}"
               - --index-dir
