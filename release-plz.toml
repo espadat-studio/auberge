@@ -9,3 +9,13 @@ release_commits = "^(feat|fix|build)(!|\\(|:)"
 # 5-15min window before upload-binaries finishes. The publish-release job in
 # .github/workflows/release.yml flips draft=false once all matrix legs succeed.
 git_release_draft = true
+
+[changelog]
+commit_parsers = [
+  { message = "^[a-z]+\\(ci\\)", skip = true },
+  { message = "^feat", group = "added" },
+  { message = "^fix", group = "fixed" },
+  { message = "^build", group = "apps" },
+  { message = "^(refactor|perf)", group = "changed" },
+  { message = ".*", skip = true },
+]
