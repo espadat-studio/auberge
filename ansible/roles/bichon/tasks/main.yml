@@ -224,6 +224,60 @@
         mode: "0644"
       notify: Restart bichon
 
+    - name: Read the version the search index was last rebuilt for
+      ansible.builtin.slurp:
+        src: "{{ bichon_install_dir }}/reindexed"
+      register: bichon_reindexed_raw
+      failed_when: false
+
+    - name: Rebuild the search index once per version
+      when: (bichon_reindexed_raw.content | default('') | b64decode | trim) != bichon_version
+      block:
+        - name: Check archive timer unit
+          ansible.builtin.stat:
+            path: /etc/systemd/system/bichon-archive.timer
+          register: bichon_archive_timer_unit
+
+        - name: Stop the archive timer for the rebuild
+          when: bichon_archive_timer_unit.stat.exists
+          ansible.builtin.systemd_service:
+            name: bichon-archive.timer
+            state: stopped
+
+        - name: Stop bichon for the rebuild
+          ansible.builtin.systemd_service:
+            name: bichon
+            state: stopped
+            daemon_reload: true
+
+        - name: Rebuild the search index
+          become: true
+          become_user: "{{ bichon_sys_user }}"
+          ansible.builtin.command:
+            argv:
+              - "{{ bichon_install_dir }}/bichon-admin"
+              - reindex
+              - --root
+              - "{{ bichon_root_dir }}"
+              - --index-dir
+              - "{{ bichon_index_dir }}"
+              - --data-dir
+              - "{{ bichon_data_dir }}"
+              - --writer-memory-mb
+              - "256"
+              - --writer-threads
+              - "3"
+          register: bichon_reindex
+          changed_when: "'REINDEX COMPLETE' in bichon_reindex.stdout"
+
+        - name: Record the version the search index was rebuilt for
+          ansible.builtin.copy:
+            content: "{{ bichon_version }}"
+            dest: "{{ bichon_install_dir }}/reindexed"
+            owner: root
+            group: root
+            mode: "0644"
+
     - name: Enable and start service
       ansible.builtin.systemd_service:
         name: bichon
