@@ -11,6 +11,9 @@
   ],
   "semanticCommits": "enabled",
   "semanticCommitType": "build",
+  "schedule": [
+    "* 0-3 * * 1,4"
+  ],
   "customManagers": [
     {
       "customType": "regex",
@@ -50,12 +53,20 @@
   ],
   "packageRules": [
     {
+      "description": "Everything that never reaches a Host: the docs site under `docs/`, GitHub Actions and hk. One PR typed chore: release_commits is ^(feat|fix|build), so merging it cuts no release. App and Tool Versions opt out in the rule below and keep one PR each: each is a separate deploy, so one breaking app must not hold the rest back.",
+      "matchPackageNames": [
+        "*"
+      ],
+      "groupName": "tooling dependencies",
+      "semanticCommitType": "chore",
+      "semanticCommitScope": "deps"
+    },
+    {
       "description": "The docs site under `docs/`. `chore`, not the `fix(deps)` config:recommended would give it: release_commits is ^(feat|fix|build), so a Starlight bump would cut a crate release it changes nothing in. Must live in a packageRule for the same reason the rule below does. Starlight is pre-1.0 and @espadat/docs-theme is a git tag pin; neither is watched without the npm manager.",
       "matchManagers": [
         "npm"
       ],
-      "semanticCommitType": "chore",
-      "semanticCommitScope": "docs"
+      "semanticCommitType": "chore"
     },
     {
       "matchManagers": [
@@ -66,7 +77,8 @@
       "semanticCommitScope": "{{replace 'ansible/roles/(.+)/defaults/main\\.yml' '$1' packageFile}}",
       "commitMessageAction": "bump",
       "commitMessageTopic": "",
-      "commitMessageExtra": "to {{newValue}}"
+      "commitMessageExtra": "to {{newValue}}",
+      "groupName": null
     },
     {
       "matchFileNames": [
@@ -116,16 +128,16 @@
       "minimumReleaseAge": "5 days"
     },
     {
-      "description": "hk is tooling and never reaches the artifact: chore, not the build every custom.regex dep gets from the rule above — build cuts a release-plz release. Grouped so the binary and the pkl schema cannot land half-applied.",
+      "description": "hk is tooling and never reaches a Host, though its custom.regex manager puts it in the rule above: back into the tooling group, typed chore, with the per-dep message reset. One PR still keeps the binary and the pkl schema from landing half-applied.",
       "matchDepNames": [
         "jdx/hk"
       ],
-      "groupName": "hk",
+      "groupName": "tooling dependencies",
       "semanticCommitType": "chore",
       "semanticCommitScope": "deps",
       "commitMessageAction": "update",
-      "commitMessageTopic": "{{depName}}",
-      "commitMessageExtra": "to {{newValue}}"
+      "commitMessageTopic": "{{{groupName}}}",
+      "commitMessageExtra": ""
     }
   ]
 }
