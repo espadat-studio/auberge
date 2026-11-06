@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.22.1](https://github.com/espadat-studio/auberge/compare/v0.22.0...v0.22.1) - 2026-11-06
+
+### Apps
+
+- *(aoe)* bump to 1.22.0 ([#1289](https://github.com/espadat-studio/auberge/pull/1289))
+- *(immich)* bump to 3.3.6 ([#1282](https://github.com/espadat-studio/auberge/pull/1282))
+- *(agent_users)* bump to 2026.11.1 ([#1281](https://github.com/espadat-studio/auberge/pull/1281))
+- *(stirling)* bump to 3.3.0 ([#1285](https://github.com/espadat-studio/auberge/pull/1285))
+- *(opencode)* bump to 2.2.3 ([#1278](https://github.com/espadat-studio/auberge/pull/1278))
+- *(paperless)* bump to 3.4.1 ([#1284](https://github.com/espadat-studio/auberge/pull/1284))
+- *(paperless)* bump to 3.4.0 ([#1277](https://github.com/espadat-studio/auberge/pull/1277))
+- *(agent_users)* bump to 2026.11.0 ([#1276](https://github.com/espadat-studio/auberge/pull/1276))
+- *(opencode)* bump to 2.2.2 ([#1274](https://github.com/espadat-studio/auberge/pull/1274))
+- *(tailscale)* bump to 1.104.5 ([#1268](https://github.com/espadat-studio/auberge/pull/1268))
+- *(opencode)* bump to 2.2.1 ([#1270](https://github.com/espadat-studio/auberge/pull/1270))
+
 ## [0.22.0](https://github.com/espadat-studio/auberge/compare/v0.21.6...v0.22.0) - 2026-11-02
 
 ### Added
