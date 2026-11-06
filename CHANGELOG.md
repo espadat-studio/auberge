@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.22.3](https://github.com/espadat-studio/auberge/compare/v0.22.2...v0.22.3) - 2026-11-06
+
+### Fixed
+
+- *(bichon)* confirm the search index rebuild non-interactively ([#1294](https://github.com/espadat-studio/auberge/pull/1294))
+
 ## [0.22.2](https://github.com/espadat-studio/auberge/compare/v0.22.1...v0.22.2) - 2026-11-06
 
 ### Fixed
