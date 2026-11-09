@@ -8,7 +8,7 @@ aoe_install_dir: /usr/local/bin
 aoe_binary_path: "{{ aoe_install_dir }}/aoe"
 aoe_asset_name: aoe-linux-amd64
 aoe_archive_url: "https://github.com/agent-of-empires/agent-of-empires/releases/download/v{{ aoe_version }}/{{ aoe_asset_name }}.tar.gz"
-aoe_archive_sha256: "0555de34eab602cfb3bc509e37ac736bb4461b5c258e5c9d9a1a75edbd209783"
+aoe_archive_sha256: "a937d106833f4efb19ff1cdc5dd41e93235ea47ad1b78207105c48f6e218b957"
 # Both paths carry the version because the release asset's name does not:
 # `get_url` with a version-agnostic dest degrades to a conditional GET, and a
 # bumped pin then fetches nothing at all (ADR-0027).
