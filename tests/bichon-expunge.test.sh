@@ -380,7 +380,7 @@ assert_eq 'an unkeyed row keeps its trailing empty id' \
 
 printf '\n== collect_envelope_ids\n'
 
-ENVELOPE_JSON='[{"id":"1"},{"id":"2"},{"id":"3"}]'
+ENVELOPE_JSON='{"ids":[{"id":1},{"id":2},{"id":3}],"uid_mode":true}'
 IMAP_COUNT=3
 assert_succeeds 'a clean listing collects its ids' collect_envelope_ids
 assert_eq 'the ids survive in order' '1 2 3' "${ENVELOPE_IDS[*]}"
@@ -391,12 +391,62 @@ IMAP_COUNT=2
 assert_fails 'a count mismatch refuses the listing' collect_envelope_ids
 assert_succeeds 'the mismatch is named' contains "${IDS_ERROR}" 'do not match'
 
-# himalaya reads a non-numeric positional as a flag name, so one stray value
-# would silently rewrite the command.
+# `imap store` reads its set as UIDs, so message numbers would flag other mail.
+ENVELOPE_JSON='{"ids":[{"id":1},{"id":2},{"id":3}],"uid_mode":false}' IMAP_COUNT=3
+assert_fails 'message numbers are refused' collect_envelope_ids
+assert_succeeds 'the refusal names UIDs' contains "${IDS_ERROR}" 'not UIDs'
+
+# A stray `*` would widen the comma-joined set into a range.
 # shellcheck disable=SC2034  # intentional: read by collect_envelope_ids in the sourced script
-ENVELOPE_JSON='[{"id":"1"},{"id":"x"}]' IMAP_COUNT=2
+ENVELOPE_JSON='{"ids":[{"id":1},{"id":"*"}],"uid_mode":true}' IMAP_COUNT=2
 assert_fails 'a non-numeric id refuses the listing' collect_envelope_ids
 assert_succeeds 'the offending id is named' contains "${IDS_ERROR}" 'non-numeric'
+
+printf '\n== himalaya_account_names\n'
+
+# shellcheck disable=SC2034  # intentional: read by himalaya_account_names in the sourced script
+HIMALAYA_ACCOUNTS_JSON='{"accounts":[{"name":"a@x.com","default":true,"backends":["imap"]},{"name":"b@x.com","default":false,"backends":["imap"]}]}'
+assert_eq 'v2 account list yields the names' $'a@x.com\nb@x.com' "$(himalaya_account_names)"
+
+printf '\n== expunge_ids: batched STORE, one EXPUNGE\n'
+
+# Stub himalaya to record each call's mailbox-scoped tail; step writes to stderr.
+HIMALAYA_CALLS=''
+# shellcheck disable=SC2329  # invoked indirectly by expunge_ids in the sourced script
+himalaya() {
+  HIMALAYA_CALLS+="${*: -1}"$'\n'
+}
+
+expunge_calls_for() {
+  HIMALAYA_CALLS=''
+  expunge_ids 'a@x.com' 'INBOX' "$@" 2>/dev/null
+  printf '%s' "${HIMALAYA_CALLS}"
+}
+
+mapfile -t MANY_IDS < <(seq 1 1001)
+assert_eq 'ids are stored in batches of STORE_BATCH_SIZE, then one expunge' \
+  "$(seq -s, 1 500)"$'\n'"$(seq -s, 501 1000)"$'\n1001\nINBOX' \
+  "$(expunge_calls_for "${MANY_IDS[@]}")"
+
+# shellcheck disable=SC2329  # invoked indirectly by expunge_ids in the sourced script
+himalaya() {
+  [[ "$2" == store ]] && return 1
+  return 0
+}
+expunge_rc() {
+  local rc=0
+  expunge_ids 'a@x.com' 'INBOX' 1 2 2>/dev/null || rc=$?
+  printf '%s' "${rc}"
+}
+assert_eq 'a failed STORE returns 1 before any expunge' '1' "$(expunge_rc)"
+
+# shellcheck disable=SC2329  # invoked indirectly by expunge_ids in the sourced script
+himalaya() {
+  [[ "$2" == expunge ]] && return 1
+  return 0
+}
+assert_eq 'a failed EXPUNGE after the flags returns 2' '2' "$(expunge_rc)"
+unset -f himalaya
 
 printf '\n== validate_options: --account count and --sweep/--folder exclusion\n'
 
