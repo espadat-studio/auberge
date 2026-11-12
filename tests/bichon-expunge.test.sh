@@ -35,7 +35,7 @@ identity_verdict_of() {
   parse_identity_verdict <<<"$1"
 }
 
-COVERED_VERDICT='{"host":"h","account":"a@example.com","folder":"INBOX","before":"2026-05-01","status":"covered","store_messages":388,"store_internal_date_count":388,"store_without_internal_date":[],"matched":388,"missing":[],"unverifiable":{"store_synthetic":0,"archive_sha256":0}}'
+COVERED_VERDICT='{"host":"h","account":"a@example.com","folder":"INBOX","before":"2026-05-01","status":"covered","store_messages":388,"store_internal_date_count":388,"store_without_internal_date":[],"matched":388,"missing":[],"unverifiable":{"contested":[]}}'
 
 parse_identity_verdict <<<"${COVERED_VERDICT}"
 assert_eq 'a covered verdict is read as covered' 'covered' "${IDENTITY_STATUS}"
@@ -43,61 +43,55 @@ assert_eq 'a covered verdict extracts the store count' '388' "${IDENTITY_STORE}"
 assert_eq 'a covered verdict extracts the internal-date store count' '388' "${STORE_COUNT}"
 assert_eq 'a covered verdict has no undated store uids' '' "${STORE_UNDATED_UIDS}"
 
-UNDATED_VERDICT='{"status":"covered","store_messages":3,"store_internal_date_count":3,"store_without_internal_date":[648,701],"missing":[],"unverifiable":{"store_synthetic":0,"archive_sha256":0}}'
+UNDATED_VERDICT='{"status":"covered","store_messages":3,"store_internal_date_count":3,"store_without_internal_date":[648,701],"missing":[],"unverifiable":{"contested":[]}}'
 parse_identity_verdict <<<"${UNDATED_VERDICT}"
 assert_eq 'undated store uids are extracted' '648 701' "${STORE_UNDATED_UIDS}"
 
-BAD_UNDATED_VERDICT='{"status":"covered","store_messages":3,"store_internal_date_count":3,"store_without_internal_date":["*"],"missing":[],"unverifiable":{"store_synthetic":0,"archive_sha256":0}}'
+BAD_UNDATED_VERDICT='{"status":"covered","store_messages":3,"store_internal_date_count":3,"store_without_internal_date":["*"],"missing":[],"unverifiable":{"contested":[]}}'
 assert_fails 'a non-numeric undated uid is refused' identity_verdict_of "${BAD_UNDATED_VERDICT}"
 
 # One of the two ids carries an internal space to prove the sample field is
 # taken whole — a value split on spaces would truncate it at the first word.
-GAP_VERDICT='{"status":"gap","store_messages":10,"store_internal_date_count":10,"store_without_internal_date":[],"matched":8,"missing":[{"message_id":"<abc@example.com>","date":"2026-01-01","uid":1},{"message_id":"<odd id@example.com>","date":"2026-01-02","uid":2}],"unverifiable":{"store_synthetic":0,"archive_sha256":0}}'
+GAP_VERDICT='{"status":"gap","store_messages":10,"store_internal_date_count":10,"store_without_internal_date":[],"matched":8,"missing":[{"message_id":"<abc@example.com>","date":"2026-01-01","uid":1},{"message_id":"<odd id@example.com>","date":"2026-01-02","uid":2}],"unverifiable":{"contested":[]}}'
 
 parse_identity_verdict <<<"${GAP_VERDICT}"
 assert_eq 'a gap verdict extracts the missing count' '2' "${IDENTITY_MISSING}"
 assert_eq 'the sample joins the missing ids, whole' \
   '<abc@example.com> <odd id@example.com>' "${IDENTITY_SAMPLE}"
 
-MANY_MISSING_VERDICT='{"status":"gap","store_messages":10,"store_internal_date_count":10,"store_without_internal_date":[],"matched":6,"missing":[{"message_id":"id1"},{"message_id":"id2"},{"message_id":"id3"},{"message_id":"id4"}],"unverifiable":{"store_synthetic":0,"archive_sha256":0}}'
+MANY_MISSING_VERDICT='{"status":"gap","store_messages":10,"store_internal_date_count":10,"store_without_internal_date":[],"matched":6,"missing":[{"message_id":"id1"},{"message_id":"id2"},{"message_id":"id3"},{"message_id":"id4"}],"unverifiable":{"contested":[]}}'
 
 parse_identity_verdict <<<"${MANY_MISSING_VERDICT}"
 assert_eq 'more than three missing ids still count all of them' '4' "${IDENTITY_MISSING}"
 assert_eq 'but the sample holds only the first three' 'id1 id2 id3' "${IDENTITY_SAMPLE}"
 
-UNVERIFIABLE_VERDICT='{"status":"gap","store_messages":7,"store_internal_date_count":7,"store_without_internal_date":[],"matched":2,"missing":[],"unverifiable":{"store_synthetic":5,"archive_sha256":2}}'
-
-parse_identity_verdict <<<"${UNVERIFIABLE_VERDICT}"
-assert_eq 'header-less store messages are extracted' '5' "${IDENTITY_SYNTHETIC}"
-assert_eq 'sha256-keyed sidecars are extracted' '2' "${IDENTITY_SHA256}"
-
 # Only a contested id with more store claimants than archived bodies is short;
 # one the archive holds enough bodies for is counted, not a gap.
-CONTESTED_VERDICT='{"status":"gap","store_messages":3,"store_internal_date_count":3,"store_without_internal_date":[],"matched":0,"missing":[],"unverifiable":{"store_synthetic":0,"archive_sha256":0,"contested":[{"message_id":"x@example.com","store":2,"archive":1},{"message_id":"y@example.com","store":1,"archive":2}]}}'
+CONTESTED_VERDICT='{"status":"gap","store_messages":3,"store_internal_date_count":3,"store_without_internal_date":[],"matched":0,"missing":[],"unverifiable":{"contested":[{"message_id":"x@example.com","store":2,"archive":1},{"message_id":"y@example.com","store":1,"archive":2}]}}'
 
 parse_identity_verdict <<<"${CONTESTED_VERDICT}"
 assert_eq 'only short contested ids are counted' '1' "${IDENTITY_CONTESTED}"
 
-parse_identity_verdict <<<"${UNVERIFIABLE_VERDICT}"
-assert_eq 'a verdict from before contested ids reads as none' '0' "${IDENTITY_CONTESTED}"
+parse_identity_verdict <<<"${COVERED_VERDICT}"
+assert_eq 'a verdict with no contested ids reads as none' '0' "${IDENTITY_CONTESTED}"
 
 assert_fails 'non-JSON input is refused' identity_verdict_of 'not json at all'
 
-NO_STATUS_VERDICT='{"store_messages":5,"missing":[],"unverifiable":{"store_synthetic":0,"archive_sha256":0}}'
+NO_STATUS_VERDICT='{"store_messages":5,"missing":[],"unverifiable":{"contested":[]}}'
 assert_fails 'a verdict with no status is refused' identity_verdict_of "${NO_STATUS_VERDICT}"
 
-BAD_STATUS_VERDICT='{"status":"unknown","store_messages":5,"missing":[],"unverifiable":{"store_synthetic":0,"archive_sha256":0}}'
+BAD_STATUS_VERDICT='{"status":"unknown","store_messages":5,"missing":[],"unverifiable":{"contested":[]}}'
 assert_fails 'a status that is neither covered nor gap is refused' identity_verdict_of "${BAD_STATUS_VERDICT}"
 
 # store_messages is a string here — not the shape auberge's contract promises
 # — so length can no longer be trusted to compute it; a half-parsed verdict
 # must not pass a gate on a guess.
-BAD_COUNT_VERDICT='{"status":"covered","store_messages":"many","missing":[],"unverifiable":{"store_synthetic":0,"archive_sha256":0}}'
+BAD_COUNT_VERDICT='{"status":"covered","store_messages":"many","missing":[],"unverifiable":{"contested":[]}}'
 assert_fails 'a non-numeric count is refused' identity_verdict_of "${BAD_COUNT_VERDICT}"
 
 # An auberge predating the store count would leave the count gate nothing to
 # compare against; a missing bound must not read as zero or pass.
-NO_STORE_COUNT_VERDICT='{"status":"covered","store_messages":5,"missing":[],"unverifiable":{"store_synthetic":0,"archive_sha256":0}}'
+NO_STORE_COUNT_VERDICT='{"status":"covered","store_messages":5,"missing":[],"unverifiable":{"contested":[]}}'
 assert_fails 'a verdict without the store count is refused' identity_verdict_of "${NO_STORE_COUNT_VERDICT}"
 
 # A stale gap sample must not survive into a later covered verdict's globals.
@@ -303,7 +297,7 @@ himalaya() {
 }
 # shellcheck disable=SC2329  # invoked indirectly by probe_folder_coverage in the sourced script
 auberge() {
-  printf '{"status":"%s","store_messages":%s,"store_internal_date_count":%s,"store_without_internal_date":%s,"missing":[],"unverifiable":{"store_synthetic":0,"archive_sha256":0,"contested":[]}}' \
+  printf '{"status":"%s","store_messages":%s,"store_internal_date_count":%s,"store_without_internal_date":%s,"missing":[],"unverifiable":{"contested":[]}}' \
     "${PROBE_STATUS}" "${PROBE_STORE}" "${PROBE_STORE}" "${PROBE_UNDATED:-[]}"
 }
 

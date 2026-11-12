@@ -36,15 +36,8 @@ pub struct MissingMessage {
     pub uid: u32,
 }
 
-/// Messages identity cannot vouch for: a body with no Message-ID header gets
-/// a synthetic id in the store (regenerated on re-import) and a `sha256:` key
-/// in the sidecar (hashed from the body) — the two sides can never match, so
-/// they are compared by count instead. More synthetic store messages than
-/// hash-keyed sidecars means at least one of them is unarchived.
 #[derive(Serialize, Debug, PartialEq, Eq)]
 pub struct UnverifiableCounts {
-    pub store_synthetic: usize,
-    pub archive_sha256: usize,
     pub contested: Vec<ContestedId>,
 }
 
@@ -72,7 +65,6 @@ pub struct CoverageReport {
 impl CoverageReport {
     pub fn status(&self) -> CoverageStatus {
         if self.missing.is_empty()
-            && self.unverifiable.store_synthetic <= self.unverifiable.archive_sha256
             && self
                 .unverifiable
                 .contested
@@ -185,20 +177,26 @@ fn path_year_month(path: &str) -> Option<(i32, u32)> {
 /// self-sent mail's other copy, in another folder or past the cutoff, cannot
 /// borrow the one archived body.
 ///
-/// The synthetic/sha256 count and the unkeyed-sidecar refusal stay scoped to
-/// the folder through the cutoff month: a sidecar with no `message_id` there
-/// is an unknown, not a zero, so it fails by name.
+/// A store message with no Message-ID carries a synthetic id that regenerates
+/// on re-import; the archive keys its body by hash instead (ADR-0013).
+/// `body_keys` maps each in-window one's envelope id to that hash, computed
+/// from the body the store serves, and it matches like any other identity.
+/// Byte-identical bodies are one identity, so they are never contested.
+///
+/// The unkeyed-sidecar refusal stays scoped to the folder through the cutoff
+/// month: a sidecar with no `message_id` there is an unknown, not a zero, so
+/// it fails by name.
 pub fn compare_coverage(
     envelopes: &[StoreEnvelope],
     rows: &[SidecarRow],
     folder: &str,
     cutoff: NaiveDate,
+    body_keys: &HashMap<String, String>,
 ) -> Result<CoverageReport> {
     let cutoff_ms = midnight_ms(cutoff);
     let cutoff_ym = (cutoff.year(), cutoff.month());
 
     let mut archived: HashMap<&str, usize> = HashMap::new();
-    let mut archive_sha256 = 0usize;
     for row in rows {
         if !row.message_id.is_empty() {
             *archived.entry(row.message_id.as_str()).or_default() += 1;
@@ -218,20 +216,34 @@ pub fn compare_coverage(
         if row.message_id.is_empty() {
             eyre::bail!("an archived sidecar carries no message_id: {}", row.path);
         }
-        if row.message_id.starts_with("sha256:") {
-            archive_sha256 += 1;
-        }
     }
 
     let mut account_claims: HashMap<String, usize> = HashMap::new();
     let mut store_messages = 0usize;
-    let mut store_synthetic = 0usize;
+    let mut matched = 0usize;
+    let mut missing = Vec::new();
     let mut claims: Vec<(String, &StoreEnvelope)> = Vec::new();
     for envelope in envelopes {
         let StoreId::Canonical(id) = canonicalize_store_id(&envelope.message_id) else {
-            if in_folder_before(envelope, envelope.date, folder, cutoff_ms)? {
-                store_messages += 1;
-                store_synthetic += 1;
+            if !in_folder_before(envelope, envelope.date, folder, cutoff_ms)? {
+                continue;
+            }
+            store_messages += 1;
+            let Some(key) = body_keys.get(&envelope.id) else {
+                eyre::bail!(
+                    "no body hash for the synthetic store message uid {} (envelope {})",
+                    envelope.uid,
+                    envelope.id
+                );
+            };
+            if archived.contains_key(key.as_str()) {
+                matched += 1;
+            } else {
+                missing.push(MissingMessage {
+                    message_id: key.clone(),
+                    date: iso_date(envelope.date),
+                    uid: envelope.uid,
+                });
             }
             continue;
         };
@@ -242,8 +254,6 @@ pub fn compare_coverage(
         }
     }
 
-    let mut matched = 0usize;
-    let mut missing = Vec::new();
     let mut contested = Vec::new();
     let mut seen_contested = HashSet::new();
     for (id, envelope) in claims {
@@ -270,12 +280,37 @@ pub fn compare_coverage(
         store_messages,
         matched,
         missing,
-        unverifiable: UnverifiableCounts {
-            store_synthetic,
-            archive_sha256,
-            contested,
-        },
+        unverifiable: UnverifiableCounts { contested },
     })
+}
+
+/// The in-window store messages of `folder` whose identity is their body:
+/// the ones `compare_coverage` needs a `body_keys` entry for.
+pub fn synthetic_in_window<'a>(
+    envelopes: &'a [StoreEnvelope],
+    folder: &str,
+    cutoff: NaiveDate,
+) -> Result<Vec<&'a StoreEnvelope>> {
+    let cutoff_ms = midnight_ms(cutoff);
+    let mut synthetic = Vec::new();
+    for envelope in envelopes {
+        if matches!(
+            canonicalize_store_id(&envelope.message_id),
+            StoreId::Synthetic
+        ) && in_folder_before(envelope, envelope.date, folder, cutoff_ms)?
+        {
+            synthetic.push(envelope);
+        }
+    }
+    Ok(synthetic)
+}
+
+/// The archive's key for a body with no Message-ID: `canonical_message_id`
+/// in bichon-archive.sh hashes the downloaded `.eml` the same way.
+pub fn body_key(body: &[u8]) -> String {
+    let digest = ring::digest::digest(&ring::digest::SHA256, body);
+    let hex: String = digest.as_ref().iter().map(|b| format!("{b:02x}")).collect();
+    format!("sha256:{hex}")
 }
 
 /// The store side of the count gate (ADR-0088): the folder's raw message
@@ -355,6 +390,7 @@ mod tests {
 
     fn envelope(message_id: &str, mailbox: Option<&str>, date: i64, uid: u32) -> StoreEnvelope {
         StoreEnvelope {
+            id: format!("env-{uid}"),
             message_id: message_id.to_string(),
             mailbox_name: mailbox.map(String::from),
             date,
@@ -382,6 +418,7 @@ mod tests {
             &[row("/a/2024/01/1.meta.json", "Archive.2024", "moved@x.io")],
             "INBOX",
             CUTOFF,
+            &HashMap::new(),
         )
         .unwrap();
 
@@ -400,6 +437,7 @@ mod tests {
             &[row("/a/2026/01/1.meta.json", "Sent", "self@x.io")],
             "INBOX",
             CUTOFF,
+            &HashMap::new(),
         )
         .unwrap();
 
@@ -426,6 +464,7 @@ mod tests {
             &[row("/a/2026/01/1.meta.json", "INBOX", "x@x.io")],
             "INBOX",
             CUTOFF,
+            &HashMap::new(),
         )
         .unwrap();
 
@@ -449,6 +488,7 @@ mod tests {
             &[],
             "INBOX",
             CUTOFF,
+            &HashMap::new(),
         )
         .unwrap();
 
@@ -469,6 +509,7 @@ mod tests {
             ],
             "INBOX",
             CUTOFF,
+            &HashMap::new(),
         )
         .unwrap();
 
@@ -491,6 +532,7 @@ mod tests {
             ],
             "INBOX",
             CUTOFF,
+            &HashMap::new(),
         )
         .unwrap();
 
@@ -515,50 +557,107 @@ mod tests {
             &[row("/a/2026/01/1.meta.json", "INBOX", "a@x.io")],
             "INBOX",
             CUTOFF,
+            &HashMap::new(),
         )
         .unwrap();
         assert_eq!(report.matched, 1);
         assert_eq!(report.status(), CoverageStatus::Covered);
     }
 
-    #[test]
-    fn a_synthetic_store_id_is_unverifiable_not_missing() {
-        let report = compare_coverage(
-            &[envelope(
-                "<0f2a.1778017746410.15@bichon>",
-                Some("INBOX"),
-                0,
-                1,
-            )],
-            &[row("/a/2026/01/1.meta.json", "INBOX", "sha256:aa")],
-            "INBOX",
-            CUTOFF,
-        )
-        .unwrap();
+    fn keys(pairs: &[(&str, &str)]) -> HashMap<String, String> {
+        pairs
+            .iter()
+            .map(|(id, key)| (id.to_string(), key.to_string()))
+            .collect()
+    }
 
-        assert!(report.missing.is_empty());
-        assert_eq!(report.unverifiable.store_synthetic, 1);
-        assert_eq!(report.unverifiable.archive_sha256, 1);
-        assert_eq!(report.status(), CoverageStatus::Covered);
+    fn synthetic(id: &str, mailbox: &str, date: i64, uid: u32) -> StoreEnvelope {
+        StoreEnvelope {
+            id: id.to_string(),
+            ..envelope("<0f2a.1778017746410.15@bichon>", Some(mailbox), date, uid)
+        }
     }
 
     #[test]
-    fn more_synthetic_store_messages_than_hash_sidecars_is_a_gap() {
+    fn a_synthetic_message_whose_body_hash_is_archived_anywhere_is_matched() {
         let report = compare_coverage(
-            &[
-                envelope("<0f2a.1.15@bichon>", Some("INBOX"), 0, 1),
-                envelope("<0f2b.2.15@bichon>", Some("INBOX"), 0, 2),
-            ],
-            &[row("/a/2026/01/1.meta.json", "INBOX", "sha256:aa")],
+            &[synthetic("e739", "INBOX", IN_WINDOW, 739)],
+            &[row("/a/1970/01/1.meta.json", "Sent", "sha256:aa")],
             "INBOX",
             CUTOFF,
+            &keys(&[("e739", "sha256:aa")]),
         )
         .unwrap();
 
+        assert_eq!(report.store_messages, 1);
+        assert_eq!(report.matched, 1);
         assert!(report.missing.is_empty());
-        assert_eq!(report.unverifiable.store_synthetic, 2);
-        assert_eq!(report.unverifiable.archive_sha256, 1);
+        assert_eq!(report.status(), CoverageStatus::Covered);
+    }
+
+    // #1316: four copies of one quota notice used to vouch for four
+    // synthetic messages; now each must find its own body.
+    #[test]
+    fn duplicate_hash_sidecars_do_not_vouch_for_another_body() {
+        let report = compare_coverage(
+            &[synthetic("e1", "INBOX", IN_WINDOW, 1)],
+            &[
+                row("/a/1970/01/1.meta.json", "INBOX", "sha256:aa"),
+                row("/a/1970/01/2.meta.json", "INBOX", "sha256:aa"),
+            ],
+            "INBOX",
+            CUTOFF,
+            &keys(&[("e1", "sha256:bb")]),
+        )
+        .unwrap();
+
+        assert_eq!(report.matched, 0);
+        assert_eq!(
+            report.missing,
+            vec![MissingMessage {
+                message_id: "sha256:bb".to_string(),
+                date: "2026-01-01".to_string(),
+                uid: 1,
+            }]
+        );
         assert_eq!(report.status(), CoverageStatus::Gap);
+    }
+
+    #[test]
+    fn a_synthetic_message_without_a_body_hash_fails_loudly() {
+        let err = compare_coverage(
+            &[synthetic("e1", "INBOX", IN_WINDOW, 1)],
+            &[],
+            "INBOX",
+            CUTOFF,
+            &HashMap::new(),
+        )
+        .unwrap_err();
+        assert!(format!("{err}").contains("uid 1"));
+    }
+
+    #[test]
+    fn only_in_window_synthetic_messages_of_the_folder_need_a_body() {
+        let envelopes = [
+            synthetic("in", "INBOX", IN_WINDOW, 1),
+            synthetic("late", "INBOX", AFTER_CUTOFF, 2),
+            synthetic("sent", "Sent", IN_WINDOW, 3),
+            envelope("a@x.io", Some("INBOX"), IN_WINDOW, 4),
+        ];
+        let ids: Vec<&str> = synthetic_in_window(&envelopes, "INBOX", CUTOFF)
+            .unwrap()
+            .iter()
+            .map(|e| e.id.as_str())
+            .collect();
+        assert_eq!(ids, vec!["in"]);
+    }
+
+    #[test]
+    fn body_key_is_the_archive_sha256_form() {
+        assert_eq!(
+            body_key(b"abc"),
+            "sha256:ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+        );
     }
 
     // INBOX must not swallow INBOX2 on either side — the same exactness the
@@ -576,6 +675,7 @@ mod tests {
             ],
             "INBOX",
             CUTOFF,
+            &HashMap::new(),
         )
         .unwrap();
 
@@ -591,6 +691,7 @@ mod tests {
             &[row("/a/2026/01/1.meta.json", "INBOX", "")],
             "INBOX",
             CUTOFF,
+            &HashMap::new(),
         )
         .unwrap_err();
         assert!(format!("{err}").contains("/a/2026/01/1.meta.json"));
@@ -610,6 +711,7 @@ mod tests {
             ],
             "INBOX",
             CUTOFF,
+            &HashMap::new(),
         )
         .unwrap();
         assert_eq!(report.status(), CoverageStatus::Covered);
@@ -617,8 +719,14 @@ mod tests {
 
     #[test]
     fn a_store_envelope_without_a_mailbox_name_fails_loudly() {
-        let err =
-            compare_coverage(&[envelope("a@x.io", None, 0, 7)], &[], "INBOX", CUTOFF).unwrap_err();
+        let err = compare_coverage(
+            &[envelope("a@x.io", None, 0, 7)],
+            &[],
+            "INBOX",
+            CUTOFF,
+            &HashMap::new(),
+        )
+        .unwrap_err();
         assert!(format!("{err}").contains("uid 7"));
     }
 
@@ -632,6 +740,7 @@ mod tests {
             &[row("/a/2026/01/1.meta.json", "INBOX", "a@x.io")],
             "INBOX",
             CUTOFF,
+            &HashMap::new(),
         )
         .unwrap();
         assert_eq!(report.status(), CoverageStatus::Covered);
@@ -639,7 +748,7 @@ mod tests {
 
     #[test]
     fn an_empty_window_is_covered() {
-        let report = compare_coverage(&[], &[], "INBOX", CUTOFF).unwrap();
+        let report = compare_coverage(&[], &[], "INBOX", CUTOFF, &HashMap::new()).unwrap();
         assert_eq!(report.store_messages, 0);
         assert_eq!(report.status(), CoverageStatus::Covered);
     }
@@ -703,6 +812,7 @@ mod tests {
             &[row("/a/2026/01/1.meta.json", "INBOX", "x@x.io")],
             "INBOX",
             CUTOFF,
+            &HashMap::new(),
         )
         .unwrap();
 
@@ -729,6 +839,7 @@ mod tests {
             ],
             "INBOX",
             CUTOFF,
+            &HashMap::new(),
         )
         .unwrap();
 
@@ -750,6 +861,7 @@ mod tests {
             ],
             "INBOX",
             CUTOFF,
+            &HashMap::new(),
         )
         .unwrap();
 
@@ -767,6 +879,7 @@ mod tests {
             &[],
             "INBOX",
             CUTOFF,
+            &HashMap::new(),
         )
         .unwrap();
 
@@ -775,7 +888,7 @@ mod tests {
     }
 
     #[test]
-    fn a_gap_from_missing_and_a_gap_from_synthetic_render_one_status() {
+    fn a_gap_from_missing_renders_the_gap_status() {
         let report = CoverageReport {
             store_messages: 3,
             matched: 2,
@@ -785,8 +898,6 @@ mod tests {
                 uid: 1,
             }],
             unverifiable: UnverifiableCounts {
-                store_synthetic: 0,
-                archive_sha256: 0,
                 contested: Vec::new(),
             },
         };

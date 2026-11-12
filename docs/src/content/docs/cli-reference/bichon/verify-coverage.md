@@ -18,7 +18,7 @@ Bichon's Internal Store syncs by UID and has no date blindspot, so it knows that
 
 Evidence is per account, not per folder. A sidecar's `folder` records where the body was first seen and is used only to restore it. A message moved after archiving keeps that one sidecar, so its new folder is covered by it.
 
-A message with no `Message-ID` header is unverifiable by identity — the store holds a synthetic id that regenerates on re-import, the sidecar a `sha256:` body hash, and neither side can compute the other's. Those are bounded by count instead: more synthetic store messages in the window than `sha256:`-keyed sidecars in scope is a gap, and both counts appear in the report.
+A message with no `Message-ID` header has a synthetic id in the store that regenerates on re-import. The archive keys its body as `sha256:<hash of the .eml>` instead. For each such message in the window, the command downloads the body from Bichon and hashes it the same way. It is matched when any sidecar in the account holds that key. Otherwise it is listed under `missing`, named by that key. Byte-identical bodies share one key, so duplicate sidecars of one body vouch for nothing else.
 
 A Message-ID claimed more than once is also unverifiable by identity. That covers two store messages in the account sharing one, or two archived bodies sharing one. Claimants are counted across every folder and date, not just the window: a self-sent mail's Sent copy cannot lend its archived body to the INBOX copy. Any sender can write any Message-ID, so a match cannot show which body belongs to which message. Each such id is listed under `unverifiable.contested` with both counts, and is a gap when the store count is higher.
 
@@ -71,15 +71,15 @@ An `--account` Bichon does not report is an error naming the accounts it does.
   "store_messages": 388,
   "matched": 388,
   "missing": [],
-  "unverifiable": { "store_synthetic": 0, "archive_sha256": 0, "contested": [] }
+  "unverifiable": { "contested": [] }
 }
 ```
 
-`missing` entries carry the canonical `message_id` (what the sidecar would record), the message date, and the store uid.
+`missing` entries carry the canonical `message_id` (what the sidecar would record, `sha256:<hex>` for a body with no `Message-ID`), the message date, and the store uid.
 
 ## Access
 
-Needs both the Bichon API (account lookup and envelope search — same base URL resolution and `bichon_api_token` as [reconcile-folders](/cli-reference/bichon/reconcile-folders/)) and SSH to the host (the sidecar walk runs under `sudo`). A host whose Bichon reports no accounts is refused in the same words there, because all three commands reach the API through one place.
+Needs both the Bichon API (account lookup, envelope search, and body download for messages with no `Message-ID` — same base URL resolution and `bichon_api_token` as [reconcile-folders](/cli-reference/bichon/reconcile-folders/)) and SSH to the host (the sidecar walk runs under `sudo`). A host whose Bichon reports no accounts is refused in the same words there, because all three commands reach the API through one place.
 
 ## Examples
 
