@@ -1,4 +1,5 @@
 required_keys:
+  - admin_user_name
   - bichon_api_token
   - bichon_encryption_password
 tailnet_only: true
