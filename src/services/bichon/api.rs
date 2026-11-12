@@ -91,6 +91,7 @@ const SEARCH_PAGE_SIZE: u64 = 500;
 /// the canonical identity the archive sidecars record (ADR-0013).
 #[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
 pub struct StoreEnvelope {
+    pub id: String,
     pub message_id: String,
     pub mailbox_name: Option<String>,
     pub date: i64,
@@ -210,6 +211,20 @@ impl BichonApiClient {
             page += 1;
         }
         Ok(envelopes)
+    }
+
+    /// The raw `.eml` the archive pass downloads and hashes for a body with
+    /// no Message-ID.
+    pub async fn download_message(&self, account_id: u64, envelope_id: &str) -> Result<Vec<u8>> {
+        let path = format!("/api/v1/download-message/{account_id}/{envelope_id}");
+        let response = self
+            .retry(|| self.send_once(Method::GET, &path, Option::<&()>::None))
+            .await?;
+        let body = response
+            .bytes()
+            .await
+            .wrap_err_with(|| format!("failed to read the body of {path}"))?;
+        Ok(body.to_vec())
     }
 
     pub async fn list_mailboxes(&self, account_id: u64) -> Result<Vec<Mailbox>> {
@@ -418,6 +433,7 @@ mod tests {
             envelopes,
             vec![
                 StoreEnvelope {
+                    id: "env-1".to_string(),
                     message_id: "a@x.io".to_string(),
                     mailbox_name: Some("INBOX".to_string()),
                     date: 10,
@@ -425,6 +441,7 @@ mod tests {
                     uid: 1,
                 },
                 StoreEnvelope {
+                    id: "env-2".to_string(),
                     message_id: "<0f.1.2@bichon>".to_string(),
                     mailbox_name: Some("Sent".to_string()),
                     date: 20,

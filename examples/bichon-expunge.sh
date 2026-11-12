@@ -145,8 +145,6 @@ IDENTITY_MISSING=0
 IDENTITY_STORE=0
 STORE_COUNT=0
 STORE_UNDATED_UIDS=''
-IDENTITY_SYNTHETIC=0
-IDENTITY_SHA256=0
 IDENTITY_CONTESTED=0
 IDENTITY_SAMPLE=''
 
@@ -875,8 +873,6 @@ parse_identity_verdict() {
   IDENTITY_STORE=0
   STORE_COUNT=0
   STORE_UNDATED_UIDS=''
-  IDENTITY_SYNTHETIC=0
-  IDENTITY_SHA256=0
   IDENTITY_CONTESTED=0
   IDENTITY_SAMPLE=''
 
@@ -887,16 +883,14 @@ parse_identity_verdict() {
       .store_messages,
       .store_internal_date_count,
       (.store_without_internal_date | if length == 0 then "-" else map(tostring) | join(" ") end),
-      .unverifiable.store_synthetic,
-      .unverifiable.archive_sha256,
       ([.unverifiable.contested[]? | select(.store > .archive)] | length),
       ([.missing[0:3][].message_id] | join(" "))
     ] | @tsv'); then
     return 1
   fi
 
-  local status missing store store_count undated synthetic sha256 contested sample
-  IFS=$'\t' read -r status missing store store_count undated synthetic sha256 contested sample <<<"${tsv}"
+  local status missing store store_count undated contested sample
+  IFS=$'\t' read -r status missing store store_count undated contested sample <<<"${tsv}"
 
   [[ "${status}" == 'covered' ]] || [[ "${status}" == 'gap' ]] || return 1
   [[ "${missing}" =~ ^[0-9]+$ ]] || return 1
@@ -906,8 +900,6 @@ parse_identity_verdict() {
   # one; jq writes "-" for an empty uid list to keep the columns in place.
   [[ "${undated}" == '-' ]] && undated=''
   [[ "${undated}" =~ ^([0-9]+( [0-9]+)*)?$ ]] || return 1
-  [[ "${synthetic}" =~ ^[0-9]+$ ]] || return 1
-  [[ "${sha256}" =~ ^[0-9]+$ ]] || return 1
   [[ "${contested}" =~ ^[0-9]+$ ]] || return 1
 
   IDENTITY_STATUS="${status}"
@@ -915,8 +907,6 @@ parse_identity_verdict() {
   IDENTITY_STORE="${store}"
   STORE_COUNT="${store_count}"
   STORE_UNDATED_UIDS="${undated}"
-  IDENTITY_SYNTHETIC="${synthetic}"
-  IDENTITY_SHA256="${sha256}"
   IDENTITY_CONTESTED="${contested}"
   IDENTITY_SAMPLE="${sample}"
 }
@@ -1180,10 +1170,8 @@ render_pair_verdict_or_die() {
           "list them: auberge bichon verify-coverage --host ${host} --account ${account} --folder ${folder} --before ${CUTOFF_DATE}" \
           'do not expunge until every claimant has its own archived body'
       else
-        die 1 "${IDENTITY_SYNTHETIC} header-less store message(s) in ${folder} out-count ${IDENTITY_SHA256} sha256-keyed sidecar(s)" \
-          'identity cannot match header-less messages to a sidecar one-to-one' \
-          "backfill them: auberge bichon rescan --host ${host} --account ${account}" \
-          're-run this script once the rescan has ingested them'
+        die 1 "identity gap in ${folder} with neither a missing nor a contested message" \
+          "inspect: auberge bichon verify-coverage --host ${host} --account ${account} --folder ${folder} --before ${CUTOFF_DATE}"
       fi
       ;;
     err-identity)
@@ -1532,7 +1520,7 @@ sweep_probe_pair() {
           "identity gap: ${IDENTITY_CONTESTED} Message-ID(s) claimed by more store messages than archived bodies — run verify-coverage"
       else
         sweep_record finding "${account}" "${folder}" 0 \
-          'identity gap: header-less messages out-count sha256 sidecars — rescan the account'
+          'identity gap with neither a missing nor a contested message — run verify-coverage'
       fi
       return 0
       ;;

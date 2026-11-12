@@ -3,14 +3,15 @@ use crate::hosts::{HOST_FLAG, select_or_arg};
 use crate::output::{self, OutputFormat};
 use crate::services::bichon::api::{Account, BichonApiClient};
 use crate::services::bichon::coverage::{
-    CoverageReport, StoreCount, compare_coverage, count_store_messages, parse_sidecar_rows,
-    sidecar_rows_command, validate_archive_path_for_shell,
+    CoverageReport, StoreCount, body_key, compare_coverage, count_store_messages,
+    parse_sidecar_rows, sidecar_rows_command, synthetic_in_window, validate_archive_path_for_shell,
 };
 use crate::services::bichon::rescan::{sanitize_email, validate_email_for_shell};
 use crate::services::ssh::{LiveSshSession, SshSession};
 use chrono::NaiveDate;
 use eyre::{Result, WrapErr};
 use serde::Serialize;
+use std::collections::HashMap;
 
 pub async fn run_verify_coverage(
     host: Option<String>,
@@ -127,7 +128,13 @@ async fn compute_coverage(
     }
     let rows = parse_sidecar_rows(&walk.stdout_str())?;
 
-    let report = compare_coverage(&envelopes, &rows, folder, cutoff)?;
+    let mut body_keys = HashMap::new();
+    for envelope in synthetic_in_window(&envelopes, folder, cutoff)? {
+        let body = client.download_message(account.id, &envelope.id).await?;
+        body_keys.insert(envelope.id.clone(), body_key(&body));
+    }
+
+    let report = compare_coverage(&envelopes, &rows, folder, cutoff, &body_keys)?;
     Ok(Verdict {
         store_count,
         report,
@@ -184,12 +191,6 @@ fn emit_output(
             for m in &report.missing {
                 println!("missing: {} (date {}, uid {})", m.message_id, m.date, m.uid);
             }
-            if report.unverifiable.store_synthetic > 0 || report.unverifiable.archive_sha256 > 0 {
-                println!(
-                    "unverifiable by identity: {} synthetic store message(s) vs {} sha256-keyed sidecar(s)",
-                    report.unverifiable.store_synthetic, report.unverifiable.archive_sha256
-                );
-            }
             for c in &report.unverifiable.contested {
                 println!(
                     "contested: {} claimed by {} store message(s) vs {} archived body(ies)",
@@ -207,6 +208,7 @@ mod tests {
     use super::compute_coverage;
     use crate::services::bichon::api::{Account, BichonApiClient};
     use crate::services::bichon::coverage::CoverageStatus;
+    use crate::services::bichon::coverage::body_key;
     use crate::services::ssh::{CommandResult, MockSshSession, SshOp};
     use chrono::NaiveDate;
     use serde_json::json;
@@ -342,6 +344,43 @@ mod tests {
         server
     }
 
+    async fn serve_body(server: &MockServer, envelope_id: &str, body: &[u8]) {
+        Mock::given(method("GET"))
+            .and(path(format!("/api/v1/download-message/7/{envelope_id}")))
+            .respond_with(ResponseTemplate::new(200).set_body_bytes(body.to_vec()))
+            .expect(1)
+            .mount(server)
+            .await;
+    }
+
+    // #1316: a header-less message is matched by the hash of the body the
+    // store serves, and an unarchived one is named by that hash.
+    #[tokio::test]
+    async fn a_header_less_message_is_judged_by_its_body_hash() {
+        let server = store_of(json!([
+            {"id": "e1", "message_id": "<0f.1.2@bichon>", "mailbox_name": "INBOX", "uid": 739,
+             "date": MIDNIGHT - 1, "internal_date": MIDNIGHT - 1},
+            {"id": "e2", "message_id": "<0f.3.4@bichon>", "mailbox_name": "INBOX", "uid": 740,
+             "date": MIDNIGHT - 1, "internal_date": MIDNIGHT - 1}
+        ]))
+        .await;
+        serve_body(&server, "e1", b"archived").await;
+        serve_body(&server, "e2", b"lost").await;
+
+        let archived = body_key(b"archived");
+        let verdict = verdict_of(
+            &server,
+            &format!("/a/1970/01/1.meta.json\tINBOX\t{archived}\n/a/1970/01/2.meta.json\tINBOX\t{archived}\n"),
+        )
+        .await;
+
+        assert_eq!(verdict.report.matched, 1);
+        assert_eq!(verdict.report.missing.len(), 1);
+        assert_eq!(verdict.report.missing[0].uid, 740);
+        assert_eq!(verdict.report.missing[0].message_id, body_key(b"lost"));
+        assert_eq!(verdict.report.status(), CoverageStatus::Gap);
+    }
+
     async fn verdict_of(server: &MockServer, sidecars: &str) -> super::Verdict {
         let ssh = MockSshSession::new();
         ssh.stage_run_result(stdout(sidecars));
@@ -364,13 +403,13 @@ mod tests {
     #[tokio::test]
     async fn the_store_count_is_taken_on_the_internal_date_before_the_cutoff() {
         let server = store_of(json!([
-            {"message_id": "edge@x.io", "mailbox_name": "INBOX", "uid": 1,
+            {"id": "e1", "message_id": "edge@x.io", "mailbox_name": "INBOX", "uid": 1,
              "date": MIDNIGHT - 1, "internal_date": MIDNIGHT - 1},
-            {"message_id": "midnight@x.io", "mailbox_name": "INBOX", "uid": 2,
+            {"id": "e2", "message_id": "midnight@x.io", "mailbox_name": "INBOX", "uid": 2,
              "date": MIDNIGHT - 1, "internal_date": MIDNIGHT},
-            {"message_id": "backdated@x.io", "mailbox_name": "INBOX", "uid": 3,
+            {"id": "e3", "message_id": "backdated@x.io", "mailbox_name": "INBOX", "uid": 3,
              "date": MIDNIGHT + 86_400_000, "internal_date": MIDNIGHT - 86_400_000},
-            {"message_id": "elsewhere@x.io", "mailbox_name": "Sent", "uid": 4,
+            {"id": "e4", "message_id": "elsewhere@x.io", "mailbox_name": "Sent", "uid": 4,
              "date": MIDNIGHT - 1, "internal_date": MIDNIGHT - 1}
         ]))
         .await;
@@ -391,9 +430,9 @@ mod tests {
     #[tokio::test]
     async fn repeated_message_ids_are_counted_once_each() {
         let server = store_of(json!([
-            {"message_id": "dup@x.io", "mailbox_name": "INBOX", "uid": 1,
+            {"id": "e5", "message_id": "dup@x.io", "mailbox_name": "INBOX", "uid": 1,
              "date": 0, "internal_date": MIDNIGHT - 2},
-            {"message_id": "dup@x.io", "mailbox_name": "INBOX", "uid": 2,
+            {"id": "e6", "message_id": "dup@x.io", "mailbox_name": "INBOX", "uid": 2,
              "date": 0, "internal_date": MIDNIGHT - 1}
         ]))
         .await;
@@ -416,21 +455,28 @@ mod tests {
     #[tokio::test]
     async fn a_store_message_without_an_internal_date_is_counted_and_reported() {
         let server = store_of(json!([
-            {"message_id": "a@x.io", "mailbox_name": "INBOX", "uid": 1,
+            {"id": "e7", "message_id": "a@x.io", "mailbox_name": "INBOX", "uid": 1,
              "date": 0, "internal_date": MIDNIGHT - 1},
-            {"message_id": "<0f.1.2@bichon>", "mailbox_name": "INBOX", "uid": 648,
+            {"id": "e8", "message_id": "<0f.1.2@bichon>", "mailbox_name": "INBOX", "uid": 648,
              "date": 0, "internal_date": 0}
         ]))
         .await;
 
+        let notice = b"Subject: quota\r\n\r\nfull\r\n";
+        serve_body(&server, "e8", notice).await;
+
         let verdict = verdict_of(
             &server,
-            "/a/2026/01/1.meta.json\tINBOX\ta@x.io\n/a/2026/01/2.meta.json\tINBOX\tsha256:aa\n",
+            &format!(
+                "/a/2026/01/1.meta.json\tINBOX\ta@x.io\n/a/1970/01/2.meta.json\tSent\t{}\n",
+                body_key(notice)
+            ),
         )
         .await;
 
         assert_eq!(verdict.store_count.before_cutoff, 2);
         assert_eq!(verdict.store_count.without_internal_date, vec![648]);
+        assert_eq!(verdict.report.matched, 2);
         let json = serde_json::to_value(&verdict).unwrap();
         assert_eq!(json["store_internal_date_count"], 2);
         assert_eq!(json["store_without_internal_date"], json!([648]));
