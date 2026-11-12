@@ -51,6 +51,7 @@ quiet = true
 run = [
   "./tests/bichon-archive.test.sh",
   "./tests/bichon-expunge.test.sh",
+  "./tests/bichon-expunge-himalaya.test.sh",
   "./tests/bichon-uidvalidity-watch.test.sh",
   "./tests/forgejo-onboard.test.sh",
   "./tests/immich-b2-prune.test.sh",
