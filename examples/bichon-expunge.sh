@@ -79,8 +79,9 @@ readonly DEFAULT_ARCHIVE_PATH='/var/lib/bichon-archive'
 # bichon-archive.timer is OnCalendar=hourly with RandomizedDelaySec=10min, so a
 # healthy Host runs it at most ~70min apart. 3h leaves slack for a reboot.
 readonly ARCHIVE_MAX_AGE_HOURS=3
-# himalaya pages envelope listings; one oversized page beats paginating here.
-readonly PAGE_SIZE=9999
+# UIDs per IMAP STORE: the uid set rides on one command line, and servers cap
+# its length (Dovecot's imap_max_line_length defaults to 64k).
+readonly STORE_BATCH_SIZE=500
 readonly SSH_OPTS=(-o BatchMode=yes -o ConnectTimeout=10)
 
 host=''
@@ -344,7 +345,20 @@ choose_host() {
 # fed by this reports only its own success, so unparseable JSON would reach the
 # operator as "no accounts" instead of as a parse failure.
 himalaya_account_names() {
-  printf '%s' "${HIMALAYA_ACCOUNTS_JSON}" | jq -r '.[].name'
+  printf '%s' "${HIMALAYA_ACCOUNTS_JSON}" | jq -r '.accounts[].name'
+}
+
+# himalaya v2 with --json prints a failure as a JSON object on stdout, not on
+# stderr. A caller capturing stdout would swallow the reason and then point the
+# operator at a stderr that holds nothing, so forward it there on failure.
+himalaya_json() {
+  local out rc=0
+  out=$(himalaya --json "$@") || rc=$?
+  if ((rc != 0)); then
+    printf 'himalaya: %s\n' "${out}" >&2
+    return "${rc}"
+  fi
+  printf '%s' "${out}"
 }
 
 # bichon names each Email Archive directory after the mailbox email address,
@@ -547,12 +561,25 @@ check_tools() {
 
   # `account list` reads the config only, opening no IMAP connection, so it is a
   # cheap proof that gate 3 and the expunge will have a usable himalaya.
-  # --quiet keeps a successful listing silent; stderr is deliberately left
-  # connected so a config error — or any prompt this script failed to
-  # anticipate — is visible rather than a silent stall.
-  HIMALAYA_ACCOUNTS_JSON=$(himalaya --quiet --output json account list </dev/null) \
+  # stderr is deliberately left connected so a config error — or any prompt
+  # this script failed to anticipate — is visible rather than a silent stall.
+  HIMALAYA_ACCOUNTS_JSON=$(himalaya_json account list </dev/null) \
     || die 2 "himalaya could not read its accounts from ${himalaya_config}" \
-      'himalaya printed the reason above'
+      'himalaya printed the reason above' \
+      'this script needs himalaya v2: himalaya --version'
+
+  # v2 lists an account whose config block it cannot parse with no backends
+  # rather than failing, which is what a v1 config looks like to it. Every
+  # later call would then fail at the first IMAP command, past the preflight.
+  local no_imap
+  no_imap=$(printf '%s' "${HIMALAYA_ACCOUNTS_JSON}" \
+    | jq -r '.accounts[] | select((.backends | index("imap")) | not) | .name') \
+    || die 2 'himalaya account list returned JSON this script cannot read'
+  [[ -z "${no_imap}" ]] \
+    || die 2 "himalaya has no IMAP backend for: $(printf '%s' "${no_imap}" | paste -sd' ' -)" \
+      "a v1 config (backend.type = \"imap\") reads as empty under himalaya v2" \
+      'migrate it: imap.server = "imaps://host:993", imap.sasl.plain.username,' \
+      'imap.sasl.plain.password.command'
 
   note 'auberge, himalaya, jq, ssh ok'
 }
@@ -662,19 +689,20 @@ fetch_account_folders() {
   FOLDER_NAMES=''
   FETCH_ERROR=''
 
-  # --quiet rather than 2>/dev/null: himalaya prompts on /dev/tty when it
-  # needs a secret it cannot read non-interactively, and a discarded stderr
-  # turns that prompt into an unexplained stall.
+  # stderr stays connected: himalaya prompts on /dev/tty when it needs a
+  # secret it cannot read non-interactively, and a discarded stderr turns that
+  # prompt into an unexplained stall. The IMAP-level LIST, so the names are the
+  # ones `imap search` and `imap expunge` take back verbatim.
   local folders_json
-  if ! folders_json=$(himalaya --quiet --output json folder list --account "${account}"); then
+  if ! folders_json=$(himalaya_json imap list --all --account "${account}"); then
     FETCH_ERROR="himalaya could not list the folders of ${account}"
     return 1
   fi
 
   # pipefail is set, so a jq failure on unparseable JSON propagates through
   # sort instead of being swallowed.
-  if ! FOLDER_NAMES=$(printf '%s' "${folders_json}" | jq -r '.[].name' | sort); then
-    FETCH_ERROR='himalaya folder list returned JSON this script cannot read'
+  if ! FOLDER_NAMES=$(printf '%s' "${folders_json}" | jq -r '.mailboxes[].name' | sort); then
+    FETCH_ERROR='himalaya imap list returned JSON this script cannot read'
     return 2
   fi
 
@@ -1078,22 +1106,20 @@ probe_folder_coverage() {
 
   CUTOFF_DATE=$(date_offset "${window_days}" '+%Y-%m-%d')
 
-  # --output json: the default table format adds headers and box drawing, so
-  # `wc -l` is off by a few. jq counts envelopes precisely. The filter query is
-  # a trailing positional in himalaya, so it must come after every flag.
-  # --quiet rather than 2>/dev/null: himalaya prompts on /dev/tty when it needs
-  # a secret it cannot read non-interactively, and a discarded stderr turns that
-  # prompt into an unexplained stall.
-  if ! ENVELOPE_JSON=$(himalaya --quiet --output json envelope list \
+  # IMAP SEARCH BEFORE, the same internal-date criterion verify-coverage
+  # applies with --before. It answers every UID in one response, where the
+  # shared `envelope` commands page and have no `before` condition in v2.
+  # stderr stays connected: himalaya prompts on /dev/tty when it needs a
+  # secret it cannot read non-interactively.
+  if ! ENVELOPE_JSON=$(himalaya_json imap search \
     --account "${account}" \
-    --folder "${folder}" \
-    --page-size "${PAGE_SIZE}" \
-    before "${CUTOFF_DATE}"); then
+    --mailbox "${folder}" \
+    --before "${CUTOFF_DATE}"); then
     PAIR_STATUS='err-list'
     return 0
   fi
 
-  IMAP_COUNT=$(printf '%s' "${ENVELOPE_JSON}" | jq 'length')
+  IMAP_COUNT=$(printf '%s' "${ENVELOPE_JSON}" | jq '.ids | length')
   note "IMAP messages in window: ${IMAP_COUNT}"
 
   if ((IMAP_COUNT == 0)); then
@@ -1101,19 +1127,18 @@ probe_folder_coverage() {
     return 0
   fi
 
-  # `folder expunge` removes every \Deleted-flagged message in the folder, not
+  # `imap expunge` removes every \Deleted-flagged message in the folder, not
   # only the ones this script flags. A pre-existing flag would therefore be
   # collateral damage, so refuse rather than widen the blast radius.
   local deleted_json
-  if ! deleted_json=$(himalaya --quiet --output json envelope list \
+  if ! deleted_json=$(himalaya_json imap search \
     --account "${account}" \
-    --folder "${folder}" \
-    --page-size "${PAGE_SIZE}" \
-    flag deleted); then
+    --mailbox "${folder}" \
+    --deleted); then
     PAIR_STATUS='err-flagged'
     return 0
   fi
-  ALREADY_DELETED=$(printf '%s' "${deleted_json}" | jq 'length')
+  ALREADY_DELETED=$(printf '%s' "${deleted_json}" | jq '.ids | length')
 
   if ((ALREADY_DELETED > 0)); then
     PAIR_STATUS='flagged'
@@ -1186,7 +1211,7 @@ render_pair_verdict_or_die() {
       ;;
     flagged)
       die 1 "${ALREADY_DELETED} message(s) in ${folder} already carry the deleted flag" \
-        "inspect them: himalaya envelope list --account ${account} --folder ${folder} flag deleted" \
+        "inspect them: himalaya imap search --account ${account} --mailbox ${folder} --deleted" \
         'clear or expunge them separately — this script only expunges what it flags'
       ;;
     unkeyed)
@@ -1231,7 +1256,7 @@ render_pair_verdict_or_die() {
     err-list)
       die 1 "himalaya could not list ${folder} for ${account}" \
         'check the account exists: himalaya account list' \
-        "check the folder exists: himalaya folder list --account ${account}"
+        "check the folder exists: himalaya imap list --all --account ${account}"
       ;;
     err-flagged)
       die 1 "himalaya could not list deleted-flagged mail in ${folder}" \
@@ -1278,8 +1303,8 @@ off-host backup evidence:
 $(printf '%s\n' "${BACKUP_EVIDENCE}" | sed 's/^/  /')
 
 commands to be run against ${account}:
-  himalaya flag add --account ${account} --folder ${folder} <${IMAP_COUNT} uids> deleted
-  himalaya folder expunge --account ${account} ${folder}
+  himalaya imap store --account ${account} --mailbox ${folder} --flag '\Deleted' <${IMAP_COUNT} uids>
+  himalaya imap expunge --account ${account} ${folder}
 
 The uids are the ${IMAP_COUNT} envelopes listed in gate 3 — no second listing
 happens, so nothing that arrived since then can be caught up in the expunge.
@@ -1300,15 +1325,22 @@ confirm_or_abort() {
     || die 1 'confirmation did not match the folder name — nothing expunged'
 }
 
-# Fills ENVELOPE_IDS from ENVELOPE_JSON after proving the listing still holds
-# exactly the IMAP_COUNT messages gate 3 counted and that every id is numeric —
-# himalaya reads any non-numeric positional as a flag name, so a stray value
-# would silently become a flag instead of a uid. Returns non-zero with
-# IDS_ERROR set; the single target dies on it, the sweep records a finding.
+# Fills ENVELOPE_IDS from ENVELOPE_JSON after proving the listing holds UIDs,
+# still holds exactly the IMAP_COUNT messages gate 3 counted, and that every id
+# is numeric. `imap store` reads its set as UIDs: message numbers fed to it
+# would flag other mail, and a stray `*` or `:` would widen the set to a range.
+# Returns non-zero with IDS_ERROR set; the single target dies on it, the sweep
+# records a finding.
 collect_envelope_ids() {
   ENVELOPE_IDS=()
   IDS_ERROR=''
-  mapfile -t ENVELOPE_IDS < <(printf '%s' "${ENVELOPE_JSON}" | jq -r '.[].id')
+
+  if [[ "$(printf '%s' "${ENVELOPE_JSON}" | jq -r '.uid_mode')" != 'true' ]]; then
+    IDS_ERROR='himalaya answered message numbers, not UIDs'
+    return 1
+  fi
+
+  mapfile -t ENVELOPE_IDS < <(printf '%s' "${ENVELOPE_JSON}" | jq -r '.ids[].id')
 
   if ((${#ENVELOPE_IDS[@]} != IMAP_COUNT)); then
     IDS_ERROR="envelope ids (${#ENVELOPE_IDS[@]}) do not match the counted messages (${IMAP_COUNT})"
@@ -1325,7 +1357,8 @@ collect_envelope_ids() {
 }
 
 # Flags the given ids \Deleted and expunges the folder: $1 account, $2 folder,
-# the rest ids. Returns 1 when flagging failed (nothing was deleted) and 2
+# the rest ids. Returns 1 when flagging failed (nothing was deleted, though
+# earlier batches may carry \Deleted) and 2
 # when the expunge failed after the flags landed — the folder then holds
 # \Deleted mail, which is exactly what the pre-existing-flag check refuses on
 # the next run, so a partial failure cannot compound silently.
@@ -1334,13 +1367,21 @@ expunge_ids() {
   shift 2
 
   step "Flagging $# message(s) as deleted…"
-  himalaya flag add \
-    --account "${target_account}" \
-    --folder "${target_folder}" \
-    "$@" deleted >&2 || return 1
+  local ids=("$@") start uid_set
+  for ((start = 0; start < ${#ids[@]}; start += STORE_BATCH_SIZE)); do
+    uid_set=$(
+      IFS=,
+      printf '%s' "${ids[*]:start:STORE_BATCH_SIZE}"
+    )
+    himalaya imap store \
+      --account "${target_account}" \
+      --mailbox "${target_folder}" \
+      --flag '\Deleted' \
+      "${uid_set}" >&2 || return 1
+  done
 
   step "Expunging ${target_folder}…"
-  himalaya folder expunge --account "${target_account}" "${target_folder}" >&2 || return 2
+  himalaya imap expunge --account "${target_account}" "${target_folder}" >&2 || return 2
 }
 
 expunge() {
@@ -1354,11 +1395,12 @@ expunge() {
     0) ;;
     1)
       die 1 "himalaya could not flag the messages in ${folder} — nothing was deleted" \
-        'himalaya printed the reason above'
+        'himalaya printed the reason above' \
+        "earlier batches may carry \\Deleted: himalaya imap search --account ${account} --mailbox ${folder} --deleted"
       ;;
     *)
       die 1 "the flags landed but the expunge of ${folder} failed" \
-        "inspect what is still flagged: himalaya envelope list --account ${account} --folder ${folder} flag deleted" \
+        "inspect what is still flagged: himalaya imap search --account ${account} --mailbox ${folder} --deleted" \
         'a re-run will refuse the folder until those flags are cleared or expunged'
       ;;
   esac
@@ -1705,7 +1747,7 @@ sweep_expunge_ready() {
         ;;
       1)
         SWEEP_ROWS[i]=$(printf 'finding\t%s\t%s\t%s\t%s' "${account_}" "${folder_}" 0 \
-          'flagging failed — nothing was deleted in this folder')
+          'flagging failed — nothing was deleted; earlier batches may carry deleted flags, so a re-run refuses it until cleared')
         ;;
       *)
         SWEEP_ROWS[i]=$(printf 'finding\t%s\t%s\t%s\t%s' "${account_}" "${folder_}" 0 \

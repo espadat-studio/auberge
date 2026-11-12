@@ -165,7 +165,7 @@ A preflight runs before the gates, resolving one value at a time: tools on `PATH
 The ssh user must be in the `bichon` group. The archive is `0750 bichon:bichon` and gate 3 reads `.meta.json` sidecars without sudo, so without it the gate cannot read anything. Grant with `ssh <host> 'sudo usermod -aG bichon $(whoami)'`, then reconnect.
 :::
 
-Deletion is `himalaya flag add … deleted` followed by `himalaya folder expunge` — messages are removed in place, not moved to Trash, so mailbox quota is actually reclaimed.
+Deletion is `himalaya imap store --flag '\Deleted' <uids>` followed by `himalaya imap expunge` — messages are removed in place, not moved to Trash, so mailbox quota is actually reclaimed. The script needs himalaya v2 and a v2 config (`imap.server`, `imap.sasl.plain.*`); a v1 config is refused in the preflight.
 
 :::caution
 The expunge needs an interactive TTY. There is no `--yes`/`--force`; `--no-input` and non-TTY stdin run every gate and then refuse to expunge. Per [ADR-0007](https://github.com/espadat-studio/auberge/blob/master/meta/adr/0007-auberge-folder-reconcile-scope.md) no unattended expunge path exists, and the script is not shipped in the `auberge` binary.
