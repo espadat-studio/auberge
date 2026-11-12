@@ -312,6 +312,14 @@
         - "{{ bichon_archive_dir }}"
         - "{{ bichon_archive_state_dir }}"
 
+    # examples/bichon-expunge.sh counts the archive over ssh as the operator,
+    # without sudo, and the directories above are 0750.
+    - name: Let the operator read the Email Archive
+      ansible.builtin.user:
+        name: "{{ admin_user_name }}"
+        groups: "{{ bichon_sys_group }}"
+        append: true
+
     # Files written before the archive script set the mode explicitly are 0600,
     # because mktemp ignores the unit's UMask. Reconcile them so a deploy is
     # enough and no manual chmod is needed. Files only: the directories above
