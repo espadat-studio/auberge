@@ -408,6 +408,18 @@ printf '\n== himalaya_account_names\n'
 HIMALAYA_ACCOUNTS_JSON='{"accounts":[{"name":"a@x.com","default":true,"backends":["imap"]},{"name":"b@x.com","default":false,"backends":["imap"]}]}'
 assert_eq 'v2 account list yields the names' $'a@x.com\nb@x.com' "$(himalaya_account_names)"
 
+printf '\n== fetch_account_folders: INBOX spelling\n'
+
+# shellcheck disable=SC2329  # invoked indirectly by himalaya_json in the sourced script
+himalaya() {
+  printf '%s' '{"mailboxes":[{"name":"Archive"},{"name":"INBOX.spam"},{"name":"Inbox"},{"name":"Sent"}]}'
+}
+account='a@x.com'
+fetch_account_folders
+assert_eq 'any spelling of inbox becomes INBOX; other names pass through' \
+  $'Archive\nINBOX\nINBOX.spam\nSent' "${FOLDER_NAMES}"
+unset -f himalaya
+
 printf '\n== expunge_ids: batched STORE, one EXPUNGE\n'
 
 # Stub himalaya to record each call's mailbox-scoped tail; step writes to stderr.

@@ -700,8 +700,12 @@ fetch_account_folders() {
   fi
 
   # pipefail is set, so a jq failure on unparseable JSON propagates through
-  # sort instead of being swallowed.
-  if ! FOLDER_NAMES=$(printf '%s' "${folders_json}" | jq -r '.mailboxes[].name' | sort); then
+  # sort instead of being swallowed. INBOX is case-insensitive (RFC 3501
+  # §5.1) and himalaya v2 spells it `Inbox`, while Bichon's Synced Folders
+  # say `INBOX`: an exact comparison would read every inbox as gone upstream.
+  if ! FOLDER_NAMES=$(printf '%s' "${folders_json}" \
+    | jq -r '.mailboxes[].name | if ascii_downcase == "inbox" then "INBOX" else . end' \
+    | sort); then
     FETCH_ERROR='himalaya imap list returned JSON this script cannot read'
     return 2
   fi
