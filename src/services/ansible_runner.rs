@@ -14,10 +14,7 @@ const DIM: &str = "\x1b[2m";
 const RESET: &str = "\x1b[0m";
 
 fn parse_ansible_task(line: &str) -> Option<String> {
-    let line = line.trim();
-    let rest = line
-        .strip_prefix("TASK [")
-        .or_else(|| line.strip_prefix("RUNNING HANDLER ["))?;
+    let rest = line.trim().strip_prefix("TASK [")?;
     let end = rest.find(']')?;
     Some(rest[..end].to_string())
 }
@@ -53,12 +50,13 @@ const MAX_RECAP_LINES: usize = 15;
 /// A result the callback pretty-prints opens with `{` on the failure line,
 /// continues on indented lines and closes on a column-0 `}`; the whole block
 /// is one failure, so the caps bound failures, not lines (#1312). Each kept
-/// failure carries the `TASK [...]`/`RUNNING HANDLER [...]` it belongs to.
+/// failure carries the `TASK [...]`/`RUNNING HANDLER [...]` header it
+/// belongs to, rendered as ansible printed it.
 ///
-/// An ignored task prints `...ignoring` directly after its failure results
-/// (per-item `failed:` results for loops, with no intervening output), so the
-/// whole trailing run of failures is cancelled. Failures of distinct tasks
-/// are always separated by a task header, which resets the run.
+/// An ignored task prints `...ignoring` after its failure results, so the
+/// whole trailing run of failures is cancelled. A loop's per-item results
+/// (`ok:`/`failed:` ... `(item=...)`) all belong to one task and stay in the
+/// run; any other line, such as the next task's header, resets it.
 #[derive(Default)]
 struct FailureDigest {
     failures: Vec<Failure>,
@@ -79,7 +77,11 @@ impl FailureDigest {
         if let Some(kept) = self.open_result {
             let closes = line.trim_end() == "}";
             if closes || line.starts_with(char::is_whitespace) {
-                if kept && let Some(failure) = self.failures.last_mut() {
+                if kept {
+                    let failure = self
+                        .failures
+                        .last_mut()
+                        .expect("a kept open result is the last failure");
                     failure.result.push('\n');
                     failure.result.push_str(line.trim_end());
                 }
@@ -120,10 +122,12 @@ impl FailureDigest {
             }
             return;
         }
-        if let Some(task) = parse_ansible_task(trimmed) {
-            self.task = Some(task);
+        if trimmed.starts_with("TASK [") || trimmed.starts_with("RUNNING HANDLER [") {
+            self.task = Some(trimmed.trim_end_matches(['*', ' ']).to_string());
         }
-        self.trailing_failures = 0;
+        if !trimmed.contains("(item=") {
+            self.trailing_failures = 0;
+        }
     }
 
     fn has_failures(&self) -> bool {
@@ -137,7 +141,7 @@ impl FailureDigest {
             if let Some(task) = &failure.task
                 && named != Some(task)
             {
-                lines.push(format!("TASK [{task}]"));
+                lines.push(task.clone());
             }
             named = failure.task.as_ref();
             lines.push(failure.result.clone());
@@ -1062,7 +1066,7 @@ mod tests {
     }
 
     #[test]
-    fn failure_digest_caps_failure_lines() {
+    fn failure_digest_caps_failures() {
         let failure_lines: Vec<String> = (0..MAX_FAILURES + 5)
             .map(|i| format!(r#"fatal: [auberge]: FAILED! => {{"msg": "failure {i}"}}"#))
             .collect();
@@ -1179,8 +1183,23 @@ mod tests {
             r#"fatal: [auberge]: FAILED! => {"msg": "restart failed"}"#,
         ]);
         let rendered = digest.render();
-        assert!(rendered.starts_with("TASK [role : restart]"));
+        assert!(rendered.starts_with("RUNNING HANDLER [role : restart]\n"));
         assert!(!rendered.contains("earlier"));
+    }
+
+    #[test]
+    fn failure_digest_ignoring_cancels_failed_items_between_passing_items() {
+        let digest = digest_of(&[
+            "TASK [role : loop] ****",
+            "failed: [auberge] (item=a) => {",
+            r#"    "msg": "boom a""#,
+            "}",
+            "ok: [auberge] => (item=b)",
+            "changed: [auberge] => (item=c)",
+            r#"failed: [auberge] (item=d) => {"msg": "boom d"}"#,
+            "...ignoring",
+        ]);
+        assert!(!digest.has_failures());
     }
 
     #[test]
