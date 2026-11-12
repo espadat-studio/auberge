@@ -1307,7 +1307,7 @@ off-host backup evidence:
 $(printf '%s\n' "${BACKUP_EVIDENCE}" | sed 's/^/  /')
 
 commands to be run against ${account}:
-  himalaya imap store --account ${account} --mailbox ${folder} --flag '\Deleted' <${IMAP_COUNT} uids>
+  himalaya imap store --account ${account} --mailbox ${folder} --flag '\Deleted' -- <${IMAP_COUNT} uids>
   himalaya imap expunge --account ${account} ${folder}
 
 The uids are the ${IMAP_COUNT} envelopes listed in gate 3 — no second listing
@@ -1399,7 +1399,7 @@ expunge_ids() {
       --account "${target_account}" \
       --mailbox "${target_folder}" \
       --flag '\Deleted' \
-      "${uid_set}" >&2 || return 1
+      -- "${uid_set}" >&2 || return 1
   done
 
   step "Expunging ${target_folder}…"
