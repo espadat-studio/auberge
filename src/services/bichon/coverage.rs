@@ -194,11 +194,7 @@ pub fn compare_coverage(
     folder: &str,
     cutoff: NaiveDate,
 ) -> Result<CoverageReport> {
-    let cutoff_ms = cutoff
-        .and_hms_opt(0, 0, 0)
-        .expect("midnight is a valid time")
-        .and_utc()
-        .timestamp_millis();
+    let cutoff_ms = midnight_ms(cutoff);
     let cutoff_ym = (cutoff.year(), cutoff.month());
 
     let mut archived: HashMap<&str, usize> = HashMap::new();
@@ -233,14 +229,14 @@ pub fn compare_coverage(
     let mut claims: Vec<(String, &StoreEnvelope)> = Vec::new();
     for envelope in envelopes {
         let StoreId::Canonical(id) = canonicalize_store_id(&envelope.message_id) else {
-            if in_folder_window(envelope, folder, cutoff_ms)? {
+            if in_folder_before(envelope, envelope.date, folder, cutoff_ms)? {
                 store_messages += 1;
                 store_synthetic += 1;
             }
             continue;
         };
         *account_claims.entry(id.clone()).or_default() += 1;
-        if in_folder_window(envelope, folder, cutoff_ms)? {
+        if in_folder_before(envelope, envelope.date, folder, cutoff_ms)? {
             store_messages += 1;
             claims.push((id, envelope));
         }
@@ -282,8 +278,60 @@ pub fn compare_coverage(
     })
 }
 
-fn in_folder_window(envelope: &StoreEnvelope, folder: &str, cutoff_ms: i64) -> Result<bool> {
-    if envelope.date >= cutoff_ms {
+/// The store side of the count gate (ADR-0088): the folder's raw message
+/// count received strictly before the cutoff day, on the IMAP internal date
+/// the `SEARCH BEFORE` it is compared to uses. Raw, not distinct: a folder
+/// holding one Message-ID twice holds two messages on both sides.
+///
+/// Bichon records a missing internal date as 0. That falls inside every
+/// window, as it does for Bichon's own `internal_date_before` filter, so the
+/// message is counted and its uid listed in `without_internal_date`: the
+/// server can place it, the store cannot, so the expunge script checks each
+/// uid against its IMAP window before trusting the count.
+#[derive(Serialize, Debug, PartialEq, Eq)]
+pub struct StoreCount {
+    #[serde(rename = "store_internal_date_count")]
+    pub before_cutoff: usize,
+    #[serde(rename = "store_without_internal_date")]
+    pub without_internal_date: Vec<u32>,
+}
+
+pub fn count_store_messages(
+    envelopes: &[StoreEnvelope],
+    folder: &str,
+    cutoff: NaiveDate,
+) -> Result<StoreCount> {
+    let cutoff_ms = midnight_ms(cutoff);
+    let mut count = StoreCount {
+        before_cutoff: 0,
+        without_internal_date: Vec::new(),
+    };
+    for envelope in envelopes {
+        if !in_folder_before(envelope, envelope.internal_date, folder, cutoff_ms)? {
+            continue;
+        }
+        count.before_cutoff += 1;
+        if envelope.internal_date <= 0 {
+            count.without_internal_date.push(envelope.uid);
+        }
+    }
+    Ok(count)
+}
+
+fn midnight_ms(day: NaiveDate) -> i64 {
+    day.and_hms_opt(0, 0, 0)
+        .expect("midnight is a valid time")
+        .and_utc()
+        .timestamp_millis()
+}
+
+fn in_folder_before(
+    envelope: &StoreEnvelope,
+    at_ms: i64,
+    folder: &str,
+    cutoff_ms: i64,
+) -> Result<bool> {
+    if at_ms >= cutoff_ms {
         return Ok(false);
     }
     match envelope.mailbox_name.as_deref() {
@@ -310,6 +358,7 @@ mod tests {
             message_id: message_id.to_string(),
             mailbox_name: mailbox.map(String::from),
             date,
+            internal_date: date,
             uid,
         }
     }

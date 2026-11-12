@@ -94,6 +94,7 @@ pub struct StoreEnvelope {
     pub message_id: String,
     pub mailbox_name: Option<String>,
     pub date: i64,
+    pub internal_date: i64,
     pub uid: u32,
 }
 
@@ -420,12 +421,14 @@ mod tests {
                     message_id: "a@x.io".to_string(),
                     mailbox_name: Some("INBOX".to_string()),
                     date: 10,
+                    internal_date: 10,
                     uid: 1,
                 },
                 StoreEnvelope {
                     message_id: "<0f.1.2@bichon>".to_string(),
                     mailbox_name: Some("Sent".to_string()),
                     date: 20,
+                    internal_date: 20,
                     uid: 2,
                 },
             ]
