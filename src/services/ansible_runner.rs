@@ -37,7 +37,7 @@ pub struct AnsibleResult {
     pub last_output: String,
 }
 
-const MAX_FAILURE_LINES: usize = 10;
+const MAX_FAILURES: usize = 10;
 const MAX_RECAP_LINES: usize = 15;
 
 /// Harvests failure diagnostics from ansible's stdout stream.
@@ -47,20 +47,51 @@ const MAX_RECAP_LINES: usize = 15;
 /// `ERROR!` messages. The stderr tail alone therefore misses the root cause
 /// of any task failure (#542).
 ///
-/// An ignored task prints `...ignoring` directly after its failure lines
-/// (per-item `failed:` lines for loops, with no intervening output), so the
-/// whole trailing run of failures is cancelled. Failures of distinct tasks
-/// are always separated by a `TASK [...]` header, which resets the run.
+/// A result the callback pretty-prints opens with `{` on the failure line,
+/// continues on indented lines and closes on a column-0 `}`; the whole block
+/// is one failure, so the caps bound failures, not lines (#1312). Each kept
+/// failure carries the `TASK [...]`/`RUNNING HANDLER [...]` header it
+/// belongs to, rendered as ansible printed it.
+///
+/// An ignored task prints `...ignoring` after its failure results, so the
+/// whole trailing run of failures is cancelled. A loop's per-item results
+/// (`ok:`/`failed:` ... `(item=...)`) all belong to one task and stay in the
+/// run; any other line, such as the next task's header, resets it.
 #[derive(Default)]
 struct FailureDigest {
-    failures: Vec<String>,
+    failures: Vec<Failure>,
     recap: Vec<String>,
     in_recap: bool,
     trailing_failures: usize,
+    task: Option<String>,
+    open_result: Option<bool>,
+}
+
+struct Failure {
+    task: Option<String>,
+    result: String,
 }
 
 impl FailureDigest {
     fn observe(&mut self, line: &str) {
+        if let Some(kept) = self.open_result {
+            let closes = line.trim_end() == "}";
+            if closes || line.starts_with(char::is_whitespace) {
+                if kept {
+                    let failure = self
+                        .failures
+                        .last_mut()
+                        .expect("a kept open result is the last failure");
+                    failure.result.push('\n');
+                    failure.result.push_str(line.trim_end());
+                }
+                if closes {
+                    self.open_result = None;
+                }
+                return;
+            }
+            self.open_result = None;
+        }
         let trimmed = line.trim();
         if trimmed.starts_with("PLAY RECAP") {
             self.in_recap = true;
@@ -78,13 +109,25 @@ impl FailureDigest {
             return;
         }
         if trimmed.starts_with("fatal:") || trimmed.starts_with("failed:") {
-            if self.failures.len() < MAX_FAILURE_LINES {
-                self.failures.push(trimmed.to_string());
+            let kept = self.failures.len() < MAX_FAILURES;
+            if kept {
+                self.failures.push(Failure {
+                    task: self.task.clone(),
+                    result: trimmed.to_string(),
+                });
                 self.trailing_failures += 1;
+            }
+            if trimmed.ends_with('{') {
+                self.open_result = Some(kept);
             }
             return;
         }
-        self.trailing_failures = 0;
+        if trimmed.starts_with("TASK [") || trimmed.starts_with("RUNNING HANDLER [") {
+            self.task = Some(trimmed.trim_end_matches(['*', ' ']).to_string());
+        }
+        if !trimmed.contains("(item=") {
+            self.trailing_failures = 0;
+        }
     }
 
     fn has_failures(&self) -> bool {
@@ -92,12 +135,19 @@ impl FailureDigest {
     }
 
     fn render(&self) -> String {
-        self.failures
-            .iter()
-            .chain(self.recap.iter())
-            .cloned()
-            .collect::<Vec<_>>()
-            .join("\n")
+        let mut lines = Vec::new();
+        let mut named: Option<&String> = None;
+        for failure in &self.failures {
+            if let Some(task) = &failure.task
+                && named != Some(task)
+            {
+                lines.push(task.clone());
+            }
+            named = failure.task.as_ref();
+            lines.push(failure.result.clone());
+        }
+        lines.extend(self.recap.iter().cloned());
+        lines.join("\n")
     }
 }
 
@@ -1016,23 +1066,23 @@ mod tests {
     }
 
     #[test]
-    fn failure_digest_caps_failure_lines() {
-        let failure_lines: Vec<String> = (0..MAX_FAILURE_LINES + 5)
+    fn failure_digest_caps_failures() {
+        let failure_lines: Vec<String> = (0..MAX_FAILURES + 5)
             .map(|i| format!(r#"fatal: [auberge]: FAILED! => {{"msg": "failure {i}"}}"#))
             .collect();
         let lines: Vec<&str> = failure_lines.iter().map(String::as_str).collect();
 
         let digest = digest_of(&lines);
         let rendered = digest.render();
-        assert_eq!(rendered.lines().count(), MAX_FAILURE_LINES);
+        assert_eq!(rendered.lines().count(), MAX_FAILURES);
         assert!(rendered.contains("failure 0"));
-        assert!(!rendered.contains(&format!("failure {MAX_FAILURE_LINES}")));
+        assert!(!rendered.contains(&format!("failure {MAX_FAILURES}")));
     }
 
     #[test]
     fn failure_digest_ignoring_past_cap_does_not_pop_kept_failure() {
         let mut digest = FailureDigest::default();
-        for i in 0..MAX_FAILURE_LINES {
+        for i in 0..MAX_FAILURES {
             digest.observe(&format!("TASK [role : task {i}] ****"));
             digest.observe(&format!(
                 r#"fatal: [auberge]: FAILED! => {{"msg": "failure {i}"}}"#
@@ -1043,8 +1093,152 @@ mod tests {
         digest.observe("...ignoring");
 
         let rendered = digest.render();
-        assert_eq!(rendered.lines().count(), MAX_FAILURE_LINES);
-        assert!(rendered.contains(&format!("failure {}", MAX_FAILURE_LINES - 1)));
+        assert_eq!(rendered.matches("fatal:").count(), MAX_FAILURES);
+        assert!(rendered.contains(&format!("failure {}", MAX_FAILURES - 1)));
+    }
+
+    #[test]
+    fn failure_digest_keeps_multi_line_assert_result_whole_and_names_task() {
+        let digest = digest_of(&[
+            "TASK [tailscale : Refuse to downgrade] ****",
+            "fatal: [auberge]: FAILED! => {",
+            r#"    "assertion": false,"#,
+            r#"    "changed": false,"#,
+            r#"    "msg": "refusing to downgrade tailscale""#,
+            "}",
+            "PLAY RECAP ****",
+            "auberge : ok=1 failed=1",
+        ]);
+        assert_eq!(
+            digest.render(),
+            [
+                "TASK [tailscale : Refuse to downgrade]",
+                "fatal: [auberge]: FAILED! => {",
+                r#"    "assertion": false,"#,
+                r#"    "changed": false,"#,
+                r#"    "msg": "refusing to downgrade tailscale""#,
+                "}",
+                "PLAY RECAP ****",
+                "auberge : ok=1 failed=1",
+            ]
+            .join("\n")
+        );
+    }
+
+    #[test]
+    fn failure_digest_ignoring_cancels_multi_line_result() {
+        let digest = digest_of(&[
+            "TASK [role : expected] ****",
+            "fatal: [auberge]: FAILED! => {",
+            r#"    "msg": "expected failure""#,
+            "}",
+            "...ignoring",
+        ]);
+        assert!(!digest.has_failures());
+    }
+
+    #[test]
+    fn failure_digest_ignoring_cancels_multi_line_loop_items() {
+        let digest = digest_of(&[
+            "TASK [role : real] ****",
+            r#"fatal: [auberge]: FAILED! => {"msg": "real failure"}"#,
+            "TASK [role : loop] ****",
+            "failed: [auberge] (item=a) => {",
+            r#"    "msg": "boom a""#,
+            "}",
+            "failed: [auberge] (item=b) => {",
+            r#"    "msg": "boom b""#,
+            "}",
+            "...ignoring",
+        ]);
+        let rendered = digest.render();
+        assert!(rendered.contains("real failure"));
+        assert!(!rendered.contains("boom"));
+        assert!(!rendered.contains("role : loop"));
+    }
+
+    #[test]
+    fn failure_digest_names_loop_task_once_above_its_items() {
+        let digest = digest_of(&[
+            "TASK [role : loop] ****",
+            "failed: [auberge] (item=a) => {",
+            r#"    "msg": "boom a""#,
+            "}",
+            "failed: [auberge] (item=b) => {",
+            r#"    "msg": "boom b""#,
+            "}",
+        ]);
+        let rendered = digest.render();
+        assert_eq!(rendered.matches("TASK [role : loop]").count(), 1);
+        assert!(rendered.contains("boom a"));
+        assert!(rendered.contains("boom b"));
+    }
+
+    #[test]
+    fn failure_digest_names_failing_handler() {
+        let digest = digest_of(&[
+            "TASK [role : earlier] ****",
+            "ok: [auberge]",
+            "RUNNING HANDLER [role : restart] ****",
+            r#"fatal: [auberge]: FAILED! => {"msg": "restart failed"}"#,
+        ]);
+        let rendered = digest.render();
+        assert!(rendered.starts_with("RUNNING HANDLER [role : restart]\n"));
+        assert!(!rendered.contains("earlier"));
+    }
+
+    #[test]
+    fn failure_digest_ignoring_cancels_failed_items_between_passing_items() {
+        let digest = digest_of(&[
+            "TASK [role : loop] ****",
+            "failed: [auberge] (item=a) => {",
+            r#"    "msg": "boom a""#,
+            "}",
+            "ok: [auberge] => (item=b)",
+            "changed: [auberge] => (item=c)",
+            r#"failed: [auberge] (item=d) => {"msg": "boom d"}"#,
+            "...ignoring",
+        ]);
+        assert!(!digest.has_failures());
+    }
+
+    #[test]
+    fn failure_digest_caps_count_failures_not_lines() {
+        let mut digest = FailureDigest::default();
+        for i in 0..MAX_FAILURES + 1 {
+            digest.observe(&format!("TASK [role : task {i}] ****"));
+            digest.observe("fatal: [auberge]: FAILED! => {");
+            for j in 0..50 {
+                digest.observe(&format!(r#"    "line{j}": "failure {i}","#));
+            }
+            digest.observe("}");
+        }
+        digest.observe("PLAY RECAP ****");
+
+        let rendered = digest.render();
+        assert!(rendered.contains(&format!("task {}]", MAX_FAILURES - 1)));
+        assert!(!rendered.contains(&format!("task {MAX_FAILURES}]")));
+        assert!(rendered.ends_with("PLAY RECAP ****"));
+    }
+
+    #[test]
+    fn failure_digest_over_cap_multi_line_item_keeps_ignoring_run() {
+        let mut digest = FailureDigest::default();
+        for i in 0..MAX_FAILURES - 1 {
+            digest.observe(&format!("TASK [role : task {i}] ****"));
+            digest.observe(&format!(
+                r#"fatal: [auberge]: FAILED! => {{"msg": "failure {i}"}}"#
+            ));
+        }
+        digest.observe("TASK [role : loop] ****");
+        for item in ["a", "b"] {
+            digest.observe(&format!("failed: [auberge] (item={item}) => {{"));
+            digest.observe(&format!(r#"    "msg": "boom {item}""#));
+            digest.observe("}");
+        }
+        digest.observe("...ignoring");
+
+        assert!(!digest.render().contains("boom"));
     }
 
     #[test]
