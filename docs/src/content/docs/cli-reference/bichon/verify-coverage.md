@@ -24,7 +24,9 @@ A Message-ID claimed more than once is also unverifiable by identity. That cover
 
 Refuses to answer (exit 2) when a scoped sidecar lacks `message_id` — that is an unknown, not a zero — naming the file; one `bichon-archive.service` run backfills it.
 
-What this does **not** prove: that the live Upstream Mailbox holds nothing the store has never ingested. That residual needs per-message identity from IMAP, which himalaya cannot provide cheaply (#400); `examples/bichon-expunge.sh` keeps its count comparison against the live mailbox alongside this verdict.
+What this does **not** prove: that the live Upstream Mailbox holds nothing the store has never ingested. This command cannot reach IMAP. It reports the bound instead: `store_internal_date_count` is the folder's raw store message count with an IMAP internal date before the cutoff. `examples/bichon-expunge.sh` refuses when its IMAP `SEARCH BEFORE` count exceeds it (ADR-0088). Both sides count raw messages on the same date, so a folder holding one Message-ID twice counts it twice on each side.
+
+`store_messages` and `store_internal_date_count` can differ. The first windows on the `Date:` header, which the sender writes; the second on the date the server received the message. Bichon records a missing internal date as 0, which falls inside every window, as it does for Bichon's own filter. Such messages are counted, and `store_without_internal_date` lists their uids. `examples/bichon-expunge.sh` refuses unless every one of them is in its own IMAP `SEARCH BEFORE` result, since any other would inflate the store count.
 
 ## Options
 
@@ -64,6 +66,8 @@ An `--account` Bichon does not report is an error naming the accounts it does.
   "folder": "INBOX",
   "before": "2026-05-13",
   "status": "covered",
+  "store_internal_date_count": 388,
+  "store_without_internal_date": [],
   "store_messages": 388,
   "matched": 388,
   "missing": [],

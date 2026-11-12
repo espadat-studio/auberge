@@ -10,9 +10,10 @@
 #
 #   1. off-host backup    `auberge backup verify --app bichon` exits 0
 #   2. archive freshness  last bichon-archive.service run succeeded, recently
-#   3. folder coverage    every in-window store message is archived, proven
-#                         by Message-ID (auberge bichon verify-coverage), and
-#                         distinct archived Message-IDs >= IMAP count
+#   3. folder coverage    IMAP count <= the Internal Store's count on the
+#                         internal date, and every in-window store message is
+#                         archived by Message-ID across the account — both
+#                         from auberge bichon verify-coverage (ADR-0088)
 #   4. summary            exact commands, message count, snapshot evidence
 #   5. typed confirmation operator types the folder name on a TTY
 #
@@ -63,7 +64,7 @@
 #   - jq
 #   - key-based ssh access to the Bichon Host, with journal/systemctl read
 #   - that ssh user in the `bichon` group: the Email Archive is 0750
-#     bichon:bichon and gate 3 counts files inside it without sudo
+#     bichon:bichon and the script lists its account directories without sudo
 #
 # Exit codes:
 #   0 — expunged, or (non-interactive) all gates passed and expunge skipped;
@@ -133,22 +134,17 @@ BACKUP_EVIDENCE=''
 CUTOFF_DATE=''
 ENVELOPE_JSON=''
 IMAP_COUNT=0
+UNDATED_OUTSIDE=''
 
-# Set by count_distinct_message_ids, which reports through globals rather than
-# stdout: an abort has to carry which sidecar caused it, and a command
-# substitution would run the whole check in a subshell where neither the count nor
-# that path survives — leaving the caller to read an empty result as zero
-# coverage rather than as a broken sidecar.
-ARCHIVE_COUNT=0
-UNKEYED_SIDECAR=''
-
-# Set by parse_identity_verdict, same reason as ARCHIVE_COUNT above: the
-# verdict is several fields plus a pass/fail, and reporting them on stdout
-# would force the caller into a command substitution whose subshell keeps
-# only one string.
+# Set by parse_identity_verdict, which reports through globals rather than
+# stdout: the verdict is several fields plus a pass/fail, and reporting them
+# on stdout would force the caller into a command substitution whose subshell
+# keeps only one string.
 IDENTITY_STATUS=''
 IDENTITY_MISSING=0
 IDENTITY_STORE=0
+STORE_COUNT=0
+STORE_UNDATED_UIDS=''
 IDENTITY_SYNTHETIC=0
 IDENTITY_SHA256=0
 IDENTITY_CONTESTED=0
@@ -158,13 +154,6 @@ IDENTITY_SAMPLE=''
 # (the sweep) can name the reason without re-deriving it. The single-target
 # wrappers turn it into the die they have always produced.
 FETCH_ERROR=''
-
-# The account-wide sidecar rows gate 3 counts from —
-# "path<TAB>folder<TAB>message_id", already window-filtered on the Host — and
-# which account they belong to. One Host walk serves every folder of the
-# account; see ensure_account_sidecar_rows for why that matters.
-SIDECAR_ROWS=''
-SIDECAR_ROWS_FOR=''
 
 # Gate 3's verdict for the resolved (account, folder), plus the one count only
 # the flagged verdict needs — see probe_folder_coverage for the vocabulary.
@@ -669,7 +658,7 @@ REMOTE
     4)
       die 2 "cannot read ${archive_path} on ${host}" \
         'bichon creates the archive 0750 bichon:bichon, so the ssh user has to' \
-        'be in that group to count anything in it' \
+        'be in that group to list it' \
         "inspect: ssh ${host} stat -c '%U:%G %a' ${archive_path}" \
         "grant: ssh ${host} 'sudo usermod -aG bichon \$(whoami)', then reconnect"
       ;;
@@ -871,43 +860,12 @@ require_number() {
     || die 1 "${host} returned a non-numeric ${label}: ${value}"
 }
 
-# Reads "<sidecar path>\t<message id>" rows on stdin and sets ARCHIVE_COUNT to
-# the number of distinct ids. Distinct, not row count: Bichon regenerates
-# envelope identifiers on re-import, so one message can hold several
-# `<envelope-id>.eml` copies, and counting files credits the archive with
-# coverage it does not have.
-#
-# A row with no id means a sidecar predating Message-ID keying. That is an
-# unknown, not a zero: it returns non-zero with the path in UNKEYED_SIDECAR
-# rather than falling back to counting files, which is the inflation this gate
-# exists to refuse.
-count_distinct_message_ids() {
-  local path message_id
-  local -A distinct=()
-
-  ARCHIVE_COUNT=0
-  UNKEYED_SIDECAR=''
-
-  while IFS=$'\t' read -r path message_id; do
-    [[ -n "${path}" ]] || continue
-    if [[ -z "${message_id}" ]]; then
-      UNKEYED_SIDECAR="${path}"
-      return 1
-    fi
-    distinct["${message_id}"]=1
-  done
-
-  ARCHIVE_COUNT="${#distinct[@]}"
-}
-
 # Reads an `auberge bichon verify-coverage --output json` verdict on stdin and
-# fills the IDENTITY_* globals — same globals-not-stdout shape as
-# count_distinct_message_ids, and the same reason: several fields and a
-# pass/fail have to survive out of one call.
+# fills STORE_COUNT, STORE_UNDATED_UIDS and the IDENTITY_* globals.
 #
-# auberge's JSON is the only interface this script has to the identity half
-# of gate 3, so a verdict this function cannot read must fail the gate
-# loudly, not be read as covered. jq failing on non-JSON input, a missing or
+# auberge's JSON is the only interface this script has to the store, so a
+# verdict this function cannot read must fail the gate loudly, not be read as
+# covered. jq failing on non-JSON input, a missing or
 # unrecognised status, and a count field that is not a bare non-negative
 # integer are all the same failure: a half-parsed verdict must not pass a
 # gate.
@@ -915,6 +873,8 @@ parse_identity_verdict() {
   IDENTITY_STATUS=''
   IDENTITY_MISSING=0
   IDENTITY_STORE=0
+  STORE_COUNT=0
+  STORE_UNDATED_UIDS=''
   IDENTITY_SYNTHETIC=0
   IDENTITY_SHA256=0
   IDENTITY_CONTESTED=0
@@ -925,6 +885,8 @@ parse_identity_verdict() {
       .status,
       (.missing | length),
       .store_messages,
+      .store_internal_date_count,
+      (.store_without_internal_date | if length == 0 then "-" else map(tostring) | join(" ") end),
       .unverifiable.store_synthetic,
       .unverifiable.archive_sha256,
       ([.unverifiable.contested[]? | select(.store > .archive)] | length),
@@ -933,12 +895,17 @@ parse_identity_verdict() {
     return 1
   fi
 
-  local status missing store synthetic sha256 contested sample
-  IFS=$'\t' read -r status missing store synthetic sha256 contested sample <<<"${tsv}"
+  local status missing store store_count undated synthetic sha256 contested sample
+  IFS=$'\t' read -r status missing store store_count undated synthetic sha256 contested sample <<<"${tsv}"
 
   [[ "${status}" == 'covered' ]] || [[ "${status}" == 'gap' ]] || return 1
   [[ "${missing}" =~ ^[0-9]+$ ]] || return 1
   [[ "${store}" =~ ^[0-9]+$ ]] || return 1
+  [[ "${store_count}" =~ ^[0-9]+$ ]] || return 1
+  # A tab is IFS whitespace, so read collapses an empty field into the next
+  # one; jq writes "-" for an empty uid list to keep the columns in place.
+  [[ "${undated}" == '-' ]] && undated=''
+  [[ "${undated}" =~ ^([0-9]+( [0-9]+)*)?$ ]] || return 1
   [[ "${synthetic}" =~ ^[0-9]+$ ]] || return 1
   [[ "${sha256}" =~ ^[0-9]+$ ]] || return 1
   [[ "${contested}" =~ ^[0-9]+$ ]] || return 1
@@ -946,75 +913,12 @@ parse_identity_verdict() {
   IDENTITY_STATUS="${status}"
   IDENTITY_MISSING="${missing}"
   IDENTITY_STORE="${store}"
+  STORE_COUNT="${store_count}"
+  STORE_UNDATED_UIDS="${undated}"
   IDENTITY_SYNTHETIC="${synthetic}"
   IDENTITY_SHA256="${sha256}"
   IDENTITY_CONTESTED="${contested}"
   IDENTITY_SAMPLE="${sample}"
-}
-
-# Fetches the account's window-filtered sidecar rows
-# ("path<TAB>folder<TAB>message_id") once and caches them, so every folder of
-# the account shares one Host walk. The walk used to run per (account, folder)
-# pair with one jq and one awk spawned per sidecar file — an
-# O(folders × sidecars) process storm the sweep multiplied until it dominated
-# the runtime (measured 55× slower than one batched pass on the real archive).
-# The remote side batches jq over every sidecar via xargs and filters the
-# YYYY/MM window in a single awk pass.
-#
-# Archive paths encode the message Date as YYYY/MM; folder identity and
-# message identity both live in the sidecar, which is why the rows carry the
-# folder for sidecar_rows_for_folder to scope by. An unreadable or
-# unparseable sidecar fails the whole fetch loudly (jq names it on stderr,
-# pipefail carries it out), exactly as the per-file check did — a broken
-# count must never pass as a coverage verdict. Returns non-zero with
-# FETCH_ERROR set.
-ensure_account_sidecar_rows() {
-  if [[ "${SIDECAR_ROWS_FOR}" == "${account}" ]]; then
-    return 0
-  fi
-
-  local cutoff_ym archive_dir
-  cutoff_ym=$(date_offset "${window_days}" '+%Y/%m')
-  archive_dir="${archive_path}/$(archive_dir_for "${account}")"
-
-  FETCH_ERROR=''
-  # Remote args go through printf %q so ${archive_dir} cannot break out of
-  # argument quoting and execute on the Host. The heredoc body is
-  # single-quoted ('REMOTE') to disable local expansion — only positional
-  # parameters are used.
-  # shellcheck disable=SC2029  # intentional: %q-quote args locally, then expand into ssh cmd
-  if ! SIDECAR_ROWS=$(
-    ssh "${SSH_OPTS[@]}" "${host}" \
-      "bash -s -- $(printf '%q ' "${archive_dir}" "${cutoff_ym}")" <<'REMOTE'
-set -euo pipefail
-archive_dir=$1; cutoff_ym=$2
-find "$archive_dir" -regextype posix-extended \
-  -regex '.*/[0-9]{4}/[0-9]{2}/[^/]+\.meta\.json' -print0 \
-  | xargs -0 -r jq -r '[input_filename, .folder, (.message_id // "")] | @tsv' \
-  | awk -F'\t' -v cutoff="$cutoff_ym" '{
-      n = split($1, p, "/")
-      ym = p[n - 2] "/" p[n - 1]
-      if (!(ym > cutoff)) print
-    }'
-REMOTE
-  ); then
-    SIDECAR_ROWS=''
-    SIDECAR_ROWS_FOR=''
-    FETCH_ERROR="could not read the archived sidecars of ${account} on ${host}"
-    return 1
-  fi
-
-  SIDECAR_ROWS_FOR="${account}"
-}
-
-# Filters the account-wide sidecar rows on stdin down to one folder's
-# "path<TAB>message_id" rows — the shape count_distinct_message_ids consumes.
-# The IMAP query is folder-scoped, so the archive count must be too: counting
-# account-wide sidecars would over-count and pass the gate while the target
-# folder is only partially archived. Exact match; the filter rides ENVIRON
-# because awk -v mangles backslashes.
-sidecar_rows_for_folder() {
-  FOLDER_FILTER="$1" awk -F'\t' '$2 == ENVIRON["FOLDER_FILTER"] { print $1 "\t" $3 }'
 }
 
 # Print UTC date offset by -$1 days, formatted with $2.
@@ -1101,18 +1005,19 @@ REMOTE
 
 # Gate 3's checks for the resolved (account, folder): every probe, no verdict
 # rendering. Sets PAIR_STATUS and the evidence the verdicts and the expunge
-# need (ENVELOPE_JSON, IMAP_COUNT, ARCHIVE_COUNT, CUTOFF_DATE):
+# need (ENVELOPE_JSON, IMAP_COUNT, STORE_COUNT, CUTOFF_DATE):
 #
 #   ok            every in-window message has an archived counterpart
 #   empty         the window holds no IMAP messages
 #   flagged       ALREADY_DELETED message(s) already carry \Deleted
-#   unkeyed       UNKEYED_SIDECAR predates Message-ID keying
-#   gap           ARCHIVE_COUNT < IMAP_COUNT
+#   gap           IMAP_COUNT > STORE_COUNT: the server holds messages the
+#                 Internal Store has not ingested
+#   undated       store uid(s) with no internal date, UNDATED_OUTSIDE, are
+#                 not in the IMAP window, so STORE_COUNT may be inflated
 #   identity-gap  the store holds in-window message(s) the archive cannot
 #                 vouch for by identity
 #   err-list      himalaya could not list the window
 #   err-flagged   himalaya could not list \Deleted-flagged mail
-#   err-sidecars  ssh or the Host could not read the archived sidecars
 #   err-identity  auberge could not produce an identity verdict
 #
 # An err-* status sets PAIR_REASON to what the failing tool said, prefixed
@@ -1126,7 +1031,7 @@ probe_folder_coverage() {
   ALREADY_DELETED=0
   ENVELOPE_JSON=''
   IMAP_COUNT=0
-  ARCHIVE_COUNT=0
+  UNDATED_OUTSIDE=''
 
   CUTOFF_DATE=$(date_offset "${window_days}" '+%Y-%m-%d')
 
@@ -1171,35 +1076,10 @@ probe_folder_coverage() {
     return 0
   fi
 
-  # One account-wide Host walk serves every folder of the account; the rows
-  # come back window-filtered and folder-tagged, and the folder scoping the
-  # IMAP query already applied happens locally.
-  if ! ensure_account_sidecar_rows; then
-    PAIR_STATUS='err-sidecars'
-    return 0
-  fi
-
-  local sidecar_rows
-  sidecar_rows=$(printf '%s' "${SIDECAR_ROWS}" | sidecar_rows_for_folder "${folder}")
-
-  if ! count_distinct_message_ids <<<"${sidecar_rows}"; then
-    PAIR_STATUS='unkeyed'
-    return 0
-  fi
-
-  note "archived messages in window: ${ARCHIVE_COUNT}"
-
-  if ((ARCHIVE_COUNT < IMAP_COUNT)); then
-    PAIR_STATUS='gap'
-    return 0
-  fi
-
-  # The count above only bounds the live mailbox: it cannot see below the
-  # Archive Cursor's date watermark, where a moved or backdated message can
-  # arrive unarchived and hide behind the surplus an append-only archive
-  # accumulates after a folder's first expunge (#400). Identity proves the
-  # archive holds what the UID-synced Bichon store holds, which the
-  # watermark cannot fool.
+  # Both counts are raw messages on the IMAP internal date, so a folder
+  # holding one Message-ID twice is two on each side (ADR-0088). The count
+  # proves the server holds nothing the store never ingested; identity then
+  # proves the archive holds what the store holds.
   # auberge says why it failed on stderr. Held until the call returns, then
   # shown, so its last line can also go in the sweep row.
   local verdict_json verdict_stderr rc=0
@@ -1225,13 +1105,35 @@ probe_folder_coverage() {
     PAIR_STATUS='err-identity'
     return 0
   fi
+  note "store messages by internal date: ${STORE_COUNT}"
+  if ((IMAP_COUNT > STORE_COUNT)); then
+    PAIR_STATUS='gap'
+    return 0
+  fi
+
+  # Bichon records a missing internal date as 0, so verify-coverage counts
+  # those messages inside every window. That holds only for the ones the
+  # server's own SEARCH BEFORE returned; any other inflates the store count
+  # and could hide a message the store never ingested.
+  if [[ -n "${STORE_UNDATED_UIDS}" ]]; then
+    UNDATED_OUTSIDE=$(printf '%s' "${ENVELOPE_JSON}" | jq -r --arg uids "${STORE_UNDATED_UIDS}" '
+      [.ids[].id] as $window
+      | [$uids | split(" ")[] | tonumber]
+      | map(select(. as $u | $window | index([$u]) | not))
+      | map(tostring) | join(" ")')
+    if [[ -n "${UNDATED_OUTSIDE}" ]]; then
+      PAIR_STATUS='undated'
+      return 0
+    fi
+    note "undated store uid(s) ${STORE_UNDATED_UIDS} are all in the IMAP window"
+  fi
+  note "count ok (IMAP ${IMAP_COUNT} <= store ${STORE_COUNT})"
+
   if [[ "${IDENTITY_STATUS}" != 'covered' ]]; then
     PAIR_STATUS='identity-gap'
     return 0
   fi
-  note "identity ok (${IDENTITY_STORE} store message(s) archived)"
-
-  note "coverage ok (${ARCHIVE_COUNT} >= ${IMAP_COUNT})"
+  note "identity ok (${IDENTITY_STORE} store message(s) by Date header archived)"
   PAIR_STATUS='ok'
 }
 
@@ -1249,19 +1151,20 @@ render_pair_verdict_or_die() {
         "inspect them: himalaya imap search --account ${account} --mailbox ${folder} --deleted" \
         'clear or expunge them separately — this script only expunges what it flags'
       ;;
-    unkeyed)
-      die 1 "an archived sidecar carries no message_id: ${UNKEYED_SIDECAR}" \
-        'that sidecar predates Message-ID keying, so this gate cannot tell whether' \
-        'it covers a message it has already counted' \
-        "backfill it: ssh ${host} sudo systemctl start bichon-archive.service" \
-        'one run repairs every sidecar in the account; re-run this script after it'
-      ;;
     gap)
-      die 1 "coverage gap: archive has ${ARCHIVE_COUNT} messages, IMAP has ${IMAP_COUNT} messages" \
-        "read the journal: ssh ${host} journalctl -u bichon-archive.service" \
+      die 1 "$((IMAP_COUNT - STORE_COUNT)) message(s) in ${folder} are on the server but not in the Internal Store (IMAP ${IMAP_COUNT}, store ${STORE_COUNT})" \
+        'the archive is written from the store, so it cannot hold them either' \
         "check ${folder} is a Synced Folder: auberge bichon reconcile-folders --host ${host}" \
-        "check the sidecars are group-readable: ssh ${host} find ${archive_path} -type f ! -perm -g=r" \
-        'do not expunge until the counts reconcile'
+        "Bichon syncs by UID: check its sync of ${account} has caught up, then re-run" \
+        'do not expunge until the store has ingested them'
+      ;;
+    undated)
+      local outside
+      read -ra outside <<<"${UNDATED_OUTSIDE}"
+      die 1 "${#outside[@]} store message(s) in ${folder} carry no internal date and are not in the IMAP window: uids ${UNDATED_OUTSIDE}" \
+        'the store counts them inside every window, so its count may hide a message it never ingested' \
+        "inspect: himalaya imap fetch --account ${account} --mailbox ${folder} --internal-date --envelope ${UNDATED_OUTSIDE// /,}" \
+        'do not expunge until the store count can be trusted'
       ;;
     identity-gap)
       if ((IDENTITY_MISSING > 0)); then
@@ -1298,12 +1201,6 @@ render_pair_verdict_or_die() {
         'this script must know what the expunge would take along, so it will' \
         'not continue without that answer'
       ;;
-    err-sidecars)
-      die 1 "could not read the archived sidecars for ${folder} on ${host}" \
-        'ssh or the Host printed the reason above' \
-        "if a sidecar was unreadable: ssh ${host} find ${archive_path} -type f ! -perm -g=r" \
-        "if ssh itself failed: ssh ${host} true"
-      ;;
     *)
       die 1 "gate 3 produced a status this script does not know: ${PAIR_STATUS}"
       ;;
@@ -1311,9 +1208,9 @@ render_pair_verdict_or_die() {
 }
 
 # Gate 3 — every in-window IMAP message has an archived counterpart, proven
-# two ways: by count against the live mailbox, and by Message-ID against the
-# UID-synced Bichon store.
-# Sets IMAP_COUNT, ENVELOPE_JSON and ARCHIVE_COUNT; the expunge reuses the same
+# two ways: the live mailbox holds no more than the UID-synced Bichon store by
+# count, and the archive holds every store message by Message-ID.
+# Sets IMAP_COUNT, ENVELOPE_JSON and STORE_COUNT; the expunge reuses the same
 # envelope set, so the messages counted here are exactly the messages deleted
 # later.
 gate_folder_coverage() {
@@ -1616,14 +1513,14 @@ sweep_probe_pair() {
         "${ALREADY_DELETED} message(s) already flagged deleted — clear or expunge them separately"
       return 0
       ;;
-    unkeyed)
-      sweep_record finding "${account}" "${folder}" 0 \
-        "unkeyed sidecar ${UNKEYED_SIDECAR} — backfill: sudo systemctl start bichon-archive.service"
-      return 0
-      ;;
     gap)
       sweep_record finding "${account}" "${folder}" 0 \
-        "coverage gap: archive ${ARCHIVE_COUNT} < IMAP ${IMAP_COUNT} — do not expunge until they reconcile"
+        "$((IMAP_COUNT - STORE_COUNT)) message(s) on the server not ingested by the store (IMAP ${IMAP_COUNT}, store ${STORE_COUNT})"
+      return 0
+      ;;
+    undated)
+      sweep_record finding "${account}" "${folder}" 0 \
+        "undated store uid(s) ${UNDATED_OUTSIDE} not in the IMAP window — the store count cannot be trusted"
       return 0
       ;;
     identity-gap)
@@ -1649,10 +1546,6 @@ sweep_probe_pair() {
       ;;
     err-flagged)
       sweep_record finding "${account}" "${folder}" 0 "himalaya could not list deleted-flagged mail${PAIR_REASON}"
-      return 0
-      ;;
-    err-sidecars)
-      sweep_record finding "${account}" "${folder}" 0 'could not read the archived sidecars on the Host'
       return 0
       ;;
     *)
@@ -1688,14 +1581,6 @@ sweep_probe_account() {
   if [[ -z "${SYNCED_FOLDERS}" ]]; then
     note "no Synced Folder for ${account} — nothing eligible"
     sweep_record skip "${account}" '-' 0 'no Synced Folders'
-    return 0
-  fi
-
-  # Fetch the account's sidecar rows here rather than inside the first pair:
-  # a Host that cannot be read is one account-level finding, not the same
-  # failed ssh retried once per folder.
-  if ! ensure_account_sidecar_rows; then
-    sweep_record finding "${account}" '-' 0 "${FETCH_ERROR}"
     return 0
   fi
 

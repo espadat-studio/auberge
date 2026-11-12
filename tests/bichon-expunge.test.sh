@@ -4,14 +4,12 @@
 #
 # Unit tests for the pure, network-free logic in examples/bichon-expunge.sh —
 # the last checks between an operator and permanently deleting mail from an
-# Upstream Mailbox. Covers gate 3's coverage verdict (deduplication and the
-# refusal to guess), the case-insensitive folder-name near-miss, the Synced
+# Upstream Mailbox. Covers gate 3's coverage verdict (the store count bound
+# and the refusal to guess), the case-insensitive folder-name near-miss, the Synced
 # Folder eligibility verdict, and the --folder default/passthrough, all
 # against in-memory input: no Host, no archive, no himalaya, no IMAP, no
 # auberge.
 #
-# The Host-side emitter that produces gate 3's rows is not unit-tested here; it
-# runs on the Bichon Host and is exercised end to end by a `--no-input` run.
 # list_synced_folders is untested for the same reason — it shells out to
 # `auberge bichon reconcile-folders` — but check_folder_synced, which consumes
 # its output, needs no network and is covered below.
@@ -29,80 +27,6 @@ source "${SUITE_DIR}/assert.sh"
 # shellcheck source=../examples/bichon-expunge.sh disable=SC1091
 source "${REPO_ROOT}/examples/bichon-expunge.sh"
 
-# Render the verdict for a row set: the distinct count, or which sidecar made the
-# count unknowable.
-verdict_for() {
-  if count_distinct_message_ids <<<"$1"; then
-    printf '%s' "${ARCHIVE_COUNT}"
-  else
-    printf 'unkeyed:%s' "${UNKEYED_SIDECAR}"
-  fi
-}
-
-printf '== count_distinct_message_ids\n'
-
-# The defect this gate had: five sidecars, three messages. Counting files
-# credited the archive with five and let the gate pass on evidence for three.
-assert_eq 'five sidecars holding three messages count as three' '3' \
-  "$(verdict_for '/a/2026/07/1.meta.json	a@example.com
-/a/2026/07/2.meta.json	a@example.com
-/a/2026/07/3.meta.json	b@example.com
-/a/2026/07/4.meta.json	b@example.com
-/a/2026/07/5.meta.json	c@example.com')"
-
-assert_eq 'one sidecar counts as one message' '1' \
-  "$(verdict_for '/a/2026/07/1.meta.json	a@example.com')"
-
-assert_eq 'an empty row set is zero coverage' '0' "$(verdict_for '')"
-
-assert_eq 'blank rows are not coverage' '0' "$(verdict_for '
-
-')"
-
-assert_eq 'hash-keyed sidecars deduplicate like any other id' '2' \
-  "$(verdict_for '/a/2026/07/1.meta.json	sha256:aa
-/a/2026/07/2.meta.json	sha256:aa
-/a/2026/07/3.meta.json	sha256:bb')"
-
-assert_eq 'ids differing only in case are different messages' '2' \
-  "$(verdict_for '/a/2026/07/1.meta.json	A@example.com
-/a/2026/07/2.meta.json	a@example.com')"
-
-# The field is tab-delimited precisely so an id is taken whole; a value split on
-# spaces would key two sidecars of one message differently.
-assert_eq 'an id containing spaces is taken whole' '1' \
-  "$(verdict_for '/a/2026/07/1.meta.json	odd id@example.com
-/a/2026/07/2.meta.json	odd id@example.com')"
-
-printf '\n== refusal on a sidecar predating Message-ID keying\n'
-
-assert_eq 'a sidecar with no message_id aborts and is named' \
-  'unkeyed:/a/2026/07/2.meta.json' \
-  "$(verdict_for '/a/2026/07/1.meta.json	a@example.com
-/a/2026/07/2.meta.json
-/a/2026/07/3.meta.json	c@example.com')"
-
-assert_eq 'a row with no tab at all aborts rather than counting the path' \
-  'unkeyed:/a/2026/07/1.meta.json' \
-  "$(verdict_for '/a/2026/07/1.meta.json')"
-
-assert_eq 'the first unkeyed sidecar is the one reported' \
-  'unkeyed:/a/2026/07/1.meta.json' \
-  "$(verdict_for '/a/2026/07/1.meta.json
-/a/2026/07/2.meta.json	')"
-
-assert_fails 'an unkeyed sidecar returns non-zero' \
-  count_distinct_message_ids <<<'/a/2026/07/1.meta.json	'
-
-# The gate calls this twice per run in the worst case; a stale path or count from
-# an earlier call would misreport which sidecar to repair.
-count_distinct_message_ids <<<'/a/2026/07/1.meta.json	' || true
-assert_eq 'a later clean call clears the earlier abort' '1' \
-  "$(verdict_for '/a/2026/07/9.meta.json	z@example.com')"
-
-count_distinct_message_ids <<<'/a/2026/07/9.meta.json	z@example.com'
-assert_eq 'a clean call leaves no sidecar named' '' "${UNKEYED_SIDECAR}"
-
 printf '\n== parse_identity_verdict\n'
 
 # Feeds a verify-coverage JSON verdict to parse_identity_verdict on stdin —
@@ -111,28 +35,37 @@ identity_verdict_of() {
   parse_identity_verdict <<<"$1"
 }
 
-COVERED_VERDICT='{"host":"h","account":"a@example.com","folder":"INBOX","before":"2026-05-01","status":"covered","store_messages":388,"matched":388,"missing":[],"unverifiable":{"store_synthetic":0,"archive_sha256":0}}'
+COVERED_VERDICT='{"host":"h","account":"a@example.com","folder":"INBOX","before":"2026-05-01","status":"covered","store_messages":388,"store_internal_date_count":388,"store_without_internal_date":[],"matched":388,"missing":[],"unverifiable":{"store_synthetic":0,"archive_sha256":0}}'
 
 parse_identity_verdict <<<"${COVERED_VERDICT}"
 assert_eq 'a covered verdict is read as covered' 'covered' "${IDENTITY_STATUS}"
 assert_eq 'a covered verdict extracts the store count' '388' "${IDENTITY_STORE}"
+assert_eq 'a covered verdict extracts the internal-date store count' '388' "${STORE_COUNT}"
+assert_eq 'a covered verdict has no undated store uids' '' "${STORE_UNDATED_UIDS}"
+
+UNDATED_VERDICT='{"status":"covered","store_messages":3,"store_internal_date_count":3,"store_without_internal_date":[648,701],"missing":[],"unverifiable":{"store_synthetic":0,"archive_sha256":0}}'
+parse_identity_verdict <<<"${UNDATED_VERDICT}"
+assert_eq 'undated store uids are extracted' '648 701' "${STORE_UNDATED_UIDS}"
+
+BAD_UNDATED_VERDICT='{"status":"covered","store_messages":3,"store_internal_date_count":3,"store_without_internal_date":["*"],"missing":[],"unverifiable":{"store_synthetic":0,"archive_sha256":0}}'
+assert_fails 'a non-numeric undated uid is refused' identity_verdict_of "${BAD_UNDATED_VERDICT}"
 
 # One of the two ids carries an internal space to prove the sample field is
 # taken whole — a value split on spaces would truncate it at the first word.
-GAP_VERDICT='{"status":"gap","store_messages":10,"matched":8,"missing":[{"message_id":"<abc@example.com>","date":"2026-01-01","uid":1},{"message_id":"<odd id@example.com>","date":"2026-01-02","uid":2}],"unverifiable":{"store_synthetic":0,"archive_sha256":0}}'
+GAP_VERDICT='{"status":"gap","store_messages":10,"store_internal_date_count":10,"store_without_internal_date":[],"matched":8,"missing":[{"message_id":"<abc@example.com>","date":"2026-01-01","uid":1},{"message_id":"<odd id@example.com>","date":"2026-01-02","uid":2}],"unverifiable":{"store_synthetic":0,"archive_sha256":0}}'
 
 parse_identity_verdict <<<"${GAP_VERDICT}"
 assert_eq 'a gap verdict extracts the missing count' '2' "${IDENTITY_MISSING}"
 assert_eq 'the sample joins the missing ids, whole' \
   '<abc@example.com> <odd id@example.com>' "${IDENTITY_SAMPLE}"
 
-MANY_MISSING_VERDICT='{"status":"gap","store_messages":10,"matched":6,"missing":[{"message_id":"id1"},{"message_id":"id2"},{"message_id":"id3"},{"message_id":"id4"}],"unverifiable":{"store_synthetic":0,"archive_sha256":0}}'
+MANY_MISSING_VERDICT='{"status":"gap","store_messages":10,"store_internal_date_count":10,"store_without_internal_date":[],"matched":6,"missing":[{"message_id":"id1"},{"message_id":"id2"},{"message_id":"id3"},{"message_id":"id4"}],"unverifiable":{"store_synthetic":0,"archive_sha256":0}}'
 
 parse_identity_verdict <<<"${MANY_MISSING_VERDICT}"
 assert_eq 'more than three missing ids still count all of them' '4' "${IDENTITY_MISSING}"
 assert_eq 'but the sample holds only the first three' 'id1 id2 id3' "${IDENTITY_SAMPLE}"
 
-UNVERIFIABLE_VERDICT='{"status":"gap","store_messages":7,"matched":2,"missing":[],"unverifiable":{"store_synthetic":5,"archive_sha256":2}}'
+UNVERIFIABLE_VERDICT='{"status":"gap","store_messages":7,"store_internal_date_count":7,"store_without_internal_date":[],"matched":2,"missing":[],"unverifiable":{"store_synthetic":5,"archive_sha256":2}}'
 
 parse_identity_verdict <<<"${UNVERIFIABLE_VERDICT}"
 assert_eq 'header-less store messages are extracted' '5' "${IDENTITY_SYNTHETIC}"
@@ -140,7 +73,7 @@ assert_eq 'sha256-keyed sidecars are extracted' '2' "${IDENTITY_SHA256}"
 
 # Only a contested id with more store claimants than archived bodies is short;
 # one the archive holds enough bodies for is counted, not a gap.
-CONTESTED_VERDICT='{"status":"gap","store_messages":3,"matched":0,"missing":[],"unverifiable":{"store_synthetic":0,"archive_sha256":0,"contested":[{"message_id":"x@example.com","store":2,"archive":1},{"message_id":"y@example.com","store":1,"archive":2}]}}'
+CONTESTED_VERDICT='{"status":"gap","store_messages":3,"store_internal_date_count":3,"store_without_internal_date":[],"matched":0,"missing":[],"unverifiable":{"store_synthetic":0,"archive_sha256":0,"contested":[{"message_id":"x@example.com","store":2,"archive":1},{"message_id":"y@example.com","store":1,"archive":2}]}}'
 
 parse_identity_verdict <<<"${CONTESTED_VERDICT}"
 assert_eq 'only short contested ids are counted' '1' "${IDENTITY_CONTESTED}"
@@ -162,8 +95,12 @@ assert_fails 'a status that is neither covered nor gap is refused' identity_verd
 BAD_COUNT_VERDICT='{"status":"covered","store_messages":"many","missing":[],"unverifiable":{"store_synthetic":0,"archive_sha256":0}}'
 assert_fails 'a non-numeric count is refused' identity_verdict_of "${BAD_COUNT_VERDICT}"
 
-# Same hygiene count_distinct_message_ids defends above: a stale gap sample
-# must not survive into a later covered verdict's globals.
+# An auberge predating the store count would leave the count gate nothing to
+# compare against; a missing bound must not read as zero or pass.
+NO_STORE_COUNT_VERDICT='{"status":"covered","store_messages":5,"missing":[],"unverifiable":{"store_synthetic":0,"archive_sha256":0}}'
+assert_fails 'a verdict without the store count is refused' identity_verdict_of "${NO_STORE_COUNT_VERDICT}"
+
+# A stale gap sample must not survive into a later covered verdict's globals.
 parse_identity_verdict <<<"${GAP_VERDICT}"
 parse_identity_verdict <<<"${COVERED_VERDICT}"
 assert_eq 'a later covered verdict clears an earlier gap status' 'covered' "${IDENTITY_STATUS}"
@@ -320,7 +257,7 @@ printf '\n== sweep rows: filtering, totals, rendering\n'
 SWEEP_ROWS=(
   $'ready\ta@x.com\tINBOX\t12\t'
   $'skip\ta@x.com\tSent\t0\tnothing in window'
-  $'finding\tb@x.com\tINBOX\t0\tcoverage gap: archive 3 < IMAP 5'
+  $'finding\tb@x.com\tINBOX\t0\t2 message(s) on the server not ingested by the store (IMAP 5, store 3)'
   $'ready\tb@x.com\tSent\t30\t'
 )
 
@@ -343,40 +280,119 @@ assert_succeeds 'a finding shouts in the report' \
   contains "${SWEEP_RENDERED}" 'FINDING'
 
 assert_succeeds 'a finding carries its reason' \
-  contains "${SWEEP_RENDERED}" 'coverage gap: archive 3 < IMAP 5'
+  contains "${SWEEP_RENDERED}" 'not ingested by the store (IMAP 5, store 3)'
 
 assert_succeeds 'a ready row carries its count' \
   contains "${SWEEP_RENDERED}" '12'
 
-printf '\n== sidecar_rows_for_folder\n'
+printf '\n== probe_folder_coverage: the store count bounds the IMAP count\n'
 
-SIDECAR_FIXTURE=$'/a/2026/07/1.meta.json\tINBOX\ta@example.com
-/a/2026/07/2.meta.json\tSent\tb@example.com
-/a/2026/07/3.meta.json\tINBOX\tc@example.com
-/a/2026/07/4.meta.json\tINBOX2\td@example.com'
+# himalaya answers the window listing with uids 1..$PROBE_IMAP_IDS and an
+# empty \Deleted listing; auberge answers with a verdict whose store count is
+# $PROBE_STORE, whose undated store uids are $PROBE_UNDATED (a JSON array),
+# and whose identity status is $PROBE_STATUS.
+# shellcheck disable=SC2329  # invoked indirectly by probe_folder_coverage in the sourced script
+himalaya() {
+  if [[ " $* " == *' --deleted '* ]]; then
+    printf '{"ids":[],"uid_mode":true}'
+    return 0
+  fi
+  local ids
+  ids=$(seq -s, 1 "${PROBE_IMAP_IDS}" | sed 's/[0-9]\+/{"id":&}/g')
+  printf '{"ids":[%s],"uid_mode":true}' "${ids}"
+}
+# shellcheck disable=SC2329  # invoked indirectly by probe_folder_coverage in the sourced script
+auberge() {
+  printf '{"status":"%s","store_messages":%s,"store_internal_date_count":%s,"store_without_internal_date":%s,"missing":[],"unverifiable":{"store_synthetic":0,"archive_sha256":0,"contested":[]}}' \
+    "${PROBE_STATUS}" "${PROBE_STORE}" "${PROBE_STORE}" "${PROBE_UNDATED:-[]}"
+}
 
-assert_eq 'a folder keeps only its own rows, in count_distinct shape' \
-  $'/a/2026/07/1.meta.json\ta@example.com\n/a/2026/07/3.meta.json\tc@example.com' \
-  "$(sidecar_rows_for_folder INBOX <<<"${SIDECAR_FIXTURE}")"
+probe_status_for() {
+  PROBE_IMAP_IDS="$1" PROBE_STORE="$2" PROBE_STATUS="$3" PROBE_UNDATED="${4:-[]}"
+  # shellcheck disable=SC2034  # intentional: read by probe_folder_coverage in the sourced script
+  account='a@x.com' folder='Archive' host='h' window_days=90 archive_path='/x'
+  probe_folder_coverage 2>/dev/null
+  printf '%s' "${PAIR_STATUS}"
+}
 
-# INBOX must not swallow INBOX2's rows: a substring match would credit the
-# folder with another folder's coverage.
-assert_eq 'the folder match is exact, not a prefix' \
-  $'/a/2026/07/4.meta.json\td@example.com' \
-  "$(sidecar_rows_for_folder INBOX2 <<<"${SIDECAR_FIXTURE}")"
+# dev@ Archive on auberge (ADR-0088): the server holds one message more than
+# the store ever ingested.
+assert_eq 'more IMAP messages than store messages is a gap' 'gap' \
+  "$(probe_status_for 442 441 covered)"
 
-assert_eq 'a folder with no rows filters to nothing' '' \
-  "$(sidecar_rows_for_folder Drafts <<<"${SIDECAR_FIXTURE}")"
+# me@ Archive: 294 on both sides, 287 distinct ids. Repeated ids no longer
+# enter the count, so equal raw counts pass.
+assert_eq 'equal raw counts pass the count gate' 'ok' \
+  "$(probe_status_for 294 294 covered)"
 
-assert_eq 'a folder name with spaces is taken whole' \
-  $'/a/2026/07/5.meta.json\te@example.com' \
-  "$(sidecar_rows_for_folder 'Junk Mail' <<<$'/a/2026/07/5.meta.json\tJunk Mail\te@example.com')"
+assert_eq 'a store holding more than the server passes the count gate' 'ok' \
+  "$(probe_status_for 3 5 covered)"
 
-# An unkeyed sidecar's empty message_id must survive the filter as an empty
-# field, so count_distinct_message_ids still refuses it by name.
-assert_eq 'an unkeyed row keeps its trailing empty id' \
-  $'/a/2026/07/6.meta.json\t' \
-  "$(sidecar_rows_for_folder INBOX <<<$'/a/2026/07/6.meta.json\tINBOX\t')"
+assert_eq 'a passed count still answers to identity' 'identity-gap' \
+  "$(probe_status_for 3 3 gap)"
+
+# The count gate speaks first: an un-ingested message is the root cause an
+# identity gap would only echo.
+assert_eq 'the count gap outranks an identity gap' 'gap' \
+  "$(probe_status_for 4 3 gap)"
+
+gap_finding() {
+  (
+    probe_status_for 442 441 covered >/dev/null
+    probe_folder_coverage 2>/dev/null
+    render_pair_verdict_or_die
+  ) 2>&1
+}
+assert_succeeds 'the single-target refusal names how many the store has not ingested' \
+  contains "$(gap_finding)" '1 message(s) in Archive are on the server but not in the Internal Store (IMAP 442, store 441)'
+
+sweep_gap_row() {
+  SWEEP_ROWS=()
+  PROBE_IMAP_IDS=442 PROBE_STORE=441 PROBE_STATUS=covered
+  # shellcheck disable=SC2034  # intentional: read by sweep_probe_pair in the sourced script
+  account='a@x.com' folder='Archive' host='h' window_days=90 archive_path='/x'
+  sweep_probe_pair 2>/dev/null
+  printf '%s' "${SWEEP_ROWS[0]}"
+}
+assert_eq 'the sweep records the un-ingested count as a finding' \
+  $'finding\ta@x.com\tArchive\t0\t1 message(s) on the server not ingested by the store (IMAP 442, store 441)' \
+  "$(sweep_gap_row)"
+
+# me@ Archive on auberge: 294 on both sides, 3 store messages with internal
+# date 0. The store counts them inside the window; that is only true if the
+# server's own SEARCH BEFORE returned their uids.
+assert_eq 'undated store uids inside the IMAP window pass' 'ok' \
+  "$(probe_status_for 294 294 covered '[2,100,294]')"
+
+assert_eq 'an undated store uid outside the IMAP window refuses' 'undated' \
+  "$(probe_status_for 294 294 covered '[2,900]')"
+
+# A gap already refuses; an inflated store only hides more, never less.
+assert_eq 'the count gap outranks an undated uid' 'gap' \
+  "$(probe_status_for 294 293 covered '[900]')"
+
+undated_finding() {
+  (
+    probe_status_for 294 294 covered '[2,900,901]' >/dev/null
+    probe_folder_coverage 2>/dev/null
+    render_pair_verdict_or_die
+  ) 2>&1
+}
+assert_succeeds 'the single-target refusal names the undated uids outside the window' \
+  contains "$(undated_finding)" '2 store message(s) in Archive carry no internal date and are not in the IMAP window: uids 900 901'
+
+sweep_undated_row() {
+  SWEEP_ROWS=()
+  PROBE_IMAP_IDS=294 PROBE_STORE=294 PROBE_STATUS=covered PROBE_UNDATED='[900]'
+  # shellcheck disable=SC2034  # intentional: read by sweep_probe_pair in the sourced script
+  account='a@x.com' folder='Archive' host='h' window_days=90 archive_path='/x'
+  sweep_probe_pair 2>/dev/null
+  printf '%s' "${SWEEP_ROWS[0]}"
+}
+assert_eq 'the sweep records undated uids outside the window as a finding' \
+  $'finding\ta@x.com\tArchive\t0\tundated store uid(s) 900 not in the IMAP window — the store count cannot be trusted' \
+  "$(sweep_undated_row)"
+unset -f himalaya auberge
 
 printf '\n== collect_envelope_ids\n'
 
@@ -550,8 +566,6 @@ auberge() {
   printf '⚠ verify-coverage failed: ssh: connect to host h port 22: Connection timed out\n' >&2
   return 2
 }
-# shellcheck disable=SC2034  # intentional: the cache ensure_account_sidecar_rows reads
-SIDECAR_ROWS_FOR='a@x.com' SIDECAR_ROWS=$'/x/1.meta.json\tINBOX\tm1@x'
 SWEEP_ROWS=()
 assert_eq 'auberge still says why on stderr' \
   '⚠ verify-coverage failed: ssh: connect to host h port 22: Connection timed out' \
