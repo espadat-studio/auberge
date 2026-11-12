@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.23.0](https://github.com/espadat-studio/auberge/compare/v0.22.4...v0.23.0) - 2026-11-12
+
+### Added
+
+- *(bichon)* show live progress during bichon rescan ([#1306](https://github.com/espadat-studio/auberge/pull/1306))
+
+### Fixed
+
+- *(tailscale)* hold the client at its pinned version ([#1303](https://github.com/espadat-studio/auberge/pull/1303))
+
 ## [0.22.4](https://github.com/espadat-studio/auberge/compare/v0.22.3...v0.22.4) - 2026-11-12
 
 ### Apps
