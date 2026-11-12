@@ -3,8 +3,8 @@ use crate::hosts::{HOST_FLAG, select_or_arg};
 use crate::output::{self, OutputFormat};
 use crate::services::bichon::api::{Account, BichonApiClient};
 use crate::services::bichon::coverage::{
-    CoverageReport, compare_coverage, parse_sidecar_rows, sidecar_rows_command,
-    validate_archive_path_for_shell,
+    CoverageReport, StoreCount, compare_coverage, count_store_messages, parse_sidecar_rows,
+    sidecar_rows_command, validate_archive_path_for_shell,
 };
 use crate::services::bichon::rescan::{sanitize_email, validate_email_for_shell};
 use crate::services::ssh::{LiveSshSession, SshSession};
@@ -64,7 +64,7 @@ async fn verify_inner(
     let route = crate::services::route::resolve(&host, Some(ssh_key))?;
     let ssh = LiveSshSession::new(&route, &host.become_method)?;
 
-    let report = compute_coverage(
+    let verdict = compute_coverage(
         &bichon.client,
         &ssh,
         &account,
@@ -78,10 +78,21 @@ async fn verify_inner(
         &account.email,
         &folder,
         &before,
-        &report,
+        &verdict,
         output,
     )?;
-    Ok(report.status().exit_code())
+    Ok(verdict.report.status().exit_code())
+}
+
+/// Both halves of Expunge Coverage the store can answer (ADR-0088): the
+/// folder's raw store count on the internal date, which the expunge script
+/// bounds its IMAP count by, and the identity report against the archive.
+#[derive(Serialize, Debug)]
+struct Verdict {
+    #[serde(flatten)]
+    store_count: StoreCount,
+    #[serde(flatten)]
+    report: CoverageReport,
 }
 
 /// The whole verdict behind the seams the tests can reach: the Bichon API
@@ -93,8 +104,9 @@ async fn compute_coverage(
     folder: &str,
     cutoff: NaiveDate,
     archive_path: &str,
-) -> Result<CoverageReport> {
+) -> Result<Verdict> {
     let envelopes = client.search_messages(account.id).await?;
+    let store_count = count_store_messages(&envelopes, folder, cutoff)?;
 
     let archive_dir = format!(
         "{}/{}",
@@ -115,7 +127,11 @@ async fn compute_coverage(
     }
     let rows = parse_sidecar_rows(&walk.stdout_str())?;
 
-    compare_coverage(&envelopes, &rows, folder, cutoff)
+    let report = compare_coverage(&envelopes, &rows, folder, cutoff)?;
+    Ok(Verdict {
+        store_count,
+        report,
+    })
 }
 
 #[derive(Serialize)]
@@ -126,7 +142,7 @@ struct VerifyOutputDoc<'a> {
     before: &'a str,
     status: &'static str,
     #[serde(flatten)]
-    report: &'a CoverageReport,
+    verdict: &'a Verdict,
 }
 
 fn emit_output(
@@ -134,9 +150,10 @@ fn emit_output(
     account: &str,
     folder: &str,
     before: &str,
-    report: &CoverageReport,
+    verdict: &Verdict,
     output: OutputFormat,
 ) -> Result<()> {
+    let report = &verdict.report;
     let status = report.status();
     match output {
         OutputFormat::Json => {
@@ -146,7 +163,7 @@ fn emit_output(
                 folder,
                 before,
                 status: status.as_str(),
-                report,
+                verdict,
             };
             let json = serde_json::to_string_pretty(&doc)
                 .wrap_err("failed to serialize verify-coverage output as JSON")?;
@@ -158,6 +175,11 @@ fn emit_output(
                 report.store_messages,
                 report.matched,
                 report.missing.len()
+            );
+            println!(
+                "{} store message(s) by internal date, the bound for the IMAP count ({} without one)",
+                verdict.store_count.before_cutoff,
+                verdict.store_count.without_internal_date.len()
             );
             for m in &report.missing {
                 println!("missing: {} (date {}, uid {})", m.message_id, m.date, m.uid);
@@ -225,7 +247,7 @@ mod tests {
             .respond_with(ResponseTemplate::new(200).set_body_json(json!({
                 "items": [{
                     "id": "e1", "message_id": "a@x.io", "mailbox_name": "INBOX",
-                    "uid": 1, "date": 1767225600000i64, "internal_date": 0
+                    "uid": 1, "date": 1767225600000i64, "internal_date": 1767225600000i64
                 }],
                 "total_pages": 1,
                 "total_items": 1
@@ -239,7 +261,7 @@ mod tests {
         ));
 
         let client = BichonApiClient::new(server.uri(), "token").unwrap();
-        let report = compute_coverage(
+        let verdict = compute_coverage(
             &client,
             &ssh,
             &account(),
@@ -250,8 +272,8 @@ mod tests {
         .await
         .unwrap();
 
-        assert_eq!(report.status(), CoverageStatus::Covered);
-        assert_eq!(report.matched, 1);
+        assert_eq!(verdict.report.status(), CoverageStatus::Covered);
+        assert_eq!(verdict.report.matched, 1);
 
         let requests = server.received_requests().await.unwrap();
         let body: serde_json::Value = serde_json::from_slice(&requests[0].body).unwrap();
@@ -274,7 +296,7 @@ mod tests {
             .respond_with(ResponseTemplate::new(200).set_body_json(json!({
                 "items": [{
                     "id": "e1", "message_id": "ghost@x.io", "mailbox_name": "INBOX",
-                    "uid": 9, "date": 1767225600000i64, "internal_date": 0
+                    "uid": 9, "date": 1767225600000i64, "internal_date": 1767225600000i64
                 }],
                 "total_pages": 1,
                 "total_items": 1
@@ -286,7 +308,7 @@ mod tests {
         ssh.stage_run_result(stdout(""));
 
         let client = BichonApiClient::new(server.uri(), "token").unwrap();
-        let report = compute_coverage(
+        let verdict = compute_coverage(
             &client,
             &ssh,
             &account(),
@@ -297,9 +319,121 @@ mod tests {
         .await
         .unwrap();
 
-        assert_eq!(report.status(), CoverageStatus::Gap);
-        assert_eq!(report.missing.len(), 1);
-        assert_eq!(report.missing[0].message_id, "ghost@x.io");
+        assert_eq!(verdict.report.status(), CoverageStatus::Gap);
+        assert_eq!(verdict.report.missing.len(), 1);
+        assert_eq!(verdict.report.missing[0].message_id, "ghost@x.io");
+    }
+
+    // 2026-05-13T00:00:00Z; the IMAP side asks `SEARCH BEFORE 2026-05-13`.
+    const MIDNIGHT: i64 = 1_778_630_400_000;
+
+    async fn store_of(items: serde_json::Value) -> MockServer {
+        let server = MockServer::start().await;
+        let total = items.as_array().unwrap().len();
+        Mock::given(method("POST"))
+            .and(path("/api/v1/search-messages"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+                "items": items,
+                "total_pages": 1,
+                "total_items": total
+            })))
+            .mount(&server)
+            .await;
+        server
+    }
+
+    async fn verdict_of(server: &MockServer, sidecars: &str) -> super::Verdict {
+        let ssh = MockSshSession::new();
+        ssh.stage_run_result(stdout(sidecars));
+        let client = BichonApiClient::new(server.uri(), "token").unwrap();
+        compute_coverage(
+            &client,
+            &ssh,
+            &account(),
+            "INBOX",
+            cutoff(),
+            "/var/lib/bichon-archive",
+        )
+        .await
+        .unwrap()
+    }
+
+    // The count gate's store side is a raw count on the IMAP internal date,
+    // the axis `SEARCH BEFORE` uses, so a message whose Date header and
+    // internal date fall either side of the cutoff is counted by the latter.
+    #[tokio::test]
+    async fn the_store_count_is_taken_on_the_internal_date_before_the_cutoff() {
+        let server = store_of(json!([
+            {"message_id": "edge@x.io", "mailbox_name": "INBOX", "uid": 1,
+             "date": MIDNIGHT - 1, "internal_date": MIDNIGHT - 1},
+            {"message_id": "midnight@x.io", "mailbox_name": "INBOX", "uid": 2,
+             "date": MIDNIGHT - 1, "internal_date": MIDNIGHT},
+            {"message_id": "backdated@x.io", "mailbox_name": "INBOX", "uid": 3,
+             "date": MIDNIGHT + 86_400_000, "internal_date": MIDNIGHT - 86_400_000},
+            {"message_id": "elsewhere@x.io", "mailbox_name": "Sent", "uid": 4,
+             "date": MIDNIGHT - 1, "internal_date": MIDNIGHT - 1}
+        ]))
+        .await;
+
+        let verdict = verdict_of(
+            &server,
+            "/a/2026/05/1.meta.json\tINBOX\tedge@x.io\n/a/2026/05/2.meta.json\tINBOX\tmidnight@x.io\n",
+        )
+        .await;
+
+        assert_eq!(verdict.store_count.before_cutoff, 2);
+        assert!(verdict.store_count.without_internal_date.is_empty());
+        assert_eq!(verdict.report.store_messages, 2);
+    }
+
+    // A folder holding one Message-ID twice is two messages on the server and
+    // two in the store; the count compares raw messages, never distinct ids.
+    #[tokio::test]
+    async fn repeated_message_ids_are_counted_once_each() {
+        let server = store_of(json!([
+            {"message_id": "dup@x.io", "mailbox_name": "INBOX", "uid": 1,
+             "date": 0, "internal_date": MIDNIGHT - 2},
+            {"message_id": "dup@x.io", "mailbox_name": "INBOX", "uid": 2,
+             "date": 0, "internal_date": MIDNIGHT - 1}
+        ]))
+        .await;
+
+        let verdict = verdict_of(
+            &server,
+            "/a/2026/01/1.meta.json\tINBOX\tdup@x.io\n/a/2026/01/2.meta.json\tINBOX\tdup@x.io\n",
+        )
+        .await;
+
+        assert_eq!(verdict.store_count.before_cutoff, 2);
+        assert_eq!(verdict.report.status(), CoverageStatus::Covered);
+    }
+
+    // me@ Archive uid 648 on auberge: MXroute's quota notice, no Date and no
+    // Message-ID, received 2025-03-10 per IMAP, stored by Bichon with
+    // internal_date 0. Bichon's own filter counts 0 inside every window;
+    // the verdict does too, and names their uids so the expunge script can
+    // check each one against the uids its own IMAP SEARCH BEFORE returned.
+    #[tokio::test]
+    async fn a_store_message_without_an_internal_date_is_counted_and_reported() {
+        let server = store_of(json!([
+            {"message_id": "a@x.io", "mailbox_name": "INBOX", "uid": 1,
+             "date": 0, "internal_date": MIDNIGHT - 1},
+            {"message_id": "<0f.1.2@bichon>", "mailbox_name": "INBOX", "uid": 648,
+             "date": 0, "internal_date": 0}
+        ]))
+        .await;
+
+        let verdict = verdict_of(
+            &server,
+            "/a/2026/01/1.meta.json\tINBOX\ta@x.io\n/a/2026/01/2.meta.json\tINBOX\tsha256:aa\n",
+        )
+        .await;
+
+        assert_eq!(verdict.store_count.before_cutoff, 2);
+        assert_eq!(verdict.store_count.without_internal_date, vec![648]);
+        let json = serde_json::to_value(&verdict).unwrap();
+        assert_eq!(json["store_internal_date_count"], 2);
+        assert_eq!(json["store_without_internal_date"], json!([648]));
     }
 
     #[tokio::test]

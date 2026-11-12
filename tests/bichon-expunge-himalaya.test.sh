@@ -87,12 +87,12 @@ assert_succeeds 'an unknown account past a clean parse is accepted' \
 printf '\n== every call the script issues parses\n'
 
 # check_tools probes auberge and ssh too; only its himalaya call is under test.
+# The empty auberge also ends probe_folder_coverage at the verdict it reaches
+# after both searches.
 # shellcheck disable=SC2329  # found by check_tools' command -v
 auberge() { :; }
 # shellcheck disable=SC2329  # found by check_tools' command -v
 ssh() { :; }
-# shellcheck disable=SC2329  # overrides the Host walk probe_folder_coverage reaches last
-ensure_account_sidecar_rows() { return 1; }
 
 # shellcheck disable=SC2034  # read by the sourced script's functions
 account="${UNKNOWN_ACCOUNT}" folder='INBOX' window_days=90
@@ -100,7 +100,7 @@ account="${UNKNOWN_ACCOUNT}" folder='INBOX' window_days=90
 check_tools 2>/dev/null
 fetch_account_folders
 probe_folder_coverage 2>/dev/null
-assert_eq 'the probe ran past both searches' 'err-sidecars' "${PAIR_STATUS}"
+assert_eq 'the probe ran past both searches' 'err-identity' "${PAIR_STATUS}"
 expunge_ids "${UNKNOWN_ACCOUNT}" INBOX 7 9 2>/dev/null
 
 assert_eq 'one call per command shape' $'--json account list
