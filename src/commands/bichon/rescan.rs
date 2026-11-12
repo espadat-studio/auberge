@@ -2,8 +2,9 @@ use crate::commands::bichon::selection::{connect, resolve_account_filter};
 use crate::hosts::{HOST_FLAG, select_or_arg};
 use crate::output::{self, OutputFormat};
 use crate::services::bichon::rescan::{
-    ARCHIVE_SERVICE, AccountReport, RescanOutcome, RescanRun, execute_rescan,
+    ARCHIVE_SERVICE, AccountReport, POLL_INTERVAL, RescanOutcome, RescanRun, execute_rescan,
 };
+use crate::services::progress::{Progress, TerminalProgress};
 use crate::services::ssh::LiveSshSession;
 use eyre::{Result, WrapErr};
 use serde::Serialize;
@@ -56,7 +57,20 @@ async fn rescan_inner(
         ARCHIVE_SERVICE
     ));
 
-    match execute_rescan(&ssh, &selected, &known)? {
+    crate::signal::on_interrupt_note(&format!(
+        "Interrupted. The archive pass keeps running on {}; follow it there with: journalctl -fu {ARCHIVE_SERVICE}",
+        host.name
+    ))?;
+    let mut progress = if output::is_quiet() {
+        TerminalProgress::hidden("")
+    } else {
+        TerminalProgress::new(&format!("starting {ARCHIVE_SERVICE}"))
+    };
+    let outcome = execute_rescan(&ssh, &mut progress, &selected, &known, POLL_INTERVAL);
+    progress.task_done();
+    crate::signal::clear_interrupt_note();
+
+    match outcome? {
         RescanOutcome::Refused { stale_sidecars } => {
             output::warn(&format!(
                 "refusing to rescan: {} sidecar(s) lack message_id (e.g. {}). Deploy the current bichon role and let the hourly archive run backfill them (or start {} once), then retry.",

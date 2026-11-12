@@ -44,7 +44,8 @@ impl TerminalProgress {
         }
     }
 
-    #[cfg(test)]
+    /// Draws no bar: for `--quiet`, where clig.dev wants none. Errors and
+    /// verbatim lines still reach stderr.
     pub fn hidden(initial_message: &str) -> Self {
         let pb = ProgressBar::hidden();
         pb.set_message(initial_message.to_string());
@@ -65,6 +66,16 @@ impl TerminalProgress {
             return;
         }
         self.pb.println(line);
+    }
+
+    /// A line that must reach stderr even when no bar is drawn: indicatif
+    /// drops `println` on a hidden bar, which is every bar off a TTY.
+    fn ungated(&self, line: String) {
+        if self.pb.is_hidden() {
+            eprintln!("{line}");
+        } else {
+            self.pb.println(line);
+        }
     }
 }
 
@@ -112,11 +123,11 @@ impl Progress for TerminalProgress {
     }
 
     fn error(&mut self, msg: &str) {
-        self.pb.println(format_error_line(msg));
+        self.ungated(format_error_line(msg));
     }
 
     fn line(&mut self, text: &str) {
-        self.pb.println(text);
+        self.ungated(text.to_string());
     }
 }
 

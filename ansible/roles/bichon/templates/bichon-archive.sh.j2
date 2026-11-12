@@ -483,6 +483,7 @@ process_account() {
     fi
     total_pages=$(printf '%s' "$body" | jq -r '.total_pages // 0')
     if [ "$total_pages" -eq 0 ]; then break; fi
+    log "account=${safe_email} page=${page} total_pages=${total_pages}"
 
     while IFS= read -r envelope; do
       [ -z "$envelope" ] && continue

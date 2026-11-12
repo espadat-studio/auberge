@@ -610,6 +610,14 @@ assert_eq 'a mixed page counts one filename skip and one identity skip' \
 assert_eq 'the mixed page adds no file' '2' \
   "$(find "${DEDUP_DIR}" -name '*.eml' | wc -l)"
 
+# `auberge bichon rescan` reads this line to show where a pass is inside an
+# account. It must not carry the summary's counters, or the report would read
+# it as one.
+PAGE_LOG=$(process_account 7 "${DEDUP_ACCOUNT}" 2>&1)
+assert_eq 'each search page is logged with its position among the pages' \
+  "account=${DEDUP_ACCOUNT} page=1 total_pages=1" \
+  "$(printf '%s' "${PAGE_LOG}" | grep -o 'account=[^ ]* page=.*' | head -1)"
+
 # The 51 byte-identical 187-byte notifications in the live corpus carry no
 # Message-ID and no Date, so they share one `sha256:` key and accumulated one
 # copy per full pass. Under the hash they are one message by the archive's own
