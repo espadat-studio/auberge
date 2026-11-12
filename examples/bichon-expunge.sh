@@ -1315,6 +1315,13 @@ happens, so nothing that arrived since then can be caught up in the expunge.
 EOF
 }
 
+# What a refused confirmation actually read, shell-quoted so an invisible
+# byte shows: a trailing \r, or bracketed-paste markers a previous program
+# left the terminal emitting, both fail a match the operator typed right.
+typed_report() {
+  printf 'received: %q' "$1"
+}
+
 # Gate 5 — typed confirmation. TTY-only by construction.
 confirm_or_abort() {
   step 'Gate 5/5 — confirmation'
@@ -1326,7 +1333,8 @@ confirm_or_abort() {
   IFS= read -r typed || die 1 'stdin closed before confirmation — nothing expunged'
 
   [[ "${typed}" == "${folder}" ]] \
-    || die 1 'confirmation did not match the folder name — nothing expunged'
+    || die 1 'confirmation did not match the folder name — nothing expunged' \
+      "$(typed_report "${typed}")"
 }
 
 # Fills ENVELOPE_IDS from ENVELOPE_JSON after proving the listing holds UIDs,
@@ -1719,14 +1727,16 @@ sweep_confirm_or_abort() {
   printf 'Type the Bichon Host name (%s) to proceed, anything else to abort: ' "${host}" >&2
   IFS= read -r typed || die 1 'stdin closed before the scope checkpoint — nothing expunged'
   [[ "${typed}" == "${host}" ]] \
-    || die 1 'checkpoint did not match the Host name — nothing expunged'
+    || die 1 'checkpoint did not match the Host name — nothing expunged' \
+      "$(typed_report "${typed}")"
 
   step 'Checkpoint 2/2 — magnitude'
   printf 'This permanently deletes %s message(s) across %s folder(s).\n' "${grand_total}" "${folder_count}" >&2
   printf 'Type that message count (%s) to proceed, anything else to abort: ' "${grand_total}" >&2
   IFS= read -r typed || die 1 'stdin closed before the magnitude checkpoint — nothing expunged'
   [[ "${typed}" == "${grand_total}" ]] \
-    || die 1 'checkpoint did not match the message count — nothing expunged'
+    || die 1 'checkpoint did not match the message count — nothing expunged' \
+      "$(typed_report "${typed}")"
 }
 
 # Expunges every ready pair, continuing past failures: one account's IMAP
