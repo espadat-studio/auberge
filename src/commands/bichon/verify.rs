@@ -8,7 +8,7 @@ use crate::services::bichon::coverage::{
 };
 use crate::services::bichon::rescan::{sanitize_email, validate_email_for_shell};
 use crate::services::ssh::{LiveSshSession, SshSession};
-use chrono::{Datelike, NaiveDate};
+use chrono::NaiveDate;
 use eyre::{Result, WrapErr};
 use serde::Serialize;
 
@@ -94,15 +94,7 @@ async fn compute_coverage(
     cutoff: NaiveDate,
     archive_path: &str,
 ) -> Result<CoverageReport> {
-    // The window is "strictly older than the cutoff date"; Bichon's `before`
-    // bound is inclusive, so back off the midnight timestamp by one.
-    let cutoff_ms = cutoff
-        .and_hms_opt(0, 0, 0)
-        .expect("midnight is a valid time")
-        .and_utc()
-        .timestamp_millis()
-        - 1;
-    let envelopes = client.search_messages(account.id, cutoff_ms).await?;
+    let envelopes = client.search_messages(account.id).await?;
 
     let archive_dir = format!(
         "{}/{}",
@@ -123,7 +115,7 @@ async fn compute_coverage(
     }
     let rows = parse_sidecar_rows(&walk.stdout_str())?;
 
-    compare_coverage(&envelopes, &rows, folder, (cutoff.year(), cutoff.month()))
+    compare_coverage(&envelopes, &rows, folder, cutoff)
 }
 
 #[derive(Serialize)]
@@ -227,13 +219,9 @@ mod tests {
     async fn a_covered_folder_reports_covered() {
         let server = MockServer::start().await;
 
-        // 2026-05-13T00:00:00Z is 1778630400000; the inclusive bound backs
-        // off by one so a message dated exactly at midnight stays outside.
         Mock::given(method("POST"))
             .and(path("/api/v1/search-messages"))
-            .and(body_partial_json(json!({
-                "filter": {"account_ids": [7], "before": 1778630399999i64}
-            })))
+            .and(body_partial_json(json!({"filter": {"account_ids": [7]}})))
             .respond_with(ResponseTemplate::new(200).set_body_json(json!({
                 "items": [{
                     "id": "e1", "message_id": "a@x.io", "mailbox_name": "INBOX",
@@ -264,6 +252,10 @@ mod tests {
 
         assert_eq!(report.status(), CoverageStatus::Covered);
         assert_eq!(report.matched, 1);
+
+        let requests = server.received_requests().await.unwrap();
+        let body: serde_json::Value = serde_json::from_slice(&requests[0].body).unwrap();
+        assert_eq!(body["filter"], json!({"account_ids": [7]}));
 
         let calls = ssh.calls();
         assert_eq!(calls.len(), 1);
