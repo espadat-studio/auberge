@@ -1315,6 +1315,15 @@ happens, so nothing that arrived since then can be caught up in the expunge.
 EOF
 }
 
+# Discards whatever reached stdin before the prompt: keys pressed while a
+# sweep ran for minutes sit in the terminal's buffer and would prefix the
+# answer. A confirmation proves the summary was read, so only input typed
+# after the prompt may count.
+drain_typeahead() {
+  local _
+  while IFS= read -r -s -t 0.05 -n 1 _; do :; done
+}
+
 # What a refused confirmation actually read, shell-quoted so an invisible
 # byte shows: a trailing \r, or bracketed-paste markers a previous program
 # left the terminal emitting, both fail a match the operator typed right.
@@ -1330,6 +1339,7 @@ confirm_or_abort() {
   printf 'Type the folder name (%s) to proceed, anything else to abort: ' "${folder}" >&2
 
   local typed
+  drain_typeahead
   IFS= read -r typed || die 1 'stdin closed before confirmation — nothing expunged'
 
   [[ "${typed}" == "${folder}" ]] \
@@ -1725,6 +1735,7 @@ sweep_confirm_or_abort() {
   printf 'This sweep deletes mail from %s account(s) on %s:\n' "${account_count}" "${host}" >&2
   printf '%s\n' "${accounts}" | sed 's/^/  /' >&2
   printf 'Type the Bichon Host name (%s) to proceed, anything else to abort: ' "${host}" >&2
+  drain_typeahead
   IFS= read -r typed || die 1 'stdin closed before the scope checkpoint — nothing expunged'
   [[ "${typed}" == "${host}" ]] \
     || die 1 'checkpoint did not match the Host name — nothing expunged' \
@@ -1733,6 +1744,7 @@ sweep_confirm_or_abort() {
   step 'Checkpoint 2/2 — magnitude'
   printf 'This permanently deletes %s message(s) across %s folder(s).\n' "${grand_total}" "${folder_count}" >&2
   printf 'Type that message count (%s) to proceed, anything else to abort: ' "${grand_total}" >&2
+  drain_typeahead
   IFS= read -r typed || die 1 'stdin closed before the magnitude checkpoint — nothing expunged'
   [[ "${typed}" == "${grand_total}" ]] \
     || die 1 'checkpoint did not match the message count — nothing expunged' \

@@ -425,6 +425,16 @@ printf '\n== typed_report\n'
 assert_eq 'a carriage return is shown, not swallowed' "received: \$'auberge\\r'" "$(typed_report $'auberge\r')"
 assert_eq 'bracketed-paste markers are shown' "received: \$'\\E[200~auberge\\E[201~'" "$(typed_report $'\e[200~auberge\e[201~')"
 
+printf '\n== drain_typeahead\n'
+
+drained_then_read() {
+  printf 'stray\n\e[A' | {
+    drain_typeahead
+    IFS= read -r line && printf 'left:%s' "${line}" || printf 'empty'
+  }
+}
+assert_eq 'input buffered before the prompt is discarded' 'empty' "$(drained_then_read)"
+
 printf '\n== expunge_ids: batched STORE, one EXPUNGE\n'
 
 # Stub himalaya to record each call's mailbox-scoped tail; step writes to stderr.
