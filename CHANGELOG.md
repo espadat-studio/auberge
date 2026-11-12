@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.22.4](https://github.com/espadat-studio/auberge/compare/v0.22.3...v0.22.4) - 2026-11-12
+
+### Apps
+
+- *(colporteur)* bump to 0.6.11 ([#1300](https://github.com/espadat-studio/auberge/pull/1300))
+- *(agent_users)* bump to 2026.11.6 ([#1299](https://github.com/espadat-studio/auberge/pull/1299))
+- *(aoe)* bump to 1.22.3 ([#1297](https://github.com/espadat-studio/auberge/pull/1297))
+- *(agent_users)* bump to 2026.11.4 ([#1296](https://github.com/espadat-studio/auberge/pull/1296))
+
+### Fixed
+
+- *(bichon)* let the operator read the email archive ([#1302](https://github.com/espadat-studio/auberge/pull/1302))
+
 ## [0.22.3](https://github.com/espadat-studio/auberge/compare/v0.22.2...v0.22.3) - 2026-11-06
 
 ### Fixed
