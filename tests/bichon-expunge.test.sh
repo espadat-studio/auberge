@@ -467,6 +467,18 @@ expunge_rc() {
 }
 assert_eq 'a failed STORE returns 1 before any expunge' '1' "$(expunge_rc)"
 
+# --flag takes several values, so without `--` the uid set is read as a second
+# flag and himalaya refuses for want of a SEQUENCE.
+# shellcheck disable=SC2329  # invoked indirectly by expunge_ids in the sourced script
+himalaya() {
+  [[ "$2" == store ]] && STORE_ARGS="$*"
+  return 0
+}
+STORE_ARGS=''
+expunge_ids 'a@x.com' 'INBOX' 7 9 2>/dev/null
+assert_eq 'the uid set follows -- so --flag cannot swallow it' \
+  'imap store --account a@x.com --mailbox INBOX --flag \Deleted -- 7,9' "${STORE_ARGS}"
+
 # shellcheck disable=SC2329  # invoked indirectly by expunge_ids in the sourced script
 himalaya() {
   [[ "$2" == expunge ]] && return 1
