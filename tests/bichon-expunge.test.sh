@@ -513,10 +513,14 @@ assert_eq 'a failed window listing names the server reply' \
   'himalaya could not list the folder: IMAP AUTHENTICATE PLAIN failed: NO Authentication failed.' \
   "$(last_sweep_detail)"
 
-fetch_account_folders 2>/dev/null || true
+SWEEP_ROWS=()
+sweep_probe_account 2>/dev/null
 assert_eq 'a failed folder listing names the server reply' \
   'himalaya could not list the folders of a@x.com: IMAP AUTHENTICATE PLAIN failed: NO Authentication failed.' \
-  "${FETCH_ERROR}"
+  "$(last_sweep_detail)"
+
+assert_eq 'a multi-line reason stays on the one row' ': caused by: a b' \
+  "$(himalaya_reason '{"error":"caused by:\n\ta\nb"}')"
 
 # shellcheck disable=SC2329  # invoked indirectly by himalaya_json in the sourced script
 himalaya() {

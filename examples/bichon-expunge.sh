@@ -369,10 +369,11 @@ himalaya_json() {
 }
 
 # The error message out of a failed himalaya_json's output, prefixed ': ' for
-# appending to a finding; nothing when there is none to read.
+# appending to a finding; nothing when there is none to read. Flattened to one
+# line: a sweep row is one tab-separated line, and a newline would split it.
 himalaya_reason() {
   local reason
-  reason=$(jq -r '.error? // empty' <<<"$1" 2>/dev/null) || return 0
+  reason=$(jq -r '.error? // empty | gsub("[\t\n]+"; " ")' <<<"$1" 2>/dev/null) || return 0
   printf '%s' "${reason:+: ${reason}}"
 }
 
