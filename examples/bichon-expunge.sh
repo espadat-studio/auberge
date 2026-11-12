@@ -700,8 +700,12 @@ fetch_account_folders() {
   fi
 
   # pipefail is set, so a jq failure on unparseable JSON propagates through
-  # sort instead of being swallowed.
-  if ! FOLDER_NAMES=$(printf '%s' "${folders_json}" | jq -r '.mailboxes[].name' | sort); then
+  # sort instead of being swallowed. INBOX is case-insensitive (RFC 3501
+  # §5.1) and himalaya v2 spells it `Inbox`, while Bichon's Synced Folders
+  # say `INBOX`: an exact comparison would read every inbox as gone upstream.
+  if ! FOLDER_NAMES=$(printf '%s' "${folders_json}" \
+    | jq -r '.mailboxes[].name | if ascii_downcase == "inbox" then "INBOX" else . end' \
+    | sort); then
     FETCH_ERROR='himalaya imap list returned JSON this script cannot read'
     return 2
   fi
@@ -1311,6 +1315,22 @@ happens, so nothing that arrived since then can be caught up in the expunge.
 EOF
 }
 
+# Discards whatever reached stdin before the prompt: keys pressed while a
+# sweep ran for minutes sit in the terminal's buffer and would prefix the
+# answer. A confirmation proves the summary was read, so only input typed
+# after the prompt may count.
+drain_typeahead() {
+  local _
+  while IFS= read -r -s -t 0.05 -n 1 _; do :; done
+}
+
+# What a refused confirmation actually read, shell-quoted so an invisible
+# byte shows: a trailing \r, or bracketed-paste markers a previous program
+# left the terminal emitting, both fail a match the operator typed right.
+typed_report() {
+  printf 'received: %q' "$1"
+}
+
 # Gate 5 — typed confirmation. TTY-only by construction.
 confirm_or_abort() {
   step 'Gate 5/5 — confirmation'
@@ -1319,10 +1339,12 @@ confirm_or_abort() {
   printf 'Type the folder name (%s) to proceed, anything else to abort: ' "${folder}" >&2
 
   local typed
+  drain_typeahead
   IFS= read -r typed || die 1 'stdin closed before confirmation — nothing expunged'
 
   [[ "${typed}" == "${folder}" ]] \
-    || die 1 'confirmation did not match the folder name — nothing expunged'
+    || die 1 'confirmation did not match the folder name — nothing expunged' \
+      "$(typed_report "${typed}")"
 }
 
 # Fills ENVELOPE_IDS from ENVELOPE_JSON after proving the listing holds UIDs,
@@ -1713,16 +1735,20 @@ sweep_confirm_or_abort() {
   printf 'This sweep deletes mail from %s account(s) on %s:\n' "${account_count}" "${host}" >&2
   printf '%s\n' "${accounts}" | sed 's/^/  /' >&2
   printf 'Type the Bichon Host name (%s) to proceed, anything else to abort: ' "${host}" >&2
+  drain_typeahead
   IFS= read -r typed || die 1 'stdin closed before the scope checkpoint — nothing expunged'
   [[ "${typed}" == "${host}" ]] \
-    || die 1 'checkpoint did not match the Host name — nothing expunged'
+    || die 1 'checkpoint did not match the Host name — nothing expunged' \
+      "$(typed_report "${typed}")"
 
   step 'Checkpoint 2/2 — magnitude'
   printf 'This permanently deletes %s message(s) across %s folder(s).\n' "${grand_total}" "${folder_count}" >&2
   printf 'Type that message count (%s) to proceed, anything else to abort: ' "${grand_total}" >&2
+  drain_typeahead
   IFS= read -r typed || die 1 'stdin closed before the magnitude checkpoint — nothing expunged'
   [[ "${typed}" == "${grand_total}" ]] \
-    || die 1 'checkpoint did not match the message count — nothing expunged'
+    || die 1 'checkpoint did not match the message count — nothing expunged' \
+      "$(typed_report "${typed}")"
 }
 
 # Expunges every ready pair, continuing past failures: one account's IMAP
