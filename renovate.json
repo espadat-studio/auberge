@@ -49,6 +49,19 @@
       "depNameTemplate": "jdx/hk",
       "datasourceTemplate": "github-releases",
       "extractVersionTemplate": "^v(?<version>.+)$"
+    },
+    {
+      "customType": "regex",
+      "description": "himalaya in the `check` job's inline mise config: tests/bichon-expunge-himalaya.test.sh proves examples/bichon-expunge.sh's calls against this binary (#1313). A pin left behind tests a CLI the operator no longer runs.",
+      "managerFilePatterns": [
+        "/^\\.github/workflows/master\\.yml$/"
+      ],
+      "matchStrings": [
+        "\"aqua:pimalaya/himalaya\" = \"(?<currentValue>[0-9.]+)\""
+      ],
+      "depNameTemplate": "pimalaya/himalaya",
+      "datasourceTemplate": "github-releases",
+      "extractVersionTemplate": "^v(?<version>.+)$"
     }
   ],
   "packageRules": [
@@ -128,9 +141,10 @@
       "minimumReleaseAge": "5 days"
     },
     {
-      "description": "hk is tooling and never reaches a Host, though its custom.regex manager puts it in the rule above: back into the tooling group, typed chore, with the per-dep message reset. One PR still keeps the binary and the pkl schema from landing half-applied.",
+      "description": "hk and himalaya are tooling and never reach a Host, though their custom.regex managers put them in the rule above: back into the tooling group, typed chore, with the per-dep message reset. One PR still keeps hk's binary and pkl schema from landing half-applied.",
       "matchDepNames": [
-        "jdx/hk"
+        "jdx/hk",
+        "pimalaya/himalaya"
       ],
       "groupName": "tooling dependencies",
       "semanticCommitType": "chore",

@@ -487,6 +487,81 @@ himalaya() {
 assert_eq 'a failed EXPUNGE after the flags returns 2' '2' "$(expunge_rc)"
 unset -f himalaya
 
+printf '\n== sweep findings carry the reason (#1313)\n'
+
+# A sweep prints each pair's stderr once, mid-scroll; the summary row is what the
+# operator reads. A generic row left them guessing at throttling when the server
+# had said "Authentication failed".
+readonly AUTH_FAILED='{"error":"IMAP AUTHENTICATE PLAIN failed: NO Authentication failed.","sources":[],"backtrace":null}'
+
+last_sweep_detail() {
+  local row="${SWEEP_ROWS[-1]}"
+  printf '%s' "${row##*$'\t'}"
+}
+
+# shellcheck disable=SC2034  # intentional: read by the sourced script's functions
+account='a@x.com' folder='INBOX' window_days=90 host='h' archive_path='/x'
+
+# shellcheck disable=SC2329  # invoked indirectly by himalaya_json in the sourced script
+himalaya() {
+  printf '%s' "${AUTH_FAILED}"
+  return 1
+}
+SWEEP_ROWS=()
+sweep_probe_pair 2>/dev/null
+assert_eq 'a failed window listing names the server reply' \
+  'himalaya could not list the folder: IMAP AUTHENTICATE PLAIN failed: NO Authentication failed.' \
+  "$(last_sweep_detail)"
+
+SWEEP_ROWS=()
+sweep_probe_account 2>/dev/null
+assert_eq 'a failed folder listing names the server reply' \
+  'himalaya could not list the folders of a@x.com: IMAP AUTHENTICATE PLAIN failed: NO Authentication failed.' \
+  "$(last_sweep_detail)"
+
+assert_eq 'a multi-line reason stays on the one row' ': caused by: a b' \
+  "$(himalaya_reason '{"error":"caused by:\n\ta\nb"}')"
+
+# shellcheck disable=SC2329  # invoked indirectly by himalaya_json in the sourced script
+himalaya() {
+  case "$*" in
+    *--before*) printf '%s' '{"ids":[{"id":7}],"uid_mode":true}' ;;
+    *)
+      printf '%s' "${AUTH_FAILED}"
+      return 1
+      ;;
+  esac
+}
+SWEEP_ROWS=()
+sweep_probe_pair 2>/dev/null
+assert_eq 'a failed deleted-flag listing names the server reply' \
+  'himalaya could not list deleted-flagged mail: IMAP AUTHENTICATE PLAIN failed: NO Authentication failed.' \
+  "$(last_sweep_detail)"
+
+# shellcheck disable=SC2329  # invoked indirectly by himalaya_json in the sourced script
+himalaya() {
+  case "$*" in
+    *--before*) printf '%s' '{"ids":[{"id":7}],"uid_mode":true}' ;;
+    *) printf '%s' '{"ids":[],"uid_mode":true}' ;;
+  esac
+}
+# shellcheck disable=SC2329  # invoked by probe_folder_coverage in the sourced script
+auberge() {
+  printf '⚠ verify-coverage failed: ssh: connect to host h port 22: Connection timed out\n' >&2
+  return 2
+}
+# shellcheck disable=SC2034  # intentional: the cache ensure_account_sidecar_rows reads
+SIDECAR_ROWS_FOR='a@x.com' SIDECAR_ROWS=$'/x/1.meta.json\tINBOX\tm1@x'
+SWEEP_ROWS=()
+assert_eq 'auberge still says why on stderr' \
+  '⚠ verify-coverage failed: ssh: connect to host h port 22: Connection timed out' \
+  "$(sweep_probe_pair 2>&1 >/dev/null | grep -F 'verify-coverage failed')"
+sweep_probe_pair 2>/dev/null
+assert_eq 'a failed identity verdict names auberge'"'"'s reason' \
+  'auberge could not produce an identity verdict: verify-coverage failed: ssh: connect to host h port 22: Connection timed out' \
+  "$(last_sweep_detail)"
+unset -f himalaya auberge
+
 printf '\n== validate_options: --account count and --sweep/--folder exclusion\n'
 
 # validate_options calls die, which exits — same subshell shape as

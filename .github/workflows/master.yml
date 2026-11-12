@@ -44,6 +44,7 @@ jobs:
             "check-shell" = { run = ["shellcheck $(git ls-files '*.sh')", "shfmt -d --apply-ignore $(git ls-files '*.sh')"] }
             "check" = { depends = "check-*" }
             [tools]
+            "aqua:pimalaya/himalaya" = "2.2.1"
             dprint = "latest"
             pipx = "latest"
             "pipx:ansible-core" = "latest"
@@ -100,6 +101,7 @@ jobs:
         run: |
           ./tests/bichon-archive.test.sh
           ./tests/bichon-expunge.test.sh
+          ./tests/bichon-expunge-himalaya.test.sh
           ./tests/bichon-uidvalidity-watch.test.sh
           ./tests/forgejo-onboard.test.sh
           ./tests/immich-b2-prune.test.sh

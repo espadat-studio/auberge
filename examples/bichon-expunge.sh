@@ -54,7 +54,12 @@
 #     configured, with an account named after the mailbox email address:
 #     bichon keys the Email Archive by email (see sanitize_email in
 #     ansible/roles/bichon/templates/bichon-archive.sh.j2), and this script
-#     passes one value to both himalaya --account and the archive path
+#     passes one value to both himalaya --account and the archive path.
+#     Each call runs the account's password.command afresh, about 30 per
+#     sweep, and it must exit non-zero when it produces no secret: a
+#     pipeline exits with its last stage, so `<store> get x | head -n 1`
+#     hides a failed lookup, and the server rejects the empty password
+#     as "Authentication failed". Prefix it with `set -o pipefail;`.
 #   - jq
 #   - key-based ssh access to the Bichon Host, with journal/systemctl read
 #   - that ssh user in the `bichon` group: the Email Archive is 0750
@@ -164,6 +169,7 @@ SIDECAR_ROWS_FOR=''
 # Gate 3's verdict for the resolved (account, folder), plus the one count only
 # the flagged verdict needs — see probe_folder_coverage for the vocabulary.
 PAIR_STATUS=''
+PAIR_REASON=''
 ALREADY_DELETED=0
 
 # Set by collect_envelope_ids: the validated ids the expunge will flag, or the
@@ -350,15 +356,25 @@ himalaya_account_names() {
 
 # himalaya v2 with --json prints a failure as a JSON object on stdout, not on
 # stderr. A caller capturing stdout would swallow the reason and then point the
-# operator at a stderr that holds nothing, so forward it there on failure.
+# operator at a stderr that holds nothing, so forward it there on failure. stdout
+# still carries it, for a caller that records the reason (himalaya_reason).
 himalaya_json() {
   local out rc=0
   out=$(himalaya --json "$@") || rc=$?
+  printf '%s' "${out}"
   if ((rc != 0)); then
     printf 'himalaya: %s\n' "${out}" >&2
     return "${rc}"
   fi
-  printf '%s' "${out}"
+}
+
+# The error message out of a failed himalaya_json's output, prefixed ': ' for
+# appending to a finding; nothing when there is none to read. Flattened to one
+# line: a sweep row is one tab-separated line, and a newline would split it.
+himalaya_reason() {
+  local reason
+  reason=$(jq -r '.error? // empty | gsub("[\t\n]+"; " ")' <<<"$1" 2>/dev/null) || return 0
+  printf '%s' "${reason:+: ${reason}}"
 }
 
 # bichon names each Email Archive directory after the mailbox email address,
@@ -695,7 +711,7 @@ fetch_account_folders() {
   # ones `imap search` and `imap expunge` take back verbatim.
   local folders_json
   if ! folders_json=$(himalaya_json imap list --all --account "${account}"); then
-    FETCH_ERROR="himalaya could not list the folders of ${account}"
+    FETCH_ERROR="himalaya could not list the folders of ${account}$(himalaya_reason "${folders_json}")"
     return 1
   fi
 
@@ -1099,10 +1115,14 @@ REMOTE
 #   err-sidecars  ssh or the Host could not read the archived sidecars
 #   err-identity  auberge could not produce an identity verdict
 #
+# An err-* status sets PAIR_REASON to what the failing tool said, prefixed
+# ': ', so a sweep row can say why instead of only what failed.
+#
 # Always returns 0 — the status is the result. The single target dies on
 # anything but ok (render_pair_verdict_or_die); the sweep records a row.
 probe_folder_coverage() {
   PAIR_STATUS=''
+  PAIR_REASON=''
   ALREADY_DELETED=0
   ENVELOPE_JSON=''
   IMAP_COUNT=0
@@ -1120,6 +1140,7 @@ probe_folder_coverage() {
     --mailbox "${folder}" \
     --before "${CUTOFF_DATE}"); then
     PAIR_STATUS='err-list'
+    PAIR_REASON=$(himalaya_reason "${ENVELOPE_JSON}")
     return 0
   fi
 
@@ -1140,6 +1161,7 @@ probe_folder_coverage() {
     --mailbox "${folder}" \
     --deleted); then
     PAIR_STATUS='err-flagged'
+    PAIR_REASON=$(himalaya_reason "${deleted_json}")
     return 0
   fi
   ALREADY_DELETED=$(printf '%s' "${deleted_json}" | jq '.ids | length')
@@ -1178,16 +1200,25 @@ probe_folder_coverage() {
   # accumulates after a folder's first expunge (#400). Identity proves the
   # archive holds what the UID-synced Bichon store holds, which the
   # watermark cannot fool.
-  local verdict_json rc=0
+  # auberge says why it failed on stderr. Held until the call returns, then
+  # shown, so its last line can also go in the sweep row.
+  local verdict_json verdict_stderr rc=0
+  verdict_stderr=$(mktemp)
   verdict_json=$(auberge bichon verify-coverage \
     --host "${host}" \
     --account "${account}" \
     --folder "${folder}" \
     --before "${CUTOFF_DATE}" \
     --archive-path "${archive_path}" \
-    --output json) || rc=$?
+    --output json 2>"${verdict_stderr}") || rc=$?
+  cat -- "${verdict_stderr}" >&2
+  local reason
+  reason=$(tail -n 1 -- "${verdict_stderr}")
+  rm -f -- "${verdict_stderr}"
   if ((rc > 1)); then
     PAIR_STATUS='err-identity'
+    reason="${reason#⚠ }"
+    PAIR_REASON="${reason:+: ${reason}}"
     return 0
   fi
   if ! parse_identity_verdict <<<"${verdict_json}"; then
@@ -1609,15 +1640,15 @@ sweep_probe_pair() {
       return 0
       ;;
     err-identity)
-      sweep_record finding "${account}" "${folder}" 0 'auberge could not produce an identity verdict'
+      sweep_record finding "${account}" "${folder}" 0 "auberge could not produce an identity verdict${PAIR_REASON}"
       return 0
       ;;
     err-list)
-      sweep_record finding "${account}" "${folder}" 0 'himalaya could not list the folder'
+      sweep_record finding "${account}" "${folder}" 0 "himalaya could not list the folder${PAIR_REASON}"
       return 0
       ;;
     err-flagged)
-      sweep_record finding "${account}" "${folder}" 0 'himalaya could not list deleted-flagged mail'
+      sweep_record finding "${account}" "${folder}" 0 "himalaya could not list deleted-flagged mail${PAIR_REASON}"
       return 0
       ;;
     err-sidecars)
