@@ -196,14 +196,14 @@ fn email_for(safe: &str, safe_to_email: &HashMap<String, &String>) -> String {
 }
 
 #[derive(Debug, PartialEq, Eq)]
-pub struct UnitState {
-    pub running: bool,
-    pub succeeded: bool,
+struct UnitState {
+    running: bool,
+    succeeded: bool,
 }
 
-// A start queued behind bichon.service leaves the unit inactive with a
-// pending job, so the job counts as running too.
-pub fn parse_unit_state(stdout: &str) -> UnitState {
+/// A start queued behind bichon.service leaves the unit inactive with a
+/// pending job, so the job counts as running too.
+fn parse_unit_state(stdout: &str) -> UnitState {
     let prop = |key: &str| {
         stdout
             .lines()
@@ -239,7 +239,11 @@ impl<'a> PassTracker<'a> {
     }
 
     fn render(&self) -> String {
-        let mut msg = format!("{}/{} accounts", self.finished, self.total);
+        let mut msg = format!(
+            "{}/{} accounts",
+            self.finished,
+            self.total.max(self.finished)
+        );
         if let Some(email) = &self.current {
             msg.push_str(&format!(", {email}"));
         }
@@ -420,7 +424,9 @@ pub fn execute_rescan(
     Ok(RescanOutcome::Ran(RescanRun {
         accounts,
         total_failures,
-        service_success: state.succeeded,
+        // The script logs total_failures before every exit 0, so a success
+        // without it is a start systemd dropped, not a pass that ran.
+        service_success: state.succeeded && total_failures.is_some(),
     }))
 }
 
@@ -753,6 +759,45 @@ mod tests {
         assert_eq!(run.total_failures, None);
         assert_eq!(run.status(), RescanStatus::OperationalError);
         assert_eq!(run.status().exit_code(), 2);
+    }
+
+    // A queued start that systemd drops because bichon.service failed leaves
+    // the unit inactive with its previous Result, usually success. The script
+    // never ran, so it never logged total_failures, and that is not clean.
+    #[test]
+    fn a_start_dropped_by_a_failed_dependency_is_operational() {
+        let mock = MockSshSession::new();
+        stage_through_start(&mock, 1);
+        stage_poll(
+            &mock,
+            FINISHED,
+            "Dependency failed for Bichon email archive.\n",
+        );
+
+        let (outcome, _) = rescan(&mock, &["a@x.io"], &["a@x.io"]);
+
+        let RescanOutcome::Ran(run) = outcome.unwrap() else {
+            panic!("expected Ran");
+        };
+        assert_eq!(run.status(), RescanStatus::OperationalError);
+        assert_eq!(run.status().exit_code(), 2);
+    }
+
+    #[test]
+    fn the_account_total_never_reads_below_the_accounts_finished() {
+        let mock = MockSshSession::new();
+        stage_through_start(&mock, 0);
+        stage_poll(
+            &mock,
+            FINISHED,
+            "account=a@x.io processed=1 skipped=0 deduped=0 failures=0\n\
+             account=new@x.io processed=1 skipped=0 deduped=0 failures=0\n\
+             total_failures=0\n",
+        );
+
+        let (_, events) = rescan(&mock, &[], &["a@x.io"]);
+
+        assert_eq!(events.last(), Some(&started("2/2 accounts")));
     }
 
     #[test]

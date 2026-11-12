@@ -68,6 +68,7 @@ async fn rescan_inner(
     };
     let outcome = execute_rescan(&ssh, &mut progress, &selected, &known, POLL_INTERVAL);
     progress.task_done();
+    crate::signal::clear_interrupt_note();
 
     match outcome? {
         RescanOutcome::Refused { stale_sidecars } => {

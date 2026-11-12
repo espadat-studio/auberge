@@ -46,6 +46,10 @@ pub fn with_ctrlc<F: FnOnce() -> Result<()>>(f: F) -> Result<()> {
     f()
 }
 
+pub fn clear_interrupt_note() {
+    take_interrupt_note();
+}
+
 /// Ctrl-C prints `note` after clearing the bar, for a command whose work
 /// outlives it on the host.
 pub fn on_interrupt_note(note: &str) -> Result<()> {
