@@ -100,7 +100,6 @@ pub struct StoreEnvelope {
 #[derive(Debug, Serialize)]
 struct SearchFilter {
     account_ids: [u64; 1],
-    before: i64,
 }
 
 #[derive(Debug, Serialize)]
@@ -178,21 +177,15 @@ impl BichonApiClient {
         Ok(envelope.items)
     }
 
-    /// Every store envelope of one account whose message Date is <= `before_ms`,
-    /// across all folders. Bichon's `before` bound is inclusive; callers pass
-    /// `cutoff_midnight_ms - 1` to mean "strictly older than the cutoff date".
-    pub async fn search_messages(
-        &self,
-        account_id: u64,
-        before_ms: i64,
-    ) -> Result<Vec<StoreEnvelope>> {
+    /// Every store envelope of one account, across all folders and dates:
+    /// contested Message-IDs count claimants outside any window (ADR-0088).
+    pub async fn search_messages(&self, account_id: u64) -> Result<Vec<StoreEnvelope>> {
         let mut envelopes = Vec::new();
         let mut page = 1u64;
         loop {
             let request = SearchRequest {
                 filter: SearchFilter {
                     account_ids: [account_id],
-                    before: before_ms,
                 },
                 page,
                 page_size: SEARCH_PAGE_SIZE,
@@ -391,7 +384,7 @@ mod tests {
         Mock::given(method("POST"))
             .and(path("/api/v1/search-messages"))
             .and(body_partial_json(json!({
-                "filter": {"account_ids": [7], "before": 999},
+                "filter": {"account_ids": [7]},
                 "page": 1,
                 "sort_by": "DATE",
                 "desc": false
@@ -418,7 +411,7 @@ mod tests {
             .await;
 
         let client = BichonApiClient::new(server.uri(), "token").unwrap();
-        let envelopes = client.search_messages(7, 999).await.unwrap();
+        let envelopes = client.search_messages(7).await.unwrap();
 
         assert_eq!(
             envelopes,
@@ -455,7 +448,7 @@ mod tests {
             .await;
 
         let client = BichonApiClient::new(server.uri(), "token").unwrap();
-        let envelopes = client.search_messages(7, 999).await.unwrap();
+        let envelopes = client.search_messages(7).await.unwrap();
         assert!(envelopes.is_empty());
     }
 
@@ -487,7 +480,7 @@ mod tests {
             .await;
 
         let client = BichonApiClient::new(server.uri(), "token").unwrap();
-        let envelopes = client.search_messages(7, 999).await.unwrap();
+        let envelopes = client.search_messages(7).await.unwrap();
         assert_eq!(envelopes.len(), 1);
     }
 

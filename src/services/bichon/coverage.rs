@@ -1,5 +1,5 @@
 use crate::services::bichon::api::StoreEnvelope;
-use chrono::DateTime;
+use chrono::{DateTime, Datelike, NaiveDate};
 use eyre::Result;
 use serde::Serialize;
 use std::collections::{HashMap, HashSet};
@@ -172,25 +172,41 @@ fn path_year_month(path: &str) -> Option<(i32, u32)> {
     Some((year, month))
 }
 
-/// Compares one folder's in-window store messages against the archive's
-/// sidecar identities. `envelopes` is account-wide but already
-/// window-filtered by the API query; `rows` is the account-wide sidecar walk.
-/// Scoping happens here: exact folder match on both sides, and sidecars kept
-/// through the cutoff month — the path encodes the message Date at month
-/// granularity, the same axis the store's `date` filter bounds.
+/// Compares one folder's in-window store messages against the account's
+/// archived identities (ADR-0088). `envelopes` is the whole account's store,
+/// unwindowed; `rows` is the account-wide sidecar walk.
 ///
-/// A scoped sidecar with no `message_id` predates Message-ID keying: that is
-/// an unknown, not a zero, so it fails the comparison by name rather than
-/// undercounting the archive into a phantom gap.
+/// The window is "dated strictly before the cutoff day", the bound Bichon's
+/// `before` filter would apply to the same `date` field. It scopes only which
+/// store messages are judged. Their evidence is account-wide: a body under
+/// any folder or month vouches, since the sidecar's folder is first-sight
+/// restore metadata and a moved body is deduped, never re-archived. A
+/// Message-ID's claimants are likewise counted across the whole store, so a
+/// self-sent mail's other copy, in another folder or past the cutoff, cannot
+/// borrow the one archived body.
+///
+/// The synthetic/sha256 count and the unkeyed-sidecar refusal stay scoped to
+/// the folder through the cutoff month: a sidecar with no `message_id` there
+/// is an unknown, not a zero, so it fails by name.
 pub fn compare_coverage(
     envelopes: &[StoreEnvelope],
     rows: &[SidecarRow],
     folder: &str,
-    cutoff_ym: (i32, u32),
+    cutoff: NaiveDate,
 ) -> Result<CoverageReport> {
+    let cutoff_ms = cutoff
+        .and_hms_opt(0, 0, 0)
+        .expect("midnight is a valid time")
+        .and_utc()
+        .timestamp_millis();
+    let cutoff_ym = (cutoff.year(), cutoff.month());
+
     let mut archived: HashMap<&str, usize> = HashMap::new();
     let mut archive_sha256 = 0usize;
     for row in rows {
+        if !row.message_id.is_empty() {
+            *archived.entry(row.message_id.as_str()).or_default() += 1;
+        }
         if row.folder != folder {
             continue;
         }
@@ -209,29 +225,24 @@ pub fn compare_coverage(
         if row.message_id.starts_with("sha256:") {
             archive_sha256 += 1;
         }
-        *archived.entry(row.message_id.as_str()).or_default() += 1;
     }
 
+    let mut account_claims: HashMap<String, usize> = HashMap::new();
     let mut store_messages = 0usize;
     let mut store_synthetic = 0usize;
     let mut claims: Vec<(String, &StoreEnvelope)> = Vec::new();
-    let mut store_counts: HashMap<String, usize> = HashMap::new();
     for envelope in envelopes {
-        match envelope.mailbox_name.as_deref() {
-            Some(name) if name == folder => {}
-            Some(_) => continue,
-            None => eyre::bail!(
-                "the store returned an envelope without a mailbox_name (uid {}); refusing to attribute it to a folder",
-                envelope.uid
-            ),
-        }
-        store_messages += 1;
-        match canonicalize_store_id(&envelope.message_id) {
-            StoreId::Synthetic => store_synthetic += 1,
-            StoreId::Canonical(id) => {
-                *store_counts.entry(id.clone()).or_default() += 1;
-                claims.push((id, envelope));
+        let StoreId::Canonical(id) = canonicalize_store_id(&envelope.message_id) else {
+            if in_folder_window(envelope, folder, cutoff_ms)? {
+                store_messages += 1;
+                store_synthetic += 1;
             }
+            continue;
+        };
+        *account_claims.entry(id.clone()).or_default() += 1;
+        if in_folder_window(envelope, folder, cutoff_ms)? {
+            store_messages += 1;
+            claims.push((id, envelope));
         }
     }
 
@@ -240,7 +251,7 @@ pub fn compare_coverage(
     let mut contested = Vec::new();
     let mut seen_contested = HashSet::new();
     for (id, envelope) in claims {
-        let store = store_counts[&id];
+        let store = account_claims[&id];
         let archive = archived.get(id.as_str()).copied().unwrap_or(0);
         if archive == 0 {
             missing.push(MissingMessage {
@@ -271,6 +282,19 @@ pub fn compare_coverage(
     })
 }
 
+fn in_folder_window(envelope: &StoreEnvelope, folder: &str, cutoff_ms: i64) -> Result<bool> {
+    if envelope.date >= cutoff_ms {
+        return Ok(false);
+    }
+    match envelope.mailbox_name.as_deref() {
+        Some(name) => Ok(name == folder),
+        None => eyre::bail!(
+            "the store returned an envelope without a mailbox_name (uid {}); refusing to attribute it to a folder",
+            envelope.uid
+        ),
+    }
+}
+
 fn iso_date(epoch_ms: i64) -> String {
     DateTime::from_timestamp_millis(epoch_ms)
         .map(|dt| dt.format("%Y-%m-%d").to_string())
@@ -298,7 +322,90 @@ mod tests {
         }
     }
 
-    const CUTOFF: (i32, u32) = (2026, 5);
+    const CUTOFF: NaiveDate = NaiveDate::from_ymd_opt(2026, 5, 13).unwrap();
+    const IN_WINDOW: i64 = 1_767_225_600_000;
+    const AFTER_CUTOFF: i64 = 1_790_000_000_000;
+
+    #[test]
+    fn a_message_archived_under_another_folder_is_matched() {
+        let report = compare_coverage(
+            &[envelope("moved@x.io", Some("INBOX"), IN_WINDOW, 1)],
+            &[row("/a/2024/01/1.meta.json", "Archive.2024", "moved@x.io")],
+            "INBOX",
+            CUTOFF,
+        )
+        .unwrap();
+
+        assert_eq!(report.matched, 1);
+        assert!(report.missing.is_empty());
+        assert_eq!(report.status(), CoverageStatus::Covered);
+    }
+
+    #[test]
+    fn a_cross_folder_claimant_makes_one_body_a_contested_gap() {
+        let report = compare_coverage(
+            &[
+                envelope("self@x.io", Some("INBOX"), IN_WINDOW, 1),
+                envelope("self@x.io", Some("Sent"), IN_WINDOW, 2),
+            ],
+            &[row("/a/2026/01/1.meta.json", "Sent", "self@x.io")],
+            "INBOX",
+            CUTOFF,
+        )
+        .unwrap();
+
+        assert_eq!(report.store_messages, 1);
+        assert_eq!(report.matched, 0);
+        assert_eq!(
+            report.unverifiable.contested,
+            vec![ContestedId {
+                message_id: "self@x.io".to_string(),
+                store: 2,
+                archive: 1,
+            }]
+        );
+        assert_eq!(report.status(), CoverageStatus::Gap);
+    }
+
+    #[test]
+    fn a_claimant_outside_the_window_still_counts() {
+        let report = compare_coverage(
+            &[
+                envelope("x@x.io", Some("INBOX"), IN_WINDOW, 1),
+                envelope("x@x.io", Some("INBOX"), AFTER_CUTOFF, 2),
+            ],
+            &[row("/a/2026/01/1.meta.json", "INBOX", "x@x.io")],
+            "INBOX",
+            CUTOFF,
+        )
+        .unwrap();
+
+        assert_eq!(report.store_messages, 1);
+        assert_eq!(report.unverifiable.contested[0].store, 2);
+        assert_eq!(report.status(), CoverageStatus::Gap);
+    }
+
+    #[test]
+    fn a_message_dated_at_the_cutoff_midnight_is_outside_the_window() {
+        let midnight = CUTOFF
+            .and_hms_opt(0, 0, 0)
+            .unwrap()
+            .and_utc()
+            .timestamp_millis();
+        let report = compare_coverage(
+            &[
+                envelope("in@x.io", Some("INBOX"), midnight - 1, 1),
+                envelope("out@x.io", Some("INBOX"), midnight, 2),
+            ],
+            &[],
+            "INBOX",
+            CUTOFF,
+        )
+        .unwrap();
+
+        assert_eq!(report.store_messages, 1);
+        assert_eq!(report.missing[0].message_id, "in@x.io");
+    }
 
     #[test]
     fn every_store_message_archived_is_covered() {
@@ -428,34 +535,6 @@ mod tests {
         assert_eq!(report.status(), CoverageStatus::Covered);
     }
 
-    // A sidecar past the cutoff month is not evidence for the window: the
-    // path month mirrors the message Date, so an in-window message can never
-    // legitimately live there.
-    #[test]
-    fn a_sidecar_past_the_cutoff_month_is_not_evidence() {
-        let report = compare_coverage(
-            &[envelope("a@x.io", Some("INBOX"), 0, 1)],
-            &[row("/a/2026/06/1.meta.json", "INBOX", "a@x.io")],
-            "INBOX",
-            CUTOFF,
-        )
-        .unwrap();
-        assert_eq!(report.missing.len(), 1);
-        assert_eq!(report.status(), CoverageStatus::Gap);
-    }
-
-    #[test]
-    fn the_cutoff_month_itself_still_counts() {
-        let report = compare_coverage(
-            &[envelope("a@x.io", Some("INBOX"), 0, 1)],
-            &[row("/a/2026/05/1.meta.json", "INBOX", "a@x.io")],
-            "INBOX",
-            CUTOFF,
-        )
-        .unwrap();
-        assert_eq!(report.matched, 1);
-    }
-
     #[test]
     fn an_unkeyed_sidecar_in_scope_fails_by_name() {
         let err = compare_coverage(
@@ -492,6 +571,21 @@ mod tests {
         let err =
             compare_coverage(&[envelope("a@x.io", None, 0, 7)], &[], "INBOX", CUTOFF).unwrap_err();
         assert!(format!("{err}").contains("uid 7"));
+    }
+
+    #[test]
+    fn an_envelope_past_the_cutoff_without_a_mailbox_name_does_not_block() {
+        let report = compare_coverage(
+            &[
+                envelope("a@x.io", Some("INBOX"), IN_WINDOW, 1),
+                envelope("b@x.io", None, AFTER_CUTOFF, 2),
+            ],
+            &[row("/a/2026/01/1.meta.json", "INBOX", "a@x.io")],
+            "INBOX",
+            CUTOFF,
+        )
+        .unwrap();
+        assert_eq!(report.status(), CoverageStatus::Covered);
     }
 
     #[test]

@@ -14,11 +14,13 @@ Proves, message by message, that the Email Archive covers one folder's mail olde
 
 Counts are not identities: the archive is append-only, so after a folder's first expunge it permanently out-counts the mailbox for any window, and a count-based check passes on surplus while specific messages have no archived counterpart. The one class of mail that produces such messages is exactly the one the archive's hourly run cannot see: mail entering a Synced Folder below the [Archive Cursor](/cli-reference/bichon/rescan/) (moved, bulk-imported, or backdated — a message-date watermark misses all three).
 
-Bichon's Internal Store syncs by UID and has no date blindspot, so it knows that mail. The check compares the store's in-window envelopes for the folder against the sidecars' canonical `message_id` set (ADR-0013) and names every store message the archive cannot vouch for.
+Bichon's Internal Store syncs by UID and has no date blindspot, so it knows that mail. The check compares the store's in-window envelopes for the folder against the canonical `message_id` of every sidecar in the account (ADR-0013, ADR-0088) and names every store message the archive cannot vouch for.
+
+Evidence is per account, not per folder. A sidecar's `folder` records where the body was first seen and is used only to restore it. A message moved after archiving keeps that one sidecar, so its new folder is covered by it.
 
 A message with no `Message-ID` header is unverifiable by identity — the store holds a synthetic id that regenerates on re-import, the sidecar a `sha256:` body hash, and neither side can compute the other's. Those are bounded by count instead: more synthetic store messages in the window than `sha256:`-keyed sidecars in scope is a gap, and both counts appear in the report.
 
-A Message-ID claimed more than once is also unverifiable by identity. That covers two store messages in the folder sharing one, or two archived bodies sharing one. Any sender can write any Message-ID, so a match cannot show which body belongs to which message. Each such id is listed under `unverifiable.contested` with both counts, and is a gap when the store count is higher.
+A Message-ID claimed more than once is also unverifiable by identity. That covers two store messages in the account sharing one, or two archived bodies sharing one. Claimants are counted across every folder and date, not just the window: a self-sent mail's Sent copy cannot lend its archived body to the INBOX copy. Any sender can write any Message-ID, so a match cannot show which body belongs to which message. Each such id is listed under `unverifiable.contested` with both counts, and is a gap when the store count is higher.
 
 Refuses to answer (exit 2) when a scoped sidecar lacks `message_id` — that is an unknown, not a zero — naming the file; one `bichon-archive.service` run backfills it.
 
