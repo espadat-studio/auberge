@@ -21,6 +21,10 @@ The archive cursor is a **message-date watermark**: each run asks Bichon only fo
 
 `rescan` resets the per-account cursor to `0` as the `bichon` user (the file is `0600 bichon:bichon`; a root write would change its owner) and starts `bichon-archive.service`, waiting for the full pass to complete. The archive's skip guard keeps the pass idempotent: already-archived bodies are skipped, only missing ones download. A second consecutive run reports `processed=0`.
 
+While the pass runs, stderr shows the accounts finished out of the total, the account being worked on, and its search page out of its total pages. Each finished account prints its `processed`, `skipped` and `deduped` counts. Hosts whose archive script predates the page log line show account progress only; redeploy bichon to get pages. No bar is drawn under `--quiet` or when stderr is not a terminal.
+
+Ctrl-C stops waiting, not the pass: it keeps running on the host. Follow it there with `journalctl -fu bichon-archive.service`.
+
 The service processes every account each run; `--account` chooses whose cursors are reset. The report covers all accounts, flagging which were reset.
 
 Refuses to run when:

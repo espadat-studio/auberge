@@ -44,7 +44,9 @@ impl TerminalProgress {
         }
     }
 
-    #[cfg(test)]
+    /// Draws nothing: for `--quiet`, where clig.dev wants no bar. Every
+    /// line printed through it is dropped too, so it suits a runner whose
+    /// lines are all chrome.
     pub fn hidden(initial_message: &str) -> Self {
         let pb = ProgressBar::hidden();
         pb.set_message(initial_message.to_string());

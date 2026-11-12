@@ -1,12 +1,15 @@
+use crate::services::progress::Progress;
 use crate::services::ssh::SshSession;
 use eyre::Result;
 use serde::Serialize;
 use std::collections::{HashMap, HashSet};
+use std::time::Duration;
 
 pub const ARCHIVE_DIR: &str = "/var/lib/bichon-archive";
 pub const STATE_DIR: &str = "/var/lib/bichon-archive/.state";
 pub const ARCHIVE_SERVICE: &str = "bichon-archive.service";
 pub const ARCHIVE_USER: &str = "bichon";
+pub const POLL_INTERVAL: Duration = Duration::from_secs(2);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RescanStatus {
@@ -144,10 +147,7 @@ pub fn parse_run_report(
     known_emails: &[String],
     reset_emails: &HashSet<String>,
 ) -> (Vec<AccountReport>, Option<u64>) {
-    let safe_to_email: HashMap<String, &String> = known_emails
-        .iter()
-        .map(|email| (sanitize_email(email), email))
-        .collect();
+    let safe_to_email = emails_by_safe_name(known_emails);
     let reset_safe: HashSet<String> = reset_emails.iter().map(|e| sanitize_email(e)).collect();
 
     let mut accounts = Vec::new();
@@ -168,9 +168,7 @@ pub fn parse_run_report(
         ) else {
             continue;
         };
-        let email = safe_to_email
-            .get(safe)
-            .map_or_else(|| safe.to_string(), |e| (*e).clone());
+        let email = email_for(safe, &safe_to_email);
         accounts.push(AccountReport {
             cursor_reset: reset_safe.contains(safe),
             email,
@@ -184,10 +182,159 @@ pub fn parse_run_report(
     (accounts, total_failures)
 }
 
+fn emails_by_safe_name(known_emails: &[String]) -> HashMap<String, &String> {
+    known_emails
+        .iter()
+        .map(|email| (sanitize_email(email), email))
+        .collect()
+}
+
+fn email_for(safe: &str, safe_to_email: &HashMap<String, &String>) -> String {
+    safe_to_email
+        .get(safe)
+        .map_or_else(|| safe.to_string(), |e| (*e).clone())
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub struct UnitState {
+    pub running: bool,
+    pub succeeded: bool,
+}
+
+// A start queued behind bichon.service leaves the unit inactive with a
+// pending job, so the job counts as running too.
+pub fn parse_unit_state(stdout: &str) -> UnitState {
+    let prop = |key: &str| {
+        stdout
+            .lines()
+            .find_map(|l| l.strip_prefix(key)?.strip_prefix('='))
+            .map_or("", str::trim)
+    };
+    UnitState {
+        running: !prop("Job").is_empty() || is_service_active(prop("ActiveState")),
+        succeeded: prop("Result") == "success" && prop("ActiveState") != "failed",
+    }
+}
+
+/// Where the pass is, read off the archive script's journal lines: the
+/// account start line, one line per search page, and the account summary.
+/// A host whose script predates the page line yields account progress only.
+struct PassTracker<'a> {
+    safe_to_email: HashMap<String, &'a String>,
+    total: usize,
+    finished: usize,
+    current: Option<String>,
+    page: Option<(u64, u64)>,
+}
+
+impl<'a> PassTracker<'a> {
+    fn new(known_emails: &'a [String]) -> Self {
+        Self {
+            safe_to_email: emails_by_safe_name(known_emails),
+            total: known_emails.len(),
+            finished: 0,
+            current: None,
+            page: None,
+        }
+    }
+
+    fn render(&self) -> String {
+        let mut msg = format!("{}/{} accounts", self.finished, self.total);
+        if let Some(email) = &self.current {
+            msg.push_str(&format!(", {email}"));
+        }
+        if let Some((page, total_pages)) = self.page {
+            msg.push_str(&format!(" page {page}/{total_pages}"));
+        }
+        msg
+    }
+
+    fn observe(&mut self, line: &str, progress: &mut dyn Progress) {
+        let Some(safe) = token_value(line, "account") else {
+            return;
+        };
+        let email = email_for(safe, &self.safe_to_email);
+        if let (Some(page), Some(total_pages)) =
+            (token_u64(line, "page"), token_u64(line, "total_pages"))
+        {
+            self.current = Some(email);
+            self.page = Some((page, total_pages));
+        } else if token_u64(line, "cursor_ms").is_some() {
+            self.current = Some(email);
+            self.page = None;
+        } else if let (Some(processed), Some(skipped), Some(failures)) = (
+            token_u64(line, "processed"),
+            token_u64(line, "skipped"),
+            token_u64(line, "failures"),
+        ) {
+            self.finished += 1;
+            self.current = None;
+            self.page = None;
+            let deduped =
+                token_u64(line, "deduped").map_or_else(String::new, |d| format!(" deduped={d}"));
+            let summary = format!("{email}: processed={processed} skipped={skipped}{deduped}");
+            if failures > 0 {
+                progress.error(&format!("{summary} failures={failures}"));
+            } else {
+                progress.success(&summary);
+            }
+        } else {
+            return;
+        }
+        progress.task_started(&self.render());
+    }
+}
+
+fn read_unit_state(ssh: &dyn SshSession) -> Result<UnitState> {
+    let show = ssh.run(&format!(
+        "sudo systemctl show {ARCHIVE_SERVICE} -p ActiveState -p Job -p Result"
+    ))?;
+    if !show.success {
+        eyre::bail!(
+            "could not read the state of {ARCHIVE_SERVICE}: {}",
+            show.stderr_str().trim()
+        );
+    }
+    Ok(parse_unit_state(&show.stdout_str()))
+}
+
+/// Reads the journal past `cursor`, feeds each new line to the tracker and
+/// appends it to `journal`, and answers the cursor the next read starts after.
+fn drain_journal(
+    ssh: &dyn SshSession,
+    cursor: String,
+    journal: &mut String,
+    tracker: &mut PassTracker,
+    progress: &mut dyn Progress,
+) -> Result<String> {
+    let read = ssh.run(&format!(
+        "sudo journalctl -u {ARCHIVE_SERVICE} --after-cursor '{cursor}' -o cat --no-pager --quiet --show-cursor"
+    ))?;
+    if !read.success {
+        eyre::bail!(
+            "could not read the archive run journal: {}",
+            read.stderr_str().trim()
+        );
+    }
+    let stdout = read.stdout_str();
+    for line in stdout.lines().filter(|l| !l.starts_with("-- cursor: ")) {
+        tracker.observe(line, progress);
+        journal.push_str(line);
+        journal.push('\n');
+    }
+    let Some(next) = parse_journal_cursor(&stdout) else {
+        return Ok(cursor);
+    };
+    validate_cursor_for_shell(&next)?;
+    Ok(next)
+}
+
 pub fn execute_rescan(
     ssh: &dyn SshSession,
+    progress: &mut dyn Progress,
     emails_to_reset: &[String],
     known_emails: &[String],
+    poll: Duration,
 ) -> Result<RescanOutcome> {
     for email in emails_to_reset {
         validate_email_for_shell(email)?;
@@ -239,34 +386,48 @@ pub fn execute_rescan(
     };
     validate_cursor_for_shell(&cursor)?;
 
-    // Type=oneshot: start blocks until the archive pass finishes, and a
-    // non-zero exit is a verdict to report, not an error to bail on.
-    let start = ssh.run(&format!("sudo systemctl start {ARCHIVE_SERVICE}"))?;
-
-    let journal = ssh.run(&format!(
-        "sudo journalctl -u {ARCHIVE_SERVICE} --after-cursor '{cursor}' -o cat --no-pager"
+    // Type=oneshot: a blocking start would hide the pass until it ends, so
+    // it is queued and the journal is polled instead. A non-zero exit of the
+    // pass is a verdict to report, read from the unit's Result once it stops.
+    let start = ssh.run(&format!(
+        "sudo systemctl start --no-block {ARCHIVE_SERVICE}"
     ))?;
-    if !journal.success {
+    if !start.success {
         eyre::bail!(
-            "could not read the archive run journal: {}",
-            journal.stderr_str().trim()
+            "could not start {ARCHIVE_SERVICE}: {}",
+            start.stderr_str().trim()
         );
     }
 
+    let mut tracker = PassTracker::new(known_emails);
+    progress.task_started(&tracker.render());
+    let mut journal = String::new();
+    let mut cursor = cursor;
+    // State before journal: once the unit reads as stopped, the read that
+    // follows still sees every line the pass logged.
+    let state = loop {
+        let state = read_unit_state(ssh)?;
+        cursor = drain_journal(ssh, cursor, &mut journal, &mut tracker, progress)?;
+        if !state.running {
+            break state;
+        }
+        std::thread::sleep(poll);
+    };
+
     let reset_set: HashSet<String> = emails_to_reset.iter().cloned().collect();
-    let (accounts, total_failures) =
-        parse_run_report(&journal.stdout_str(), known_emails, &reset_set);
+    let (accounts, total_failures) = parse_run_report(&journal, known_emails, &reset_set);
 
     Ok(RescanOutcome::Ran(RescanRun {
         accounts,
         total_failures,
-        service_success: start.success,
+        service_success: state.succeeded,
     }))
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::services::progress::{MockProgress, ProgressEvent};
     use crate::services::ssh::{CommandResult, MockSshSession, SshOp};
 
     fn ok_with_stdout(stdout: &str) -> CommandResult {
@@ -300,7 +461,7 @@ mod tests {
             "/var/lib/bichon-archive/a/2024/01/1.meta.json\n/var/lib/bichon-archive/a/2024/02/2.meta.json\n",
         ));
 
-        let outcome = execute_rescan(&mock, &emails(&["a@x.io"]), &emails(&["a@x.io"])).unwrap();
+        let outcome = rescan(&mock, &["a@x.io"], &["a@x.io"]).0.unwrap();
 
         assert_eq!(
             outcome,
@@ -329,7 +490,7 @@ mod tests {
         mock.stage_run_result(ok_with_stdout(""));
         mock.stage_run_result(ok_with_stdout("active\n"));
 
-        let outcome = execute_rescan(&mock, &emails(&["a@x.io"]), &emails(&["a@x.io"])).unwrap();
+        let outcome = rescan(&mock, &["a@x.io"], &["a@x.io"]).0.unwrap();
 
         assert_eq!(outcome, RescanOutcome::Busy);
         assert_eq!(
@@ -339,31 +500,79 @@ mod tests {
         assert_eq!(mock.calls().len(), 2);
     }
 
+    const RUNNING: &str = "ActiveState=activating\nJob=\nResult=success\n";
+    const QUEUED: &str = "ActiveState=inactive\nJob=4711\nResult=success\n";
+    const FINISHED: &str = "ActiveState=inactive\nJob=\nResult=success\n";
+    const FAILED: &str = "ActiveState=failed\nJob=\nResult=exit-code\n";
+
+    // Everything a pass that is allowed to run issues before the first poll:
+    // the precondition walk, the busy check, one reset per account, the
+    // journal cursor and the non-blocking start.
+    fn stage_through_start(mock: &MockSshSession, resets: usize) {
+        mock.stage_run_result(ok_with_stdout(""));
+        mock.stage_run_result(failed_with("inactive\n", "", 3));
+        for _ in 0..resets {
+            mock.stage_run_result(CommandResult::ok());
+        }
+        mock.stage_run_result(ok_with_stdout(CURSOR_STDOUT));
+        mock.stage_run_result(CommandResult::ok());
+    }
+
+    fn stage_poll(mock: &MockSshSession, state: &str, journal: &str) {
+        mock.stage_run_result(ok_with_stdout(state));
+        mock.stage_run_result(ok_with_stdout(journal));
+    }
+
+    fn rescan(
+        mock: &MockSshSession,
+        reset: &[&str],
+        known: &[&str],
+    ) -> (Result<RescanOutcome>, Vec<ProgressEvent>) {
+        let recorder = MockProgress::new();
+        let mut progress = recorder.share();
+        let outcome = execute_rescan(
+            mock,
+            &mut progress,
+            &emails(reset),
+            &emails(known),
+            Duration::ZERO,
+        );
+        (outcome, recorder.events())
+    }
+
+    fn started(msg: &str) -> ProgressEvent {
+        ProgressEvent::TaskStarted(msg.to_string())
+    }
+
     #[test]
     fn clean_run_resets_selected_cursor_and_reports_all_accounts() {
         let mock = MockSshSession::new();
-        mock.stage_run_result(ok_with_stdout(""));
-        mock.stage_run_result(failed_with("inactive\n", "", 3));
-        mock.stage_run_result(CommandResult::ok());
-        mock.stage_run_result(ok_with_stdout(CURSOR_STDOUT));
-        mock.stage_run_result(CommandResult::ok());
-        mock.stage_run_result(ok_with_stdout(
+        stage_through_start(&mock, 1);
+        stage_poll(
+            &mock,
+            RUNNING,
             "2026-07-31T09:00:00Z account=dev@x.io id=1 cursor_ms=0 since_ms=0\n\
              2026-07-31T09:00:01Z account=dev@x.io backfill repaired=0 failures=0\n\
-             2026-07-31T09:05:00Z account=dev@x.io processed=432 skipped=4527 failures=0\n\
-             2026-07-31T09:06:00Z account=ops@x.io processed=0 skipped=12 failures=0\n\
-             2026-07-31T09:06:01Z total_failures=0\n",
-        ));
-
-        let outcome = execute_rescan(
+             2026-07-31T09:00:02Z account=dev@x.io page=1 total_pages=2\n\
+             -- cursor: s=aa;i=2\n",
+        );
+        stage_poll(
             &mock,
-            &emails(&["dev@x.io"]),
-            &emails(&["dev@x.io", "ops@x.io"]),
-        )
-        .unwrap();
+            FINISHED,
+            "2026-07-31T09:03:00Z account=dev@x.io page=2 total_pages=2\n\
+             2026-07-31T09:05:00Z account=dev@x.io processed=432 skipped=4527 deduped=3 failures=0\n\
+             2026-07-31T09:05:01Z account=dev@x.io tag_snapshot entries=4\n\
+             2026-07-31T09:06:00Z account=ops@x.io id=2 cursor_ms=5 since_ms=0\n\
+             2026-07-31T09:06:00Z account=ops@x.io page=1 total_pages=1\n\
+             2026-07-31T09:06:00Z account=ops@x.io processed=0 skipped=12 deduped=0 failures=0\n\
+             2026-07-31T09:06:01Z total_failures=0\n\
+             -- cursor: s=aa;i=9\n",
+        );
 
-        let RescanOutcome::Ran(run) = outcome else {
-            panic!("expected Ran, got {outcome:?}");
+        let (outcome, events) = rescan(&mock, &["dev@x.io"], &["dev@x.io", "ops@x.io"]);
+
+        let RescanOutcome::Ran(run) = outcome.unwrap() else {
+            panic!("expected Ran");
         };
         assert_eq!(run.status(), RescanStatus::Clean);
         assert_eq!(run.status().exit_code(), 0);
@@ -388,6 +597,24 @@ mod tests {
             ]
         );
 
+        assert_eq!(
+            events,
+            [
+                started("0/2 accounts"),
+                started("0/2 accounts, dev@x.io"),
+                started("0/2 accounts, dev@x.io page 1/2"),
+                started("0/2 accounts, dev@x.io page 2/2"),
+                ProgressEvent::Success(
+                    "dev@x.io: processed=432 skipped=4527 deduped=3".to_string()
+                ),
+                started("1/2 accounts"),
+                started("1/2 accounts, ops@x.io"),
+                started("1/2 accounts, ops@x.io page 1/1"),
+                ProgressEvent::Success("ops@x.io: processed=0 skipped=12 deduped=0".to_string()),
+                started("2/2 accounts"),
+            ]
+        );
+
         let calls = mock.calls();
         assert_eq!(
             calls[2],
@@ -403,56 +630,125 @@ mod tests {
         );
         assert_eq!(
             calls[4],
-            SshOp::Run("sudo systemctl start bichon-archive.service".to_string())
+            SshOp::Run("sudo systemctl start --no-block bichon-archive.service".to_string()),
+            "the pass is started without waiting, so the journal can be polled while it runs"
         );
         assert_eq!(
             calls[5],
             SshOp::Run(
-                "sudo journalctl -u bichon-archive.service --after-cursor 's=0123456789ab;i=1f2;b=00aa;m=bb;t=cc;x=dd' -o cat --no-pager"
+                "sudo systemctl show bichon-archive.service -p ActiveState -p Job -p Result"
                     .to_string()
             )
+        );
+        assert_eq!(
+            calls[6],
+            SshOp::Run(
+                "sudo journalctl -u bichon-archive.service --after-cursor 's=0123456789ab;i=1f2;b=00aa;m=bb;t=cc;x=dd' -o cat --no-pager --quiet --show-cursor"
+                    .to_string()
+            )
+        );
+        assert_eq!(
+            calls[8],
+            SshOp::Run(
+                "sudo journalctl -u bichon-archive.service --after-cursor 's=aa;i=2' -o cat --no-pager --quiet --show-cursor"
+                    .to_string()
+            ),
+            "each poll reads only what the previous one had not"
+        );
+        assert_eq!(
+            calls.len(),
+            9,
+            "polling stops once the unit is no longer running"
+        );
+    }
+
+    #[test]
+    fn a_queued_start_is_still_waited_for() {
+        let mock = MockSshSession::new();
+        stage_through_start(&mock, 1);
+        stage_poll(&mock, QUEUED, "");
+        stage_poll(
+            &mock,
+            FINISHED,
+            "account=a@x.io processed=1 skipped=0 deduped=0 failures=0\ntotal_failures=0\n",
+        );
+
+        let (outcome, _) = rescan(&mock, &["a@x.io"], &["a@x.io"]);
+
+        let RescanOutcome::Ran(run) = outcome.unwrap() else {
+            panic!("expected Ran");
+        };
+        assert_eq!(run.accounts.len(), 1);
+        assert_eq!(mock.calls().len(), 9);
+    }
+
+    // A host still running an archive script that predates the page line
+    // reports accounts only. The bar follows them without failing.
+    #[test]
+    fn a_host_without_page_lines_shows_account_progress_only() {
+        let mock = MockSshSession::new();
+        stage_through_start(&mock, 1);
+        stage_poll(
+            &mock,
+            FINISHED,
+            "account=a@x.io id=1 cursor_ms=0 since_ms=0\n\
+             account=a@x.io processed=7 skipped=1 failures=0\n\
+             total_failures=0\n",
+        );
+
+        let (outcome, events) = rescan(&mock, &["a@x.io"], &["a@x.io"]);
+
+        assert!(matches!(outcome.unwrap(), RescanOutcome::Ran(_)));
+        assert_eq!(
+            events,
+            [
+                started("0/1 accounts"),
+                started("0/1 accounts, a@x.io"),
+                ProgressEvent::Success("a@x.io: processed=7 skipped=1".to_string()),
+                started("1/1 accounts"),
+            ]
         );
     }
 
     #[test]
     fn counted_failures_are_exit_one() {
         let mock = MockSshSession::new();
-        mock.stage_run_result(ok_with_stdout(""));
-        mock.stage_run_result(failed_with("inactive\n", "", 3));
-        mock.stage_run_result(CommandResult::ok());
-        mock.stage_run_result(ok_with_stdout(CURSOR_STDOUT));
-        mock.stage_run_result(failed_with("", "Job for bichon-archive.service failed", 1));
-        mock.stage_run_result(ok_with_stdout(
-            "account=dev@x.io processed=10 skipped=2 failures=3\ntotal_failures=3\n",
-        ));
+        stage_through_start(&mock, 1);
+        stage_poll(
+            &mock,
+            FAILED,
+            "account=dev@x.io processed=10 skipped=2 deduped=0 failures=3\ntotal_failures=3\n",
+        );
 
-        let outcome =
-            execute_rescan(&mock, &emails(&["dev@x.io"]), &emails(&["dev@x.io"])).unwrap();
+        let (outcome, events) = rescan(&mock, &["dev@x.io"], &["dev@x.io"]);
 
-        let RescanOutcome::Ran(run) = outcome else {
-            panic!("expected Ran, got {outcome:?}");
+        let RescanOutcome::Ran(run) = outcome.unwrap() else {
+            panic!("expected Ran");
         };
         assert_eq!(run.status(), RescanStatus::RunFailures);
         assert_eq!(run.status().exit_code(), 1);
+        assert!(
+            events.contains(&ProgressEvent::Error(
+                "dev@x.io: processed=10 skipped=2 deduped=0 failures=3".to_string()
+            )),
+            "an account that counted failures is not reported as a success: {events:?}"
+        );
     }
 
     #[test]
     fn service_failure_without_a_report_is_operational() {
         let mock = MockSshSession::new();
-        mock.stage_run_result(ok_with_stdout(""));
-        mock.stage_run_result(failed_with("inactive\n", "", 3));
-        mock.stage_run_result(CommandResult::ok());
-        mock.stage_run_result(ok_with_stdout(CURSOR_STDOUT));
-        mock.stage_run_result(failed_with("", "Job failed", 1));
-        mock.stage_run_result(ok_with_stdout(
+        stage_through_start(&mock, 1);
+        stage_poll(
+            &mock,
+            FAILED,
             "2026-07-31T09:00:00Z auth check failed: GET /api/v1/current-user did not return 2xx\n",
-        ));
+        );
 
-        let outcome =
-            execute_rescan(&mock, &emails(&["dev@x.io"]), &emails(&["dev@x.io"])).unwrap();
+        let (outcome, _) = rescan(&mock, &["dev@x.io"], &["dev@x.io"]);
 
-        let RescanOutcome::Ran(run) = outcome else {
-            panic!("expected Ran, got {outcome:?}");
+        let RescanOutcome::Ran(run) = outcome.unwrap() else {
+            panic!("expected Ran");
         };
         assert_eq!(run.total_failures, None);
         assert_eq!(run.status(), RescanStatus::OperationalError);
@@ -460,13 +756,77 @@ mod tests {
     }
 
     #[test]
+    fn a_start_that_cannot_be_queued_is_an_error() {
+        let mock = MockSshSession::new();
+        mock.stage_run_result(ok_with_stdout(""));
+        mock.stage_run_result(failed_with("inactive\n", "", 3));
+        mock.stage_run_result(ok_with_stdout(CURSOR_STDOUT));
+        mock.stage_run_result(failed_with("", "Unit bichon-archive.service not found.", 5));
+
+        let (outcome, _) = rescan(&mock, &[], &["a@x.io"]);
+
+        let err = outcome.unwrap_err();
+        assert!(format!("{err}").contains("not found"), "{err}");
+        assert_eq!(
+            mock.calls().len(),
+            4,
+            "nothing is polled when no pass was started"
+        );
+    }
+
+    #[test]
+    fn an_unreadable_journal_mid_pass_is_an_error() {
+        let mock = MockSshSession::new();
+        stage_through_start(&mock, 1);
+        mock.stage_run_result(ok_with_stdout(RUNNING));
+        mock.stage_run_result(failed_with("", "journalctl: permission denied", 1));
+
+        let (outcome, _) = rescan(&mock, &["a@x.io"], &["a@x.io"]);
+
+        assert!(format!("{}", outcome.unwrap_err()).contains("archive run journal"));
+    }
+
+    #[test]
+    fn parse_unit_state_reads_running_and_verdict() {
+        assert_eq!(
+            parse_unit_state(RUNNING),
+            UnitState {
+                running: true,
+                succeeded: true
+            }
+        );
+        assert_eq!(
+            parse_unit_state(QUEUED),
+            UnitState {
+                running: true,
+                succeeded: true
+            }
+        );
+        assert_eq!(
+            parse_unit_state(FINISHED),
+            UnitState {
+                running: false,
+                succeeded: true
+            }
+        );
+        assert_eq!(
+            parse_unit_state(FAILED),
+            UnitState {
+                running: false,
+                succeeded: false
+            }
+        );
+    }
+
+    #[test]
     fn rejects_email_with_shell_metacharacters() {
         let mock = MockSshSession::new();
-        let err = execute_rescan(
+        let err = rescan(
             &mock,
-            &emails(&["evil'; rm -rf / #@x.io"]),
-            &emails(&["evil'; rm -rf / #@x.io"]),
+            &["evil'; rm -rf / #@x.io"],
+            &["evil'; rm -rf / #@x.io"],
         )
+        .0
         .unwrap_err();
         assert!(format!("{err}").contains("unsafe"));
         assert!(mock.calls().is_empty());
@@ -529,7 +889,7 @@ mod tests {
         mock.stage_run_result(CommandResult::ok());
         mock.stage_run_result(ok_with_stdout(""));
 
-        let err = execute_rescan(&mock, &emails(&["a@x.io"]), &emails(&["a@x.io"])).unwrap_err();
+        let err = rescan(&mock, &["a@x.io"], &["a@x.io"]).0.unwrap_err();
         assert!(format!("{err}").contains("journal cursor"));
         // The service is never started without a cursor to scope its report.
         assert_eq!(mock.calls().len(), 4);
@@ -543,7 +903,7 @@ mod tests {
         mock.stage_run_result(CommandResult::ok());
         mock.stage_run_result(ok_with_stdout("-- cursor: s=abc'; rm -rf / #\n"));
 
-        let err = execute_rescan(&mock, &emails(&["a@x.io"]), &emails(&["a@x.io"])).unwrap_err();
+        let err = rescan(&mock, &["a@x.io"], &["a@x.io"]).0.unwrap_err();
         assert!(format!("{err}").contains("unsafe"));
         assert_eq!(mock.calls().len(), 4);
     }
@@ -563,7 +923,7 @@ mod tests {
         let mock = MockSshSession::new();
         mock.stage_run_result(failed_with("", "ssh: connect to host: timed out", 255));
 
-        let err = execute_rescan(&mock, &emails(&["a@x.io"]), &emails(&["a@x.io"])).unwrap_err();
+        let err = rescan(&mock, &["a@x.io"], &["a@x.io"]).0.unwrap_err();
         assert!(format!("{err}").contains("precondition"));
         assert_eq!(mock.calls().len(), 1);
     }

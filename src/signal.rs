@@ -3,6 +3,7 @@ use indicatif::ProgressBar;
 use std::sync::Mutex;
 
 static ACTIVE_BAR: Mutex<Option<ProgressBar>> = Mutex::new(None);
+static INTERRUPT_NOTE: Mutex<Option<String>> = Mutex::new(None);
 
 pub fn register_progress_bar(pb: &ProgressBar) {
     if let Ok(mut guard) = ACTIVE_BAR.lock() {
@@ -18,19 +19,40 @@ fn cleanup_progress_bar() {
     }
 }
 
-pub fn with_ctrlc<F: FnOnce() -> Result<()>>(f: F) -> Result<()> {
+fn take_interrupt_note() -> Option<String> {
+    INTERRUPT_NOTE
+        .lock()
+        .ok()
+        .and_then(|mut guard| guard.take())
+}
+
+fn install_handler() -> Result<()> {
     let handler_result = ctrlc::set_handler(|| {
         cleanup_progress_bar();
+        if let Some(note) = take_interrupt_note() {
+            eprintln!("{note}");
+        }
         std::process::exit(130);
     });
 
     match handler_result {
-        Ok(_) => {}
-        Err(ctrlc::Error::MultipleHandlers) => {}
-        Err(e) => return Err(eyre::eyre!("Failed to set Ctrl-C handler: {}", e)),
+        Ok(_) | Err(ctrlc::Error::MultipleHandlers) => Ok(()),
+        Err(e) => Err(eyre::eyre!("Failed to set Ctrl-C handler: {}", e)),
     }
+}
 
+pub fn with_ctrlc<F: FnOnce() -> Result<()>>(f: F) -> Result<()> {
+    install_handler()?;
     f()
+}
+
+/// Ctrl-C prints `note` after clearing the bar, for a command whose work
+/// outlives it on the host.
+pub fn on_interrupt_note(note: &str) -> Result<()> {
+    if let Ok(mut guard) = INTERRUPT_NOTE.lock() {
+        *guard = Some(note.to_string());
+    }
+    install_handler()
 }
 
 #[cfg(test)]
@@ -64,6 +86,16 @@ mod tests {
         let result = with_ctrlc(|| eyre::bail!("test error"));
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("test error"));
+    }
+
+    #[test]
+    fn interrupt_note_is_handed_out_once() {
+        on_interrupt_note("the pass keeps running").unwrap();
+        assert_eq!(
+            take_interrupt_note().as_deref(),
+            Some("the pass keeps running")
+        );
+        assert_eq!(take_interrupt_note(), None);
     }
 
     #[test]
