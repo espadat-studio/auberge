@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.24.0](https://github.com/espadat-studio/auberge/compare/v0.23.0...v0.24.0) - 2026-11-12
+
+### Added
+
+- *(bichon)* bound expunge coverage by the internal store count ([#1315](https://github.com/espadat-studio/auberge/pull/1315))
+
+### Fixed
+
+- *(bichon)* match header-less messages by body hash, not by count ([#1320](https://github.com/espadat-studio/auberge/pull/1320))
+- *(deploy)* show the whole ansible failure and its task ([#1318](https://github.com/espadat-studio/auberge/pull/1318))
+- *(bichon)* judge expunge identity coverage across the account ([#1314](https://github.com/espadat-studio/auberge/pull/1314))
+
 ## [0.23.0](https://github.com/espadat-studio/auberge/compare/v0.22.4...v0.23.0) - 2026-11-12
 
 ### Added
