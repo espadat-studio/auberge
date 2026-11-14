@@ -4,6 +4,8 @@
 
 Accepted, 2026-11-14. **Amends #1240**, which made a run resolve every `!` value in `config.toml`, optional keys included.
 
+**Amended by [ADR-0090](./0090-a-run-resolves-only-the-zone-tokens-it-reads.md)** (2026-11-14): Zone tokens follow the Read Set too.
+
 ## Decision
 
 A run resolves a `!` value only when its key is in the run's **Read Set**. A `!` value outside it is never run and never reaches the run's extra-vars.

@@ -4,6 +4,8 @@
 
 Accepted, 2026-09-22. Amended 2026-09-22 — see the [Amendment](#amendment-2026-09-22-the-fleets-line-keeps-its-per-host-choice) below. Decided alongside [ADR-0081](./0081-an-apps-zone-is-a-named-pair-the-cli-resolves.md), which made an App's **Zone** a first-class thing. Revises [ADR-0072](./0072-the-agent-tiers-caddy-answers-for-its-own-zone.md), whose "one token per process, chosen per Host" holds only while a Host serves one Zone.
 
+**Amended by [ADR-0090](./0090-a-run-resolves-only-the-zone-tokens-it-reads.md)** (2026-11-14): `host_zones` and its tokens reach only a run that reads `host_zones`.
+
 ## Decision
 
 **Every vhost states its own ACME token.** Each App's Caddyfile carries `tls { dns cloudflare {env.<ZONE>_DNS_API_TOKEN} }`, naming the token of the App's Zone. All twenty, not only the off-Zone one.
