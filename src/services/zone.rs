@@ -339,8 +339,9 @@ fn placements<'a>(
     Ok(placed)
 }
 
-/// Every **Computed Var** one run hands Ansible: each App's resolved Zone,
-/// and the Zone set of the Host it runs against (ADR-0081, ADR-0082).
+/// The **Computed Vars** one run hands Ansible: each App's resolved Zone,
+/// and the Zone set of the Host it runs against, narrowed to what the run's
+/// [`ReadSet`] reads (ADR-0081, ADR-0082, ADR-0090).
 ///
 /// A Computed Var is not an Injected Key. An Injected Key is in the Key
 /// Registry precisely so a stale `config.toml` value can be overridden
@@ -349,7 +350,7 @@ fn placements<'a>(
 /// overlay onto a run's variables is written *after* config, so a
 /// hand-written entry of one of these names reaches no role.
 ///
-/// Computed for every App with a Meta, not only the run's: blocky builds its
+/// Domains are computed for every App with a Meta, not only the run's: blocky builds its
 /// `customDNS` map `run_once` over all of them, so a map missing the Apps
 /// this run happens not to deploy is a name the tailnet stops resolving.
 ///
@@ -1008,7 +1009,7 @@ mod tests {
         ReadSet::Names(names.iter().map(|n| n.to_string()).collect())
     }
 
-    /// The whole point of #1323: a run that reads one App's token never runs
+    /// A run that reads one App's token never runs
     /// another Zone's `!` command — a hardware-backed one would prompt.
     #[test]
     fn test_a_single_app_run_never_runs_another_zones_token_command() {
@@ -1041,6 +1042,7 @@ mod tests {
         assert!(!vars.contains_key("forgejo_dns_api_token"), "{vars:?}");
         assert!(!vars.contains_key(HOST_ZONES_VAR), "{vars:?}");
         assert_eq!(vars["forgejo_parent_domain"], "shop.example");
+        assert_eq!(vars["navidrome_parent_domain"], "fleet.example");
         assert_eq!(
             vars["forgejo_dns_api_token_env"],
             "SHOP_CLOUDFLARE_DNS_API_TOKEN"

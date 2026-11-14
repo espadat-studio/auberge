@@ -188,7 +188,8 @@ pub fn run_enters_role(
 /// The **Computed Vars** it overlays are derived over *every* Meta, not the
 /// run's: blocky builds its `customDNS` map `run_once` over all of them, so a
 /// map narrowed to the run's Apps is a name the tailnet stops resolving the
-/// next time one App deploys alone (ADR-0081).
+/// next time one App deploys alone (ADR-0081). Their tokens follow the same
+/// Read Set as config's `!` values (ADR-0090).
 pub fn preflight_for(
     config: &Config,
     ansible_dir: &Path,
@@ -392,6 +393,21 @@ mod tests {
             .filter(|p| read_set_for(&dir, p, None).unwrap() != ReadSet::Everything)
             .count();
         assert!(narrowed > 0, "no repo run narrows its Read Set");
+    }
+
+    /// The real `navidrome` run reads its own Zone token and not the Host's
+    /// Zone set, so `computed_vars` resolves no other Zone's token for it.
+    #[test]
+    fn test_a_single_app_repo_run_reads_its_own_token_and_no_zone_set() {
+        let set = read_set_for(
+            &repo_ansible_dir(),
+            "apps.yml",
+            Some(&["navidrome".to_string()]),
+        )
+        .unwrap();
+        assert!(set.contains("navidrome_dns_api_token"), "{set:?}");
+        assert!(!set.contains(zone::HOST_ZONES_VAR), "{set:?}");
+        assert!(!set.contains("forgejo_dns_api_token"), "{set:?}");
     }
 
     // ── union semantics ───────────────────────────────────────────────────────
