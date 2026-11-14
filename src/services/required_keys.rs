@@ -2,6 +2,7 @@ use crate::config::{Config, Preflight};
 use crate::key_registry::KeyRegistry;
 use crate::playbook_meta::PlaybookMeta;
 use crate::services::dependency_resolver::parse_roster;
+use crate::services::read_set::{self, ReadSet};
 use crate::services::zone;
 use eyre::Result;
 use std::path::{Path, PathBuf};
@@ -205,8 +206,38 @@ pub fn preflight_for(
     let metas = crate::playbook_meta::load_all_metas(&ansible_dir.join(PLAYBOOKS_DIR))?;
     let computed = zone::computed_vars(&metas, config, host)?;
     Ok(config
-        .preflight_with_keys(&required_keys_for(ansible_dir, playbook, tags)?, Some(host))?
+        .preflight_with_keys(
+            &required_keys_for(ansible_dir, playbook, tags)?,
+            Some(host),
+            &read_set_for(ansible_dir, playbook, tags)?,
+        )?
         .with_computed_vars(computed))
+}
+
+/// The [`ReadSet`] of one run over `playbook` with `tags`: what the roles
+/// [`selected_roles`] picks reach, guarded ones included, plus any roster
+/// role tagged `always`, which Ansible runs whatever `--tags` names. A guard is a
+/// runtime question, and a key a guarded role reads must still be there if
+/// the guard lets it run.
+pub fn read_set_for(
+    ansible_dir: &Path,
+    playbook: &str,
+    tags: Option<&[String]>,
+) -> Result<ReadSet> {
+    let playbook_path = roster_path(&ansible_dir.join(PLAYBOOKS_DIR), playbook_stem(playbook));
+    let mut seed: Vec<String> = selected_roles(&playbook_path, tags.unwrap_or_default())?
+        .into_iter()
+        .map(|role| role.name)
+        .collect();
+    if tags.is_some_and(|t| !t.is_empty()) && playbook_path.is_file() {
+        seed.extend(
+            parse_roster(&playbook_path)?
+                .into_iter()
+                .filter(|role| role.tags.iter().any(|tag| tag == "always"))
+                .map(|role| role.name),
+        );
+    }
+    read_set::read_set(ansible_dir, &playbook_path, seed)
 }
 
 /// Every App this run deploys has its effective **Zone**'s pair answered for
@@ -304,6 +335,64 @@ mod tests {
         dir
     }
 
+    // ── Read Set ──────────────────────────────────────────────────────────────
+
+    #[test]
+    fn test_tags_narrow_the_read_set_to_the_selected_roles() {
+        let dir = fixture_ansible_dir(
+            &[],
+            &[(
+                "site.yml",
+                "---\n- hosts: all\n  roles:\n    - role: one\n      tags: [one]\n    - role: two\n      tags: [two]\n      when: two_enabled | default(false)\n    - role: ever\n      tags: [always]\n",
+            )],
+        );
+        std::fs::write(dir.path().join("inventory.yml"), "all: {}\n").unwrap();
+        std::fs::create_dir_all(dir.path().join("group_vars")).unwrap();
+        for (role, key) in [
+            ("one", "one_secret"),
+            ("two", "two_secret"),
+            ("ever", "ever_secret"),
+        ] {
+            let tasks = dir.path().join("roles").join(role).join("tasks");
+            std::fs::create_dir_all(&tasks).unwrap();
+            std::fs::write(
+                tasks.join("main.yml"),
+                format!("- ansible.builtin.debug:\n    msg: \"{{{{ {key} }}}}\"\n"),
+            )
+            .unwrap();
+        }
+
+        let one_meta = dir.path().join("roles/one/meta");
+        std::fs::create_dir_all(&one_meta).unwrap();
+        std::fs::write(one_meta.join("main.yml"), "dependencies:\n  - role: base\n").unwrap();
+        let base_tasks = dir.path().join("roles/base/tasks");
+        std::fs::create_dir_all(&base_tasks).unwrap();
+        std::fs::write(
+            base_tasks.join("main.yml"),
+            "- ansible.builtin.debug:\n    msg: \"{{ base_secret }}\"\n",
+        )
+        .unwrap();
+
+        let untagged = read_set_for(dir.path(), "site.yml", None).unwrap();
+        assert!(untagged.contains("one_secret") && untagged.contains("two_secret"));
+
+        let tagged = read_set_for(dir.path(), "site.yml", Some(&["one".to_string()])).unwrap();
+        assert!(tagged.contains("one_secret"), "{tagged:?}");
+        assert!(tagged.contains("base_secret"), "{tagged:?}");
+        assert!(tagged.contains("ever_secret"), "{tagged:?}");
+        assert!(!tagged.contains("two_secret"), "{tagged:?}");
+    }
+
+    #[test]
+    fn test_a_repo_run_that_skips_blocky_narrows_its_read_set() {
+        let dir = repo_ansible_dir();
+        let narrowed = ["bootstrap.yml", "hardening.yml", "ssh.yml"]
+            .iter()
+            .filter(|p| read_set_for(&dir, p, None).unwrap() != ReadSet::Everything)
+            .count();
+        assert!(narrowed > 0, "no repo run narrows its Read Set");
+    }
+
     // ── union semantics ───────────────────────────────────────────────────────
 
     #[test]
@@ -390,7 +479,9 @@ mod tests {
                 );
             }
             assert!(
-                blank.preflight_with_keys(&keys, Some("ruche")).is_ok(),
+                blank
+                    .preflight_with_keys(&keys, Some("ruche"), &ReadSet::Everything)
+                    .is_ok(),
                 "-t {tag}: {keys:?}"
             );
             assert!(

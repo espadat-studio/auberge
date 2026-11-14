@@ -8,6 +8,7 @@ pub mod dns_verify;
 pub mod inventory;
 pub mod known_hosts;
 pub mod progress;
+pub mod read_set;
 pub mod required_keys;
 pub mod route;
 pub mod rsync;
