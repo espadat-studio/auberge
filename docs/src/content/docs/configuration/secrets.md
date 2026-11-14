@@ -65,6 +65,8 @@ some_literal_bang = "!!not-a-cmd"
 
 **Requirements:** the command must exit 0 and produce non-empty UTF-8 output. The operation fails with a clear error if either condition is not met.
 
+Each distinct command runs at most once per `auberge` invocation: a deploy over several playbooks reuses the first result instead of asking your password manager again. A command whose output should change between uses (a one-time code, for example) gets the same value for the whole invocation. A failed command is not remembered.
+
 A run resolves every `!` value in `config.toml`, optional keys included. If any of them fails, the run stops before Ansible starts. The error names the key and shows the command's stderr, never its stdout. Fix the command or remove the key.
 
 The command's stdin is closed, but it keeps your terminal, so tools that prompt on `/dev/tty` still work (for example an age YubiKey PIN prompt).

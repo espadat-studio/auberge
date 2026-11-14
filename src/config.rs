@@ -499,37 +499,60 @@ fn value_to_string(v: &toml::Value) -> Option<String> {
     }
 }
 
+/// Resolve a config value, running a `!` command at most once per process.
+///
+/// A deploy resolves every value once per run, and a password-manager command
+/// can cost a hardware round trip (a YubiKey PIN and touch, a TPM unseal).
+/// Only successes are kept, so a failing command runs again on the next ask.
 pub(crate) fn resolve_value(v: &str) -> Result<String> {
     if let Some(rest) = v.strip_prefix("!!") {
         return Ok(format!("!{rest}"));
     }
-    if let Some(cmd) = v.strip_prefix('!') {
-        use std::process::Stdio;
-        let output = std::process::Command::new("sh")
-            .arg("-c")
-            .arg(cmd)
-            .stdin(Stdio::null())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .output()
-            .wrap_err("Failed to execute shell command")?;
-        if !output.status.success() {
-            let code = output
-                .status
-                .code()
-                .map_or("signal".to_string(), |c| c.to_string());
-            let stderr = String::from_utf8_lossy(&output.stderr);
-            eyre::bail!("Shell command failed (exit {code}): {}", stderr.trim());
-        }
-        let stdout =
-            String::from_utf8(output.stdout).wrap_err("Shell command output is not valid UTF-8")?;
-        let resolved = stdout.trim().to_string();
-        if resolved.is_empty() {
-            eyre::bail!("Shell command produced empty output");
-        }
-        return Ok(resolved);
+    let Some(cmd) = v.strip_prefix('!') else {
+        return Ok(v.to_string());
+    };
+    if let Some(resolved) = resolved_commands().get(cmd) {
+        return Ok(resolved.clone());
     }
-    Ok(v.to_string())
+    let resolved = run_shell_command(cmd)?;
+    resolved_commands().insert(cmd.to_string(), resolved.clone());
+    Ok(resolved)
+}
+
+fn resolved_commands() -> std::sync::MutexGuard<'static, HashMap<String, String>> {
+    static RESOLVED: std::sync::OnceLock<std::sync::Mutex<HashMap<String, String>>> =
+        std::sync::OnceLock::new();
+    RESOLVED
+        .get_or_init(Default::default)
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+}
+
+fn run_shell_command(cmd: &str) -> Result<String> {
+    use std::process::Stdio;
+    let output = std::process::Command::new("sh")
+        .arg("-c")
+        .arg(cmd)
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .output()
+        .wrap_err("Failed to execute shell command")?;
+    if !output.status.success() {
+        let code = output
+            .status
+            .code()
+            .map_or("signal".to_string(), |c| c.to_string());
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        eyre::bail!("Shell command failed (exit {code}): {}", stderr.trim());
+    }
+    let stdout =
+        String::from_utf8(output.stdout).wrap_err("Shell command output is not valid UTF-8")?;
+    let resolved = stdout.trim().to_string();
+    if resolved.is_empty() {
+        eyre::bail!("Shell command produced empty output");
+    }
+    Ok(resolved)
 }
 
 fn flatten_toml(table: &toml::Table) -> Result<HashMap<String, String>> {
@@ -933,6 +956,28 @@ mod tests {
             ours.split_whitespace().collect::<Vec<_>>(),
             theirs.split_whitespace().collect::<Vec<_>>()
         );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn test_resolve_value_runs_a_command_once_per_process() {
+        let dir = tempfile::tempdir().unwrap();
+        let log = dir.path().join("runs");
+        let cmd = format!("!echo run >> '{}'; echo mysecret", log.display());
+        assert_eq!(resolve_value(&cmd).unwrap(), "mysecret");
+        assert_eq!(resolve_value(&cmd).unwrap(), "mysecret");
+        assert_eq!(fs::read_to_string(&log).unwrap(), "run\n");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn test_resolve_value_reruns_a_command_that_failed() {
+        let dir = tempfile::tempdir().unwrap();
+        let ready = dir.path().join("ready");
+        let cmd = format!("!cat '{}'", ready.display());
+        assert!(resolve_value(&cmd).is_err());
+        fs::write(&ready, "mysecret").unwrap();
+        assert_eq!(resolve_value(&cmd).unwrap(), "mysecret");
     }
 
     #[cfg(unix)]
