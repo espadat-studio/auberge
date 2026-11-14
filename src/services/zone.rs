@@ -17,6 +17,7 @@
 
 use crate::config::Config;
 use crate::playbook_meta::PlaybookMeta;
+use crate::services::read_set::ReadSet;
 use eyre::{Result, WrapErr};
 use serde::Serialize;
 use std::collections::BTreeMap;
@@ -358,51 +359,57 @@ fn placements<'a>(
 /// App ([`declared_on_host`]). A Host that withdrew a Zone's token
 /// contributes no such Zone either, which is how the agent tier's box ends up
 /// holding one token rather than two.
+///
+/// Tokens follow the run's [`ReadSet`] (ADR-0090): `<app>_dns_api_token` and
+/// [`HOST_ZONES_VAR`] are emitted only when the run reads them, and a token
+/// nothing emits is never resolved, so its `!` command never runs. Absent, not
+/// `""`: a role reading a token the walk missed fails on an undefined var
+/// rather than sending Cloudflare an empty one. Domains and env var names are
+/// not secrets and stay fleet-wide for blocky's map.
 pub fn computed_vars(
     metas: &[(String, PlaybookMeta)],
     config: &Config,
     host: &str,
+    read_set: &ReadSet,
 ) -> Result<BTreeMap<String, String>> {
-    let mut placed = placements(config, host, metas)?;
-    let mut resolved: BTreeMap<Zone, ZonePair> = BTreeMap::new();
-    for (_, zone, pair) in &mut placed {
-        if !resolved.contains_key(zone) {
-            let answer = |raw: &str, key: String| {
-                crate::config::resolve_value(raw)
-                    .wrap_err_with(|| format!("Failed to resolve config key '{key}'"))
-            };
-            resolved.insert(
-                zone.clone(),
-                ZonePair {
-                    domain: answer(&pair.domain, zone.domain_key())?,
-                    token: answer(&pair.token, zone.token_key())?,
-                },
-            );
-        }
-        *pair = resolved[zone].clone();
-    }
+    let answer = |raw: &str, key: String| {
+        crate::config::resolve_value(raw)
+            .wrap_err_with(|| format!("Failed to resolve config key '{key}'"))
+    };
+    let placed = placements(config, host, metas)?;
 
     let mut vars = BTreeMap::new();
     for (app, zone, pair) in &placed {
-        vars.insert(format!("{app}{PARENT_DOMAIN_SUFFIX}"), pair.domain.clone());
-        vars.insert(format!("{app}{DNS_TOKEN_SUFFIX}"), pair.token.clone());
+        vars.insert(
+            format!("{app}{PARENT_DOMAIN_SUFFIX}"),
+            answer(&pair.domain, zone.domain_key())?,
+        );
         vars.insert(format!("{app}{DNS_TOKEN_ENV_SUFFIX}"), zone.env_var());
+        let token_var = format!("{app}{DNS_TOKEN_SUFFIX}");
+        if read_set.contains(&token_var) {
+            vars.insert(token_var, answer(&pair.token, zone.token_key())?);
+        }
     }
 
+    if !read_set.contains(HOST_ZONES_VAR) {
+        return Ok(vars);
+    }
     let zones: BTreeMap<&Zone, &ZonePair> = placed
         .iter()
         .filter(|(app, zone, _)| zone.prefix().is_none() || declared_on_host(config, host, app))
         .map(|(_, zone, pair)| (zone, pair))
         .collect();
-    let set: Vec<HostZone> = zones
+    let set = zones
         .into_iter()
-        .map(|(zone, pair)| HostZone {
-            prefix: zone.prefix().map(str::to_string),
-            domain: pair.domain.clone(),
-            token: pair.token.clone(),
-            env: zone.env_var(),
+        .map(|(zone, pair)| {
+            Ok(HostZone {
+                prefix: zone.prefix().map(str::to_string),
+                domain: answer(&pair.domain, zone.domain_key())?,
+                token: answer(&pair.token, zone.token_key())?,
+                env: zone.env_var(),
+            })
         })
-        .collect();
+        .collect::<Result<Vec<_>>>()?;
     vars.insert(
         HOST_ZONES_VAR.to_string(),
         serde_json::to_string(&set).wrap_err("Failed to serialize the host's zone set")?,
@@ -681,7 +688,7 @@ mod tests {
         host: &str,
         metas: &[(String, PlaybookMeta)],
     ) -> BTreeMap<String, String> {
-        computed_vars(metas, &config(toml), host).unwrap()
+        computed_vars(metas, &config(toml), host, &ReadSet::Everything).unwrap()
     }
 
     fn zone_set(vars: &BTreeMap<String, String>) -> Vec<HostZone> {
@@ -736,7 +743,7 @@ mod tests {
             cloudflare_dns_api_token = "!false"
         "#;
         let metas = vec![("navidrome".to_string(), meta(BARE))];
-        let err = computed_vars(&metas, &config(toml), "auberge")
+        let err = computed_vars(&metas, &config(toml), "auberge", &ReadSet::Everything)
             .unwrap_err()
             .to_string();
         assert!(err.contains("cloudflare_dns_api_token"), "{err}");
@@ -777,7 +784,7 @@ mod tests {
             "aoe".to_string(),
             meta("required_keys: []\nsubdomain: essaim\nzone: agents\n"),
         )];
-        let err = computed_vars(&metas, &config(&toml), "auberge")
+        let err = computed_vars(&metas, &config(&toml), "auberge", &ReadSet::Everything)
             .unwrap_err()
             .to_string();
         assert!(err.contains("aoe_zone"), "{err}");
@@ -993,6 +1000,85 @@ mod tests {
     fn test_a_host_serving_nothing_still_gets_an_empty_zone_set() {
         let vars = computed(ZONES_ANSWERED, "auberge", &[]);
         assert_eq!(zone_set(&vars), vec![]);
+    }
+
+    // ── read set ──────────────────────────────────────────────────────────────
+
+    fn reads(names: &[&str]) -> ReadSet {
+        ReadSet::Names(names.iter().map(|n| n.to_string()).collect())
+    }
+
+    /// The whole point of #1323: a run that reads one App's token never runs
+    /// another Zone's `!` command — a hardware-backed one would prompt.
+    #[test]
+    fn test_a_single_app_run_never_runs_another_zones_token_command() {
+        let dir = tempfile::tempdir().unwrap();
+        let marker = dir.path().join("ran");
+        let toml = format!(
+            "domain = \"fleet.example\"\ncloudflare_dns_api_token = \"fleet-token\"\n\
+             shop_domain = \"shop.example\"\n\
+             shop_cloudflare_dns_api_token = \"!touch {} && printf shop-token\"\n\
+             [hosts.auberge]\nforgejo_zone = \"shop\"\n",
+            marker.display()
+        );
+        let metas = vec![
+            ("forgejo".to_string(), meta(BARE)),
+            (
+                "navidrome".to_string(),
+                meta("required_keys: []\nsubdomain: navidrome\n"),
+            ),
+        ];
+        let vars = computed_vars(
+            &metas,
+            &config(&toml),
+            "auberge",
+            &reads(&["navidrome_dns_api_token"]),
+        )
+        .unwrap();
+
+        assert!(!marker.exists(), "the shop Zone's command ran");
+        assert_eq!(vars["navidrome_dns_api_token"], "fleet-token");
+        assert!(!vars.contains_key("forgejo_dns_api_token"), "{vars:?}");
+        assert!(!vars.contains_key(HOST_ZONES_VAR), "{vars:?}");
+        assert_eq!(vars["forgejo_parent_domain"], "shop.example");
+        assert_eq!(
+            vars["forgejo_dns_api_token_env"],
+            "SHOP_CLOUDFLARE_DNS_API_TOKEN"
+        );
+    }
+
+    /// `caddy.env.j2` rewrites the whole drop-in from `host_zones`, so a run
+    /// that reads it gets every Zone with its token, never a partial set.
+    #[test]
+    fn test_a_run_reading_host_zones_gets_every_zone_with_its_token() {
+        let toml = format!("{ZONES_ANSWERED}\n[hosts.auberge]\nforgejo_zone = \"shop\"\n");
+        let metas = vec![
+            ("forgejo".to_string(), meta(BARE)),
+            (
+                "navidrome".to_string(),
+                meta("required_keys: []\nsubdomain: navidrome\n"),
+            ),
+        ];
+        let vars =
+            computed_vars(&metas, &config(&toml), "auberge", &reads(&[HOST_ZONES_VAR])).unwrap();
+        let tokens: Vec<String> = zone_set(&vars).into_iter().map(|z| z.token).collect();
+        assert_eq!(tokens, vec!["fleet-token", "shop-token"]);
+    }
+
+    /// A failing command on a token the run does read still refuses it.
+    #[test]
+    fn test_a_failing_token_ref_the_run_reads_refuses_it() {
+        let toml = "domain = \"fleet.example\"\ncloudflare_dns_api_token = \"!false\"\n";
+        let metas = vec![("navidrome".to_string(), meta(BARE))];
+        let err = computed_vars(
+            &metas,
+            &config(toml),
+            "auberge",
+            &reads(&["navidrome_dns_api_token"]),
+        )
+        .unwrap_err()
+        .to_string();
+        assert!(err.contains("cloudflare_dns_api_token"), "{err}");
     }
 
     // ── host scope ────────────────────────────────────────────────────────────

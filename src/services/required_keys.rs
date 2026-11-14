@@ -204,12 +204,13 @@ pub fn preflight_for(
     zone::assert_no_fleet_wide_zone(config)?;
     assert_zones_resolve(ansible_dir, config, playbook, tags, host)?;
     let metas = crate::playbook_meta::load_all_metas(&ansible_dir.join(PLAYBOOKS_DIR))?;
-    let computed = zone::computed_vars(&metas, config, host)?;
+    let read_set = read_set_for(ansible_dir, playbook, tags)?;
+    let computed = zone::computed_vars(&metas, config, host, &read_set)?;
     Ok(config
         .preflight_with_keys(
             &required_keys_for(ansible_dir, playbook, tags)?,
             Some(host),
-            &read_set_for(ansible_dir, playbook, tags)?,
+            &read_set,
         )?
         .with_computed_vars(computed))
 }
@@ -967,7 +968,7 @@ mod tests {
     /// to move earlier.
     fn computed(dir: &std::path::Path, config: &Config, host: &str) -> BTreeMap<String, String> {
         let metas = crate::playbook_meta::load_all_metas(&dir.join(PLAYBOOKS_DIR)).unwrap();
-        zone::computed_vars(&metas, config, host).unwrap()
+        zone::computed_vars(&metas, config, host, &ReadSet::Everything).unwrap()
     }
 
     #[test]
@@ -1046,7 +1047,7 @@ mod tests {
         .unwrap();
 
         let metas = crate::playbook_meta::load_all_metas(&dir.path().join(PLAYBOOKS_DIR)).unwrap();
-        let err = zone::computed_vars(&metas, &config, "auberge")
+        let err = zone::computed_vars(&metas, &config, "auberge", &ReadSet::Everything)
             .unwrap_err()
             .to_string();
         assert!(
