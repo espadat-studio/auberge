@@ -25,3 +25,8 @@ Only `infrastructure.yml` reads `host_zones`, and it already reaches blocky, so 
 - A `navidrome` deploy resolves only the fleet Zone's token.
 - A failing `!` on a token the run reads still fails Preflight, naming the key.
 - A broken command on a Zone token no run reads goes unnoticed until a run reads it, as ADR-0089 already accepts for other keys.
+
+## Rejected
+
+- **Emitting `""` for an unread token.** It keeps every name defined, but a walk that missed a read would then send Cloudflare an empty token and deploy green.
+- **Narrowing domains too.** They are not secrets, and blocky's `customDNS` needs every App's.
