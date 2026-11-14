@@ -4,6 +4,8 @@
 
 Accepted, 2026-11-14. **Amends #1240**, which made a run resolve every `!` value in `config.toml`, optional keys included.
 
+**Amended by [ADR-0090](./0090-a-run-resolves-only-the-zone-tokens-it-reads.md)** (2026-11-14): Zone tokens follow the Read Set too.
+
 ## Decision
 
 A run resolves a `!` value only when its key is in the run's **Read Set**. A `!` value outside it is never run and never reaches the run's extra-vars.
@@ -27,7 +29,7 @@ The cost is that a broken command on a key no run reads is no longer caught earl
 
 - A broken `!` command on a key the run never reads no longer fails the run. It fails the first run that reads it.
 - A `!` failure on a key inside the Read Set still stops the run before Ansible starts, naming the key.
-- **Zone tokens still reach every run.** Computed Vars resolve `host_zones` over every Meta (ADR-0081, ADR-0082). Narrowing them is #1323.
+- ~~**Zone tokens still reach every run.**~~ Narrowed by ADR-0090.
 - A name the walk misses is a secret the run never gets. `tests/read_set_witness.rs` guards that independently: every Key Registry name that appears as a whole word in a file the run renders must be in its Read Set. It reaches roles by regex over raw text, not through the walk.
 
 ## Rejected

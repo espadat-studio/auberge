@@ -6,6 +6,8 @@ Accepted, 2026-09-22. Amends [ADR-0071](./0071-a-tailnet-only-apps-parent-domain
 
 **Amended 2026-09-23** (was: a Zone is a pair of Key Registry entries, and the registry listed one operator's `studio` pair): the registry holds only the Zones the repo requires; an operator's own pair is set by key name (#981).
 
+**Amended by [ADR-0090](./0090-a-run-resolves-only-the-zone-tokens-it-reads.md)** (2026-11-14): a run resolves a Zone's token only when it reads it.
+
 ## Decision
 
 **A Zone is a pair of config keys sharing a prefix — `<zone>_domain` and `<zone>_cloudflare_dns_api_token`.** The fleet's Zone is the unnamed one. `agents_domain` + `agents_cloudflare_dns_api_token` was already this shape; naming it makes a second one cost two config keys instead of a mechanism.
