@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.25.0](https://github.com/espadat-studio/auberge/compare/v0.24.0...v0.25.0) - 2026-11-14
+
+### Added
+
+- *(config)* resolve only the ! values a run reads ([#1324](https://github.com/espadat-studio/auberge/pull/1324))
+
+### Changed
+
+- *(zone)* resolve only the zone tokens a run reads ([#1326](https://github.com/espadat-studio/auberge/pull/1326))
+- *(config)* run each ! command once per process ([#1321](https://github.com/espadat-studio/auberge/pull/1321))
+
 ## [0.24.0](https://github.com/espadat-studio/auberge/compare/v0.23.0...v0.24.0) - 2026-11-12
 
 ### Added
