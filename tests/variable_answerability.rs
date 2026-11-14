@@ -62,6 +62,12 @@
 //! Ansible's own facts (`ansible_*`, `inventory_hostname`, `item`, …) are named
 //! in [`BUILTIN_NAMES`] rather than discovered, because nothing declares them.
 //!
+//! The scan and the role fixpoint are the crate's own
+//! (`auberge::services::read_set`), the walk that narrows a deploy's `!`
+//! resolution to its Read Set (#1322). One walk, so this fence and the
+//! runtime cannot disagree about which files a run reaches. The fence reads
+//! its `unguarded` names; the runtime reads every name, guarded or not.
+//!
 //! ## What the sweep found
 //!
 //! Over 550 distinct unguarded references, 66 registry keys and 10 runs
@@ -115,19 +121,17 @@
 
 mod common;
 
+use auberge::services::read_set::{self, FileScan};
 use auberge::services::zone::{
     DNS_TOKEN_ENV_SUFFIX, DNS_TOKEN_SUFFIX, HOST_ZONES_VAR, PARENT_DOMAIN_SUFFIX,
 };
 use common::{
     all_roles, meta_files, parse_yaml, playbook_files, registry_keys, relative, repo,
-    role_template_files, role_templates, role_yml_files, strings, templated_yml_files, yml_files,
+    role_templates, strings, templated_yml_files, yml_files,
 };
-use regex::Regex;
 use serde_yaml::Value;
 use std::collections::{BTreeMap, BTreeSet};
-use std::fs;
 use std::path::{Path, PathBuf};
-use std::sync::LazyLock;
 
 /// Variables nothing in the repo declares: Ansible's own, plus
 /// `public_address`, which the CLI writes into every generated inventory.
@@ -150,300 +154,18 @@ const BUILTIN_NAMES: &[&str] = &[
     "vars",
 ];
 
-/// Jinja's own words, plus the callables that appear as bare identifiers.
-/// A name here is never a variable reference.
-const JINJA_WORDS: &[&str] = &[
-    "and",
-    "as",
-    "block",
-    "break",
-    "caller",
-    "continue",
-    "cycler",
-    "dict",
-    "dictsort",
-    "do",
-    "elif",
-    "else",
-    "endblock",
-    "endfilter",
-    "endfor",
-    "endif",
-    "endmacro",
-    "endraw",
-    "endset",
-    "endwith",
-    "extends",
-    "False",
-    "false",
-    "filter",
-    "for",
-    "from",
-    "if",
-    "import",
-    "in",
-    "include",
-    "is",
-    "joiner",
-    "kwargs",
-    "lipsum",
-    "list",
-    "lookup",
-    "loop",
-    "macro",
-    "namespace",
-    "None",
-    "none",
-    "not",
-    "or",
-    "q",
-    "query",
-    "range",
-    "raw",
-    "recursive",
-    "self",
-    "set",
-    "True",
-    "true",
-    "undefined",
-    "varargs",
-    "with",
-];
-
-/// YAML keys whose scalar *is* a Jinja expression, with no `{{ … }}` around it.
-const BARE_EXPRESSION_KEYS: &[&str] = &[
-    "assert",
-    "changed_when",
-    "failed_when",
-    "that",
-    "until",
-    "when",
-];
-
-static LITERAL: LazyLock<Regex> = LazyLock::new(|| Regex::new(r#"'[^']*'|"[^"]*""#).unwrap());
-static IDENT: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"[A-Za-z_][A-Za-z0-9_]*").unwrap());
-static EXPRESSION: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"(?s)\{\{(.*?)\}\}|\{%-?(.*?)-?%\}").unwrap());
-static FOR_TARGETS: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"(?s)\{%-?\s*for\s+(.+?)\s+in\s").unwrap());
-static SET_TARGET: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"\{%-?\s*set\s+([A-Za-z_][A-Za-z0-9_]*)").unwrap());
-/// `before` ends in `is` / `is not`, so what follows is a test, not a variable.
-static TEST_NAME: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\bis\s+(not\s+)?$").unwrap());
-static DEFAULTED: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(
-        r"([A-Za-z_][A-Za-z0-9_]*)((?:\s*\.\s*[A-Za-z0-9_]+|\s*\[[^\]]*\])*)\s*\|\s*(default|d)\b",
-    )
-    .unwrap()
-});
-static TESTED_DEFINED: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"([A-Za-z_][A-Za-z0-9_]*)((?:\s*\.\s*[A-Za-z0-9_]+)*)\s+is\s+(not\s+)?defined\b")
-        .unwrap()
-});
-
-/// String literals blanked out, so their contents are never read as names and
-/// the offsets around them still line up.
-fn mask_literals(expr: &str) -> String {
-    let mut masked = String::with_capacity(expr.len());
-    let mut cursor = 0;
-    for found in LITERAL.find_iter(expr) {
-        masked.push_str(&expr[cursor..found.start()]);
-        masked.extend(found.as_str().chars().map(|_| ' '));
-        cursor = found.end();
-    }
-    masked.push_str(&expr[cursor..]);
-    masked
-}
-
-/// Every Jinja expression body in a blob of text.
-fn expressions(text: &str) -> Vec<String> {
-    EXPRESSION
-        .captures_iter(text)
-        .filter_map(|caps| caps.get(1).or_else(|| caps.get(2)))
-        .map(|m| m.as_str().to_string())
-        .collect()
-}
-
-/// The names a template binds for itself: `{% for x, y in … %}`, `{% set x = … %}`.
-fn template_bindings(text: &str) -> BTreeSet<String> {
-    let mut bound = BTreeSet::new();
-    for caps in FOR_TARGETS.captures_iter(text) {
-        for part in caps[1].split(',') {
-            let part = part.trim().trim_matches(['(', ')']).trim();
-            if IDENT.find(part).is_some_and(|m| m.as_str() == part) {
-                bound.insert(part.to_string());
-            }
-        }
-    }
-    for caps in SET_TARGET.captures_iter(text) {
-        bound.insert(caps[1].to_string());
-    }
-    bound
-}
-
-/// The variables an expression reads at their root.
-///
-/// An identifier is a root reference unless something in front of it says
-/// otherwise: `.` makes it an attribute, `|` a filter, `is` a test, and a
-/// following `=` a callable's keyword argument.
-fn root_names(expr: &str) -> BTreeSet<String> {
-    let masked = mask_literals(expr);
-    let mut names = BTreeSet::new();
-    for found in IDENT.find_iter(&masked) {
-        let before = &masked[..found.start()];
-        let trimmed = before.trim_end();
-        if trimmed.ends_with('.') || trimmed.ends_with('|') || TEST_NAME.is_match(before) {
-            continue;
-        }
-        let after = masked[found.end()..].trim_start();
-        if after.starts_with('=') && !after.starts_with("==") {
-            continue;
-        }
-        let name = found.as_str();
-        if JINJA_WORDS.contains(&name) {
-            continue;
-        }
-        names.insert(name.to_string());
-    }
-    names
-}
-
-/// The names this expression answers for itself: `x | default(…)`, and
-/// `x is defined`, which is how a role reads an optional key.
-fn guarded_names(expr: &str) -> BTreeSet<String> {
-    let masked = mask_literals(expr);
-    let mut guarded = BTreeSet::new();
-    for caps in DEFAULTED.captures_iter(&masked) {
-        guarded.insert(caps[1].to_string());
-    }
-    for caps in TESTED_DEFINED.captures_iter(&masked) {
-        guarded.insert(caps[1].to_string());
-    }
-    guarded
-}
-
-/// What one file says: the names it reads with no guard, the names it binds,
-/// and the roles it pulls in by name.
-#[derive(Default)]
-struct FileScan {
-    unguarded: BTreeSet<String>,
-    bound: BTreeSet<String>,
-    included_roles: BTreeSet<String>,
-}
-
-impl FileScan {
-    /// Text that may hold `{{ … }}` / `{% … %}` among literal content.
-    fn read_text(&mut self, text: &str) {
-        self.bound.extend(template_bindings(text));
-        for expr in expressions(text) {
-            let guarded = guarded_names(&expr);
-            for name in root_names(&expr) {
-                if !guarded.contains(&name) {
-                    self.unguarded.insert(name);
-                }
-            }
-        }
-    }
-
-    /// A scalar that is itself an expression — a `when:` and its siblings.
-    fn read_expression(&mut self, expr: &str) {
-        if expr.contains("{{") || expr.contains("{%") {
-            self.read_text(expr);
-            return;
-        }
-        let guarded = guarded_names(expr);
-        for name in root_names(expr) {
-            if !guarded.contains(&name) {
-                self.unguarded.insert(name);
-            }
-        }
-    }
-
-    fn walk(&mut self, node: &Value, bare: bool) {
-        match node {
-            Value::Mapping(map) => {
-                for (key, value) in map {
-                    let Some(key) = key.as_str() else { continue };
-                    // `ansible.builtin.set_fact` and `set_fact` are one module.
-                    match key.rsplit('.').next().unwrap_or(key) {
-                        "set_fact" => self.bind_mapping_keys(value, &["cacheable"]),
-                        "vars" => self.bind_mapping_keys(value, &[]),
-                        "register" => {
-                            if let Some(name) = value.as_str() {
-                                self.bound.insert(name.to_string());
-                            }
-                        }
-                        "loop_control" => {
-                            if let Some(name) = value.get("loop_var").and_then(Value::as_str) {
-                                self.bound.insert(name.to_string());
-                            }
-                        }
-                        "include_role" | "import_role" => {
-                            if let Some(name) = value.get("name").and_then(Value::as_str)
-                                && !name.contains("{{")
-                            {
-                                self.included_roles.insert(name.to_string());
-                            }
-                        }
-                        _ => {}
-                    }
-                    self.walk(value, BARE_EXPRESSION_KEYS.contains(&key));
-                }
-            }
-            Value::Sequence(items) => {
-                for item in items {
-                    self.walk(item, bare);
-                }
-            }
-            Value::String(text) => {
-                if bare {
-                    self.read_expression(text);
-                } else {
-                    self.read_text(text);
-                }
-            }
-            _ => {}
-        }
-    }
-
-    fn bind_mapping_keys(&mut self, value: &Value, skip: &[&str]) {
-        let Value::Mapping(map) = value else { return };
-        for key in map.keys() {
-            if let Some(name) = key.as_str()
-                && !skip.contains(&name)
-            {
-                self.bound.insert(name.to_string());
-            }
-        }
-    }
-}
-
-fn scan_yaml(path: &Path) -> FileScan {
-    let mut scan = FileScan::default();
-    scan.walk(&parse_yaml(path), false);
-    scan
-}
-
-fn scan_template(path: &Path) -> FileScan {
-    let raw = fs::read_to_string(path).unwrap_or_else(|e| panic!("{}: {e}", relative(path)));
-    let mut scan = FileScan::default();
-    scan.read_text(&raw);
-    scan
-}
-
+/// One file through the crate's walk, failing by repo-relative name.
 fn scan(path: &Path) -> FileScan {
-    if path.extension().is_some_and(|ext| ext == "yml") {
-        scan_yaml(path)
-    } else {
-        scan_template(path)
-    }
+    read_set::scan(path).unwrap_or_else(|e| panic!("{}: {e:?}", relative(path)))
 }
 
-/// Every file of a role a deploy renders.
+/// Every file of a role a deploy renders, as the crate's walk reads it.
 fn role_files(role: &str) -> Vec<PathBuf> {
-    let mut files = role_yml_files(role);
-    files.extend(role_template_files(role));
-    files
+    read_set::role_files(&ansible_dir(), role).unwrap_or_else(|e| panic!("{e:?}"))
+}
+
+fn ansible_dir() -> PathBuf {
+    repo().join("ansible")
 }
 
 fn top_level_keys(path: &Path) -> BTreeSet<String> {
@@ -460,31 +182,6 @@ fn top_level_keys(path: &Path) -> BTreeSet<String> {
     }
 }
 
-/// The roles one role declares as dependencies in its `meta/main.yml`.
-fn declared_dependencies(role: &str) -> BTreeSet<String> {
-    let path = common::role_dir(role).join("meta/main.yml");
-    if !path.exists() {
-        return BTreeSet::new();
-    }
-    let Value::Mapping(meta) = parse_yaml(&path) else {
-        return BTreeSet::new();
-    };
-    meta.get("dependencies")
-        .and_then(Value::as_sequence)
-        .map(|seq| {
-            seq.iter()
-                .filter_map(|entry| match entry {
-                    Value::String(name) => Some(name.clone()),
-                    other => other
-                        .get("role")
-                        .and_then(Value::as_str)
-                        .map(str::to_string),
-                })
-                .collect()
-        })
-        .unwrap_or_default()
-}
-
 /// One playbook and every role it reaches.
 struct Run {
     playbook: PathBuf,
@@ -495,30 +192,6 @@ struct Run {
     entry_vars: BTreeMap<String, BTreeSet<String>>,
     /// Names the run binds as it goes, from the playbook and every role in it.
     bound: BTreeSet<String>,
-}
-
-/// Grow a role set through `meta/main.yml` dependencies and `include_role`
-/// until it stops growing. Both are static edges in the tree; a name built by
-/// interpolation is skipped, and no role in the repo is included that way.
-fn reachable_roles(seed: BTreeSet<String>) -> BTreeSet<String> {
-    let known = all_roles();
-    let mut roles = seed;
-    loop {
-        let mut grown = roles.clone();
-        for role in &roles {
-            if !known.contains(role) {
-                continue;
-            }
-            grown.extend(declared_dependencies(role));
-            for path in role_files(role) {
-                grown.extend(scan(&path).included_roles);
-            }
-        }
-        if grown == roles {
-            return roles;
-        }
-        roles = grown;
-    }
 }
 
 fn runs() -> Vec<Run> {
@@ -567,8 +240,8 @@ fn runs() -> Vec<Run> {
         }
 
         let playbook_scan = scan(&playbook);
-        seed.extend(playbook_scan.included_roles.clone());
-        let roles = reachable_roles(seed);
+        let roles = read_set::run_roles(&ansible_dir(), &playbook, seed)
+            .unwrap_or_else(|e| panic!("{}: {e:?}", relative(&playbook)));
 
         let mut bound = playbook_scan.bound.clone();
         for role in &roles {
