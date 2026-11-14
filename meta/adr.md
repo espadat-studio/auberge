@@ -96,6 +96,8 @@ One number, one file. Every file in `meta/adr/` is listed here; a number that ap
 | 0086 | [The agent tier runs as its own unprivileged user](./adr/0086-the-agent-tier-runs-as-its-own-unprivileged-user.md)                                              |
 | 0087 | [hermes runs as its own unprivileged user](./adr/0087-hermes-runs-as-its-own-unprivileged-user.md)                                                              |
 | 0088 | [Expunge Coverage is per-account identity, bounded by the store](./adr/0088-expunge-coverage-is-per-account-identity-bounded-by-the-store.md)                   |
+| 0089 | [A run resolves only the `!` values it reads](./adr/0089-a-run-resolves-only-the-bang-values-it-reads.md)                                                       |
+| 0090 | [A run resolves only the Zone tokens it reads](./adr/0090-a-run-resolves-only-the-zone-tokens-it-reads.md)                                                      |
 
 ## Native systemd by default
 
