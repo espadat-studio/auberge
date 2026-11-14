@@ -40,6 +40,10 @@ _Avoid_: Settings, options, user config, env
 A capability type standing for a `Config` already validated against the keys a run's Playbook Metas declare, read through the target Host's view (ADR-0058). The only way to construct one is `Config::preflight_with_keys`, reached through `services::required_keys::preflight_for`, which resolves those keys off the Metas (ADR-0045) and names the Host the run targets. `AnsibleRunner::run` accepts only a `Preflight`, making it impossible to invoke ansible with unvalidated config. An **Injected Key** is exempt: no Meta may declare one, so Preflight never demands it.
 _Avoid_: Plan, request, prepared run
 
+**Read Set**:
+The config keys one run reads: every name referenced by its playbook, by the roles it reaches (through `--tags`, `meta/main.yml` dependencies and `include_role`) by `group_vars/` and by `inventory.yml`, guarded or not. Wider than the run's `required_keys`, which name only the keys it cannot run without. A run reaching a role that looks variables up by computed name reads every key.
+_Avoid_: Used keys, run keys, required keys
+
 **Host**:
 A target machine in the Inventory (name, user, IP, SSH key). Playbooks run against one Host at a time. A Host has **two** addresses once it is on the tailnet: its public one — what DNS publishes, what a deploy's public DNS check expects, and what fail2ban must keep ignoring — and its `tailscale_ip`. Which one the CLI connects to is the **Tailnet Route**; the Inventory names them apart as `vars.public_address` and `connect_address` (ADR-0074). A `hosts.toml` entry that carries a field this binary does not declare keeps it — round-tripped verbatim through an `unknown` catch-all rather than dropped on the next save (ADR-0069) — so a binary that predates a field is harmless, not destructive.
 _Avoid_: Server, node, target, machine

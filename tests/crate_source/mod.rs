@@ -125,6 +125,7 @@ pub const CRATE_MODULES: &[&str] = &[
     "src/services/inventory.rs",
     "src/services/known_hosts.rs",
     "src/services/progress.rs",
+    "src/services/read_set.rs",
     "src/services/required_keys.rs",
     "src/services/route.rs",
     "src/services/rsync.rs",

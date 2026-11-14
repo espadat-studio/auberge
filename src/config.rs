@@ -1,3 +1,4 @@
+use crate::services::read_set::ReadSet;
 use eyre::{Context, Result};
 use std::collections::HashMap;
 use std::fs;
@@ -394,16 +395,24 @@ impl Config {
     /// the top level minus the reserved `hosts` table, with the Host's
     /// `[hosts.<name>]` overrides merged on top (ADR-0058).
     ///
-    /// Any value that fails to resolve is an error naming its key: dropping
-    /// it would silently hand the role its default, or for an override the
-    /// fleet-wide value the Host meant to replace.
-    pub fn flatten_for_ansible(&self, host: Option<&str>) -> Result<HashMap<String, String>> {
+    /// A `!` value whose key is outside the run's `read_set` is never run
+    /// and never reaches the map: the run cannot read it, so unlocking it buys
+    /// nothing. Plain values pass whatever the Read Set says.
+    ///
+    /// Any value that does resolve and fails is an error naming its key:
+    /// dropping it would silently hand the role its default, or for an
+    /// override the fleet-wide value the Host meant to replace.
+    pub fn flatten_for_ansible(
+        &self,
+        host: Option<&str>,
+        read_set: &ReadSet,
+    ) -> Result<HashMap<String, String>> {
         let mut flat = HashMap::new();
         for (key, value) in &self.values {
             if key == HOSTS_TABLE {
                 continue;
             }
-            flatten_entry(key, value, &mut flat)?;
+            flatten_entry(key, value, read_set, &mut flat)?;
         }
         let Some(h) = host else {
             return Ok(flat);
@@ -413,11 +422,14 @@ impl Config {
         };
         for (key, value) in overrides {
             match value {
-                toml::Value::Table(inner) => flat.extend(flatten_toml(inner)?),
+                toml::Value::Table(inner) => flat.extend(flatten_toml(inner, read_set)?),
                 other => {
                     let raw = value_to_string(other).ok_or_else(|| {
                         eyre::eyre!("[hosts.{h}] override '{key}' is not a scalar value")
                     })?;
+                    if unread_command(key, &raw, read_set) {
+                        continue;
+                    }
                     let resolved = resolve_value(&raw).wrap_err_with(|| {
                         format!("[hosts.{h}] override '{key}' failed to resolve")
                     })?;
@@ -439,11 +451,12 @@ impl Config {
         &self,
         required_keys: &[String],
         host: Option<&str>,
+        read_set: &ReadSet,
     ) -> Result<Preflight> {
         let keys: Vec<&str> = required_keys.iter().map(String::as_str).collect();
         self.validate_required_resolved(&keys, host)?;
         Ok(Preflight {
-            flat_vars: self.flatten_for_ansible(host)?,
+            flat_vars: self.flatten_for_ansible(host, read_set)?,
         })
     }
 
@@ -555,10 +568,15 @@ fn run_shell_command(cmd: &str) -> Result<String> {
     Ok(resolved)
 }
 
-fn flatten_toml(table: &toml::Table) -> Result<HashMap<String, String>> {
+/// A `!` command (not the `!!` escape) on a key the run never reads.
+fn unread_command(key: &str, raw: &str, read_set: &ReadSet) -> bool {
+    raw.starts_with('!') && !raw.starts_with("!!") && !read_set.contains(key)
+}
+
+fn flatten_toml(table: &toml::Table, read_set: &ReadSet) -> Result<HashMap<String, String>> {
     let mut result = HashMap::new();
     for (key, value) in table {
-        flatten_entry(key, value, &mut result)?;
+        flatten_entry(key, value, read_set, &mut result)?;
     }
     Ok(result)
 }
@@ -566,12 +584,15 @@ fn flatten_toml(table: &toml::Table) -> Result<HashMap<String, String>> {
 fn flatten_entry(
     key: &str,
     value: &toml::Value,
+    read_set: &ReadSet,
     result: &mut HashMap<String, String>,
 ) -> Result<()> {
     match value {
-        toml::Value::Table(inner) => result.extend(flatten_toml(inner)?),
+        toml::Value::Table(inner) => result.extend(flatten_toml(inner, read_set)?),
         other => {
-            if let Some(s) = value_to_string(other) {
+            if let Some(s) = value_to_string(other)
+                && !unread_command(key, &s, read_set)
+            {
                 let resolved = resolve_value(&s)
                     .wrap_err_with(|| format!("Failed to resolve config key '{key}'"))?;
                 result.insert(key.to_string(), resolved);
@@ -798,7 +819,7 @@ mod tests {
             admin_user_name = "alice"
         "#,
         );
-        let flat = flatten_toml(&config.values).unwrap();
+        let flat = flatten_toml(&config.values, &ReadSet::Everything).unwrap();
         assert_eq!(flat.get("domain").unwrap(), "example.com");
         assert_eq!(flat.get("ssh_port").unwrap(), "22022");
         assert_eq!(flat.get("admin_user_name").unwrap(), "alice");
@@ -813,7 +834,9 @@ mod tests {
             baikal_admin_password = "secret"
         "#,
         );
-        let flat = config.flatten_for_ansible(None).unwrap();
+        let flat = config
+            .flatten_for_ansible(None, &ReadSet::Everything)
+            .unwrap();
         assert_eq!(flat.get("domain").unwrap(), "example.com");
         assert_eq!(flat.get("ssh_port").unwrap(), "22022");
         assert_eq!(flat.get("baikal_admin_password").unwrap(), "secret");
@@ -828,7 +851,9 @@ mod tests {
             baikal_admin_password = "!echo cmdpassword"
         "#,
         );
-        let flat = config.flatten_for_ansible(None).unwrap();
+        let flat = config
+            .flatten_for_ansible(None, &ReadSet::Everything)
+            .unwrap();
         assert_eq!(flat.get("domain").unwrap(), "example.com");
         assert_eq!(flat.get("baikal_admin_password").unwrap(), "cmdpassword");
     }
@@ -841,7 +866,9 @@ mod tests {
             baikal_admin_password = "!!literal"
         "#,
         );
-        let flat = config.flatten_for_ansible(None).unwrap();
+        let flat = config
+            .flatten_for_ansible(None, &ReadSet::Everything)
+            .unwrap();
         assert_eq!(flat.get("baikal_admin_password").unwrap(), "!literal");
     }
 
@@ -854,9 +881,79 @@ mod tests {
             broken_key = "!echo leaked-stdout; exit 1"
         "#,
         );
-        let err = format!("{:?}", config.flatten_for_ansible(None).unwrap_err());
+        let err = format!(
+            "{:?}",
+            config
+                .flatten_for_ansible(None, &ReadSet::Everything)
+                .unwrap_err()
+        );
         assert!(err.contains("'broken_key'"), "{err}");
         assert!(!err.contains("leaked-stdout"), "{err}");
+    }
+
+    // ── Read Set filtering ────────────────────────────────────────────────────
+
+    fn only(names: &[&str]) -> ReadSet {
+        ReadSet::Names(names.iter().map(|n| n.to_string()).collect())
+    }
+
+    fn spy(marker: &std::path::Path) -> String {
+        format!("!touch {}; echo spied", marker.display())
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn test_bang_value_outside_the_read_set_is_never_run() {
+        let dir = tempfile::tempdir().unwrap();
+        let marker = dir.path().join("ran");
+        let config = make_config(&format!(
+            "domain = \"example.com\"\nunread_password = \"{}\"\n",
+            spy(&marker)
+        ));
+        let flat = config
+            .flatten_for_ansible(None, &only(&["domain"]))
+            .unwrap();
+        assert!(!marker.exists(), "the unread key's command ran");
+        assert!(!flat.contains_key("unread_password"));
+        assert_eq!(flat.get("domain").unwrap(), "example.com");
+    }
+
+    #[test]
+    fn test_plain_value_outside_the_read_set_still_passes() {
+        let config = make_config("plain_key = \"value\"\nescaped = \"!!lit\"\n");
+        let flat = config.flatten_for_ansible(None, &only(&[])).unwrap();
+        assert_eq!(flat.get("plain_key").unwrap(), "value");
+        assert_eq!(flat.get("escaped").unwrap(), "!lit");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn test_failing_bang_value_inside_the_read_set_still_fails_naming_the_key() {
+        let config = make_config("read_token = \"!echo nope >&2; exit 3\"\n");
+        let err = format!(
+            "{:?}",
+            config
+                .flatten_for_ansible(None, &only(&["read_token"]))
+                .unwrap_err()
+        );
+        assert!(err.contains("'read_token'"), "{err}");
+        assert!(err.contains("nope"), "{err}");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn test_host_override_outside_the_read_set_is_not_resolved() {
+        let dir = tempfile::tempdir().unwrap();
+        let marker = dir.path().join("ran");
+        let config = make_config(&format!(
+            "domain = \"example.com\"\n[hosts.ruche]\nunread_password = \"{}\"\n",
+            spy(&marker)
+        ));
+        let flat = config
+            .flatten_for_ansible(Some("ruche"), &only(&["domain"]))
+            .unwrap();
+        assert!(!marker.exists(), "the unread override's command ran");
+        assert!(!flat.contains_key("unread_password"));
     }
 
     // ── get_resolved ──────────────────────────────────────────────────────────
@@ -1079,7 +1176,9 @@ ssh_port = 22022
         "#,
         );
         let keys = vec!["admin_user_name".to_string(), "domain".to_string()];
-        let preflight = config.preflight_with_keys(&keys, None).unwrap();
+        let preflight = config
+            .preflight_with_keys(&keys, None, &ReadSet::Everything)
+            .unwrap();
         assert_eq!(preflight.flat_vars().get("domain").unwrap(), "example.com");
     }
 
@@ -1092,7 +1191,11 @@ ssh_port = 22022
         "#,
         );
         let err = config
-            .preflight_with_keys(&["tailscale_authkey".to_string()], None)
+            .preflight_with_keys(
+                &["tailscale_authkey".to_string()],
+                None,
+                &ReadSet::Everything,
+            )
             .unwrap_err();
         assert!(
             err.to_string().contains("tailscale_authkey"),
@@ -1109,7 +1212,11 @@ ssh_port = 22022
         "#,
         );
         let err = config
-            .preflight_with_keys(&["tailscale_authkey".to_string()], None)
+            .preflight_with_keys(
+                &["tailscale_authkey".to_string()],
+                None,
+                &ReadSet::Everything,
+            )
             .unwrap_err();
         assert!(
             err.to_string().contains("tailscale_authkey"),
@@ -1120,7 +1227,11 @@ ssh_port = 22022
     #[test]
     fn test_preflight_with_no_keys_accepts_an_empty_config() {
         let config = make_config("");
-        assert!(config.preflight_with_keys(&[], None).is_ok());
+        assert!(
+            config
+                .preflight_with_keys(&[], None, &ReadSet::Everything)
+                .is_ok()
+        );
     }
 
     #[test]
@@ -1133,7 +1244,7 @@ ssh_port = 22022
         "#,
         );
         let preflight = config
-            .preflight_with_keys(&["domain".to_string()], None)
+            .preflight_with_keys(&["domain".to_string()], None, &ReadSet::Everything)
             .unwrap();
         let flat = preflight.flat_vars();
         assert_eq!(flat.get("domain").unwrap(), "example.com");
@@ -1152,7 +1263,7 @@ ssh_port = 22022
         "#,
         );
         let preflight = config
-            .preflight_with_keys(&[], None)
+            .preflight_with_keys(&[], None, &ReadSet::Everything)
             .unwrap()
             .with_computed_vars([(
                 "forgejo_parent_domain".to_string(),
@@ -1171,7 +1282,7 @@ ssh_port = 22022
     fn test_a_computed_var_overlay_leaves_the_rest_of_config_alone() {
         let config = make_config("domain = \"example.com\"\nssh_port = 22022\n");
         let preflight = config
-            .preflight_with_keys(&[], None)
+            .preflight_with_keys(&[], None, &ReadSet::Everything)
             .unwrap()
             .with_computed_vars([("host_zones".to_string(), "[]".to_string())]);
         let flat = preflight.flat_vars();
@@ -1188,7 +1299,11 @@ ssh_port = 22022
         "#,
         );
         let preflight = config
-            .preflight_with_keys(&["tailscale_authkey".to_string()], None)
+            .preflight_with_keys(
+                &["tailscale_authkey".to_string()],
+                None,
+                &ReadSet::Everything,
+            )
             .unwrap();
         assert_eq!(
             preflight.flat_vars().get("tailscale_authkey").unwrap(),
@@ -1213,7 +1328,9 @@ ssh_port = 22022
     #[test]
     fn test_host_override_wins_for_that_hosts_flat_vars() {
         let config = make_config(HOST_SCOPED);
-        let flat = config.flatten_for_ansible(Some("staging")).unwrap();
+        let flat = config
+            .flatten_for_ansible(Some("staging"), &ReadSet::Everything)
+            .unwrap();
         assert_eq!(flat.get("domain").unwrap(), "staging.example.com");
         assert_eq!(flat.get("extra_key").unwrap(), "only-here");
     }
@@ -1222,7 +1339,9 @@ ssh_port = 22022
     fn test_other_hosts_and_fleet_view_ignore_an_override() {
         let config = make_config(HOST_SCOPED);
         for host in [Some("auberge"), None] {
-            let flat = config.flatten_for_ansible(host).unwrap();
+            let flat = config
+                .flatten_for_ansible(host, &ReadSet::Everything)
+                .unwrap();
             assert_eq!(flat.get("domain").unwrap(), "example.com", "{host:?}");
             assert_eq!(flat.get("headscale_subdomain").unwrap(), "hs", "{host:?}");
             assert!(!flat.contains_key("extra_key"), "{host:?}");
@@ -1235,7 +1354,9 @@ ssh_port = 22022
     #[test]
     fn test_hosts_table_never_leaks_into_flat_vars() {
         let config = make_config(HOST_SCOPED);
-        let flat = config.flatten_for_ansible(Some("ruche")).unwrap();
+        let flat = config
+            .flatten_for_ansible(Some("ruche"), &ReadSet::Everything)
+            .unwrap();
         assert!(!flat.contains_key("extra_key"));
         assert!(!flat.contains_key("hosts"));
     }
@@ -1245,7 +1366,9 @@ ssh_port = 22022
     #[test]
     fn test_blank_override_reaches_flat_vars_as_empty() {
         let config = make_config(HOST_SCOPED);
-        let flat = config.flatten_for_ansible(Some("ruche")).unwrap();
+        let flat = config
+            .flatten_for_ansible(Some("ruche"), &ReadSet::Everything)
+            .unwrap();
         assert_eq!(flat.get("headscale_subdomain").unwrap(), "");
     }
 
@@ -1256,20 +1379,32 @@ ssh_port = 22022
         let config = make_config(HOST_SCOPED);
         let keys = vec!["headscale_subdomain".to_string()];
         let err = config
-            .preflight_with_keys(&keys, Some("ruche"))
+            .preflight_with_keys(&keys, Some("ruche"), &ReadSet::Everything)
             .unwrap_err();
         assert!(err.to_string().contains("headscale_subdomain"), "{err}");
-        assert!(config.preflight_with_keys(&keys, Some("auberge")).is_ok());
-        assert!(config.preflight_with_keys(&keys, None).is_ok());
+        assert!(
+            config
+                .preflight_with_keys(&keys, Some("auberge"), &ReadSet::Everything)
+                .is_ok()
+        );
+        assert!(
+            config
+                .preflight_with_keys(&keys, None, &ReadSet::Everything)
+                .is_ok()
+        );
     }
 
     #[test]
     fn test_override_satisfies_a_key_missing_at_top_level() {
         let config = make_config(HOST_SCOPED);
         let keys = vec!["extra_key".to_string()];
-        assert!(config.preflight_with_keys(&keys, Some("staging")).is_ok());
+        assert!(
+            config
+                .preflight_with_keys(&keys, Some("staging"), &ReadSet::Everything)
+                .is_ok()
+        );
         let err = config
-            .preflight_with_keys(&keys, Some("ruche"))
+            .preflight_with_keys(&keys, Some("ruche"), &ReadSet::Everything)
             .unwrap_err();
         assert!(err.to_string().contains("extra_key"), "{err}");
     }

@@ -12,7 +12,6 @@ use crate::services::inventory::{Host, get_playbooks, hosts_ignoreip_var, select
 use clap::Subcommand;
 use eyre::{Result, WrapErr};
 use regex::Regex;
-use std::collections::HashMap;
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 
@@ -370,7 +369,7 @@ fn run_single_playbook(
     let is_fresh_bootstrap = playbook_file == "bootstrap.yml";
 
     if is_fresh_bootstrap {
-        confirm_provider_firewall(&preflight, force)?;
+        confirm_provider_firewall(&host.name, force)?;
     }
 
     show_playbook_warnings(playbook_file, force)?;
@@ -461,14 +460,18 @@ fn confirm_or_abort(question: &str, abort_message: &str, force: bool) -> Result<
     Ok(())
 }
 
-fn configured_ssh_port(flat_vars: &HashMap<String, String>) -> String {
-    flat_vars
-        .get("ssh_port")
-        .cloned()
-        .unwrap_or_else(|| "not configured".to_string())
+/// Read through `Config`, not the run's extra-vars: those carry what Ansible
+/// reads, filtered to the run's Read Set, and are no source of config for Rust.
+fn configured_ssh_port(config: &Config, host: &str) -> Result<String> {
+    match config.get_for_host("ssh_port", Some(host)) {
+        Some(raw) => {
+            crate::config::resolve_value(&raw).wrap_err("Failed to resolve config key 'ssh_port'")
+        }
+        None => Ok("not configured".to_string()),
+    }
 }
 
-fn confirm_provider_firewall(preflight: &Preflight, force: bool) -> Result<()> {
+fn confirm_provider_firewall(host: &str, force: bool) -> Result<()> {
     eprintln!();
     output::info("IMPORTANT: Provider Firewall Configuration Required");
     output::info("Before running bootstrap, ensure your VPS provider's firewall");
@@ -477,7 +480,7 @@ fn confirm_provider_firewall(preflight: &Preflight, force: bool) -> Result<()> {
     output::info("Required steps:");
     output::info(&format!(
         "  1. Your target SSH port: {}",
-        configured_ssh_port(preflight.flat_vars())
+        configured_ssh_port(&Config::load()?, host)?
     ));
     output::info("  2. Log into your VPS provider dashboard (IONOS, etc.)");
     output::info("  3. Add firewall rule: Allow TCP on your SSH port");
@@ -623,7 +626,7 @@ pub fn run_ansible_bootstrap(
         );
     }
 
-    confirm_provider_firewall(&preflight, force)?;
+    confirm_provider_firewall(&host_name, force)?;
 
     let host_ip = match (ip, force) {
         (Some(ip_addr), _) => {
@@ -680,15 +683,20 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_configured_ssh_port_reads_flat_vars() {
-        let mut vars = HashMap::new();
-        vars.insert("ssh_port".to_string(), "2222".to_string());
-        assert_eq!(configured_ssh_port(&vars), "2222");
+    fn test_configured_ssh_port_reads_the_hosts_config_view() {
+        let config =
+            Config::from_toml_str("ssh_port = 2222\n[hosts.ruche]\nssh_port = 2200\n").unwrap();
+        assert_eq!(configured_ssh_port(&config, "auberge").unwrap(), "2222");
+        assert_eq!(configured_ssh_port(&config, "ruche").unwrap(), "2200");
     }
 
     #[test]
     fn test_configured_ssh_port_falls_back_when_unset() {
-        assert_eq!(configured_ssh_port(&HashMap::new()), "not configured");
+        let config = Config::from_toml_str("").unwrap();
+        assert_eq!(
+            configured_ssh_port(&config, "auberge").unwrap(),
+            "not configured"
+        );
     }
 
     #[test]
