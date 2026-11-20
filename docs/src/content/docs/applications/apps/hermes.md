@@ -24,7 +24,7 @@ Dependency layers (hardening, infrastructure) resolved automatically.
 | `hermes_llm_api_key`        | API key for the chosen provider                                                      |
 | `hermes_telegram_bot_token` | Bot token from [@BotFather](https://t.me/BotFather)                                  |
 
-Optional: `hermes_exa_api_key` (web search), `hermes_telegram_allowed_users` (comma-separated user IDs — restricts bot access; without this any user knowing the token can interact).
+Optional: `hermes_exa_api_key` (web search), `hermes_intervals_api_key` (installs [intervals-mcp-server](https://github.com/mvilanova/intervals-mcp-server) into `~/.hermes/intervals-mcp` and writes `INTERVALS_API_KEY` to `.env`; see below), `hermes_telegram_allowed_users` (comma-separated user IDs — restricts bot access; without this any user knowing the token can interact).
 
 ## Notes
 
@@ -46,3 +46,19 @@ Secrets stored in `/home/hermes/.hermes/.env` (mode `0600`). No public ports exp
 :::note
 Before ADR-0087 the gateway ran as the admin user. The first deploy after it stops and removes that unit, and starts fresh under `hermes`. The old `~/.hermes/` in the admin home is left in place. Copy any sessions or memories you want to keep into `/home/hermes/.hermes/` and fix ownership, then delete the old directory.
 :::
+
+## Intervals.icu
+
+With `hermes_intervals_api_key` set, declare the server in `config.yaml`:
+
+```yaml
+mcp_servers:
+  intervals:
+    command: "${userHome}/.hermes/intervals-mcp/bin/python"
+    args: [-m, intervals_mcp_server.server]
+    env:
+      API_KEY: "${INTERVALS_API_KEY}"
+      ATHLETE_ID: "<id>"
+```
+
+The role pins the server to `hermes_intervals_mcp_ref`. Renovate does not track it: upstream has no tags.
