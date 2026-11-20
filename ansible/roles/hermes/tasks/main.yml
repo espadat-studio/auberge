@@ -193,7 +193,7 @@
     msg: "Hermes version: {{ hermes_installed_version.stdout_lines | first }}"
 
 - name: Install the intervals MCP server
-  when: hermes_intervals_api_key is defined and hermes_intervals_api_key
+  when: hermes_intervals_api_key | default('') | length > 0
   become: true
   become_user: "{{ hermes_user }}"
   environment:
