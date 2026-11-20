@@ -192,6 +192,28 @@
   ansible.builtin.debug:
     msg: "Hermes version: {{ hermes_installed_version.stdout_lines | first }}"
 
+- name: Install the intervals MCP server
+  when: hermes_intervals_api_key is defined and hermes_intervals_api_key
+  become: true
+  become_user: "{{ hermes_user }}"
+  environment:
+    HOME: "{{ hermes_home }}"
+  block:
+    - name: Create the intervals MCP venv
+      ansible.builtin.command: >
+        {{ hermes_home }}/.local/bin/uv venv {{ hermes_intervals_mcp_venv }} --python 3.12
+      args:
+        creates: "{{ hermes_intervals_mcp_venv }}/bin/python"
+
+    - name: Install the intervals MCP server at the pinned ref
+      ansible.builtin.command: >
+        {{ hermes_home }}/.local/bin/uv pip install
+        --python {{ hermes_intervals_mcp_venv }}/bin/python
+        git+https://github.com/mvilanova/intervals-mcp-server@{{ hermes_intervals_mcp_ref }}
+      register: hermes_intervals_mcp_install
+      changed_when: "'Installed' in hermes_intervals_mcp_install.stderr"
+      notify: Restart hermes gateway
+
 - name: Create systemd user directory
   ansible.builtin.file:
     path: "{{ hermes_home }}/.config/systemd/user"

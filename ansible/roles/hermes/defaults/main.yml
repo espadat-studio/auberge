@@ -10,6 +10,9 @@ hermes_config_dir: "{{ hermes_home }}/.hermes"
 hermes_install_dir: "{{ hermes_config_dir }}/hermes-agent"
 hermes_venv_dir: "{{ hermes_config_dir }}/venv"
 
+hermes_intervals_mcp_ref: "cb1fbcac81095cf3e094e995decf04b8b1f259f8"
+hermes_intervals_mcp_venv: "{{ hermes_config_dir }}/intervals-mcp"
+
 hermes_config_src: "~/.config/hermes/config.yaml"
 hermes_extras: "all"
 
