@@ -24,7 +24,7 @@ Dependency layers (hardening, infrastructure) resolved automatically.
 | `hermes_llm_api_key`        | API key for the chosen provider                                                      |
 | `hermes_telegram_bot_token` | Bot token from [@BotFather](https://t.me/BotFather)                                  |
 
-Optional: `hermes_exa_api_key` (web search), `hermes_telegram_allowed_users` (comma-separated user IDs — restricts bot access; without this any user knowing the token can interact).
+Optional: `hermes_exa_api_key` (web search), `hermes_intervals_api_key` (written to `.env` as `INTERVALS_API_KEY`, for an Intervals.icu MCP server declared in `config.yaml`), `hermes_telegram_allowed_users` (comma-separated user IDs — restricts bot access; without this any user knowing the token can interact).
 
 ## Notes
 

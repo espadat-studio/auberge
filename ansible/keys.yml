@@ -211,6 +211,10 @@ keys:
     secret: true
     doc: "Exa search API key used by Hermes"
 
+  hermes_intervals_api_key:
+    secret: true
+    doc: "Intervals.icu API key Hermes passes to an intervals MCP server as ${INTERVALS_API_KEY}"
+
   hermes_llm_api_key:
     secret: true
     doc: "API key for the LLM provider used by Hermes"
