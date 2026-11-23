@@ -93,8 +93,36 @@ fn replicator_vars() -> Mapping {
 /// — the only place the run's own paths are declared, and therefore the only
 /// substitution that can turn an expression into a path.
 fn replicator_var(key: &str, vars: &BTreeMap<String, String>) -> String {
+    binding(&replicator_vars(), key, vars)
+}
+
+/// The one folder the run replicates: the single entry of the `syncthing_folders`
+/// it binds on the `syncthing` role.
+fn replicated_folder() -> Mapping {
     let bindings = replicator_vars();
-    let raw = field(&bindings, key)
+    let folders = field(&bindings, "syncthing_folders")
+        .and_then(Value::as_sequence)
+        .unwrap_or_else(|| {
+            panic!("{PLAYBOOK}: the `{REPLICATOR}` entry must bind `syncthing_folders`")
+        });
+    assert_eq!(
+        folders.len(),
+        1,
+        "{PLAYBOOK} must replicate exactly one folder"
+    );
+    folders[0]
+        .as_mapping()
+        .cloned()
+        .unwrap_or_else(|| panic!("{PLAYBOOK}: the replicated folder must be a mapping"))
+}
+
+/// One field of [`replicated_folder`], resolved like [`replicator_var`].
+fn folder_var(key: &str, vars: &BTreeMap<String, String>) -> String {
+    binding(&replicated_folder(), key, vars)
+}
+
+fn binding(bindings: &Mapping, key: &str, vars: &BTreeMap<String, String>) -> String {
+    let raw = field(bindings, key)
         .unwrap_or_else(|| panic!("{PLAYBOOK}: the `{REPLICATOR}` entry must bind `{key}`"));
     match raw {
         Value::String(text) => resolve(text, vars),
@@ -181,7 +209,7 @@ fn test_the_memsearch_meta_declares_no_backup_recipe() {
 #[test]
 fn test_the_replicated_folder_is_the_memory_directory_the_role_creates() {
     let vars = defaults("memsearch");
-    let replicated = replicator_var("syncthing_workspace_path", &vars);
+    let replicated = folder_var("path", &vars);
     let created = created_directories(&vars);
     assert!(
         created.contains(&replicated),
@@ -195,7 +223,7 @@ fn test_the_replicated_folder_is_the_memory_directory_the_role_creates() {
 #[test]
 fn test_the_index_is_not_inside_the_replicated_folder() {
     let vars = defaults("memsearch");
-    let replicated = replicator_var("syncthing_workspace_path", &vars);
+    let replicated = folder_var("path", &vars);
     let index = vars
         .get("memsearch_index_uri")
         .unwrap_or_else(|| panic!("memsearch defaults must declare `memsearch_index_uri`"));
@@ -304,16 +332,17 @@ fn test_every_binding_this_fence_reads_is_answerable() {
     .into_iter()
     .collect();
 
-    for key in [
-        "syncthing_workspace_path",
-        "syncthing_workspace_id",
-        "syncthing_workspace_label",
-        "syncthing_device_id",
-        "syncthing_device_name",
-        "syncthing_configure_workspace",
-        "syncthing_discovery_enabled",
-    ] {
-        let value = replicator_var(key, &vars);
+    let bindings = [
+        ("path", folder_var("path", &vars)),
+        ("id", folder_var("id", &vars)),
+        ("label", folder_var("label", &vars)),
+        ("devices", folder_var("devices", &vars)),
+        (
+            "syncthing_discovery_enabled",
+            replicator_var("syncthing_discovery_enabled", &vars),
+        ),
+    ];
+    for (key, value) in bindings {
         assert!(!value.is_empty(), "{PLAYBOOK}: `{key}` binds nothing");
         for name in unresolved_names(&value) {
             assert!(
@@ -332,14 +361,6 @@ fn test_every_binding_this_fence_reads_is_answerable() {
             );
         }
     }
-
-    assert_eq!(
-        replicator_var("syncthing_configure_workspace", &vars),
-        "true",
-        "{PLAYBOOK} declares a workspace folder's parameters and leaves \
-         `syncthing_configure_workspace` off, so the role skips every task that \
-         would write them into Syncthing's configuration."
-    );
 }
 
 /// The `{{ name }}` references a string still carries, bare names only: a
@@ -383,8 +404,8 @@ fn test_the_playbook_walk_reaches_the_run() {
          its tasks are {names:?}"
     );
     assert!(
-        strings(field(&replicator_vars(), "syncthing_workspace_path")).len() == 1,
-        "{PLAYBOOK}: the replicated folder must be one path"
+        !folder_var("path", &BTreeMap::new()).is_empty(),
+        "{PLAYBOOK}: the replicated folder must name a path"
     );
 }
 

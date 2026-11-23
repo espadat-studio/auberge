@@ -62,3 +62,36 @@ mcp_servers:
 ```
 
 The role pins the server to `hermes_intervals_mcp_ref`. Renovate does not track it: upstream has no tags.
+
+## Knowledge Vault
+
+hermes can read the operator's _Knowledge Vault_ and write the subtrees config names. The decision record is [ADR-0091](https://github.com/espadat-studio/auberge/blob/master/meta/adr/0091-an-app-reaches-the-knowledge-vault-through-acls.md).
+
+```toml
+[hosts.my-host]
+knowledge_vault_path = "/home/me/notes"
+knowledge_vault_folder_id = "knowledge"
+knowledge_vault_devices = "laptop,phone"
+syncthing_devices = "laptop=XXXXXXX-...,phone=YYYYYYY-..."
+hermes_knowledge_vault_write_paths = "journal,inbox/agent"
+```
+
+| `hermes_knowledge_vault_write_paths` | Grant                                     |
+| ------------------------------------ | ----------------------------------------- |
+| unset                                | none                                      |
+| `""`                                 | read the whole Vault                      |
+| `a,b/c`                              | read the whole Vault, write `a` and `b/c` |
+
+- Subtrees are Vault-relative. An absolute path, `..`, or a path resolving outside the Vault fails the deploy before anything changes.
+- A missing subtree is created, owned by the admin user.
+- A subtree dropped from the list goes back to read-only on the next deploy. Files hermes owns outside the subtrees are handed to the admin user, so owner bits cannot outlive a revocation.
+- Unsetting `hermes_knowledge_vault_write_paths` while `knowledge_vault_path` stays set removes every hermes entry on the next deploy. Unset the grant and deploy before removing the Vault path, or the entries stay.
+- The grant is POSIX ACLs. Each ancestor hermes cannot traverse gets `--x` only, so hermes lists nothing in the admin home.
+- After the grant, a probe runs as hermes. It fails the deploy unless hermes can read the Vault root, can write each subtree, and can write nothing else.
+- The gateway gets `KNOWLEDGE_VAULT_PATH` in its environment.
+
+Setting `knowledge_vault_path` also declares the Vault's Syncthing folder for the admin user's Syncthing, with `ignorePerms` and 30-day staggered versioning. Deploy it with `auberge deploy syncthing`. To move an existing folder to a new ID, remove the old ID on every device before deploying, then accept the new share on each peer at its existing path.
+
+:::caution
+Inside the gateway every owner except `hermes` shows as `nobody:nogroup`: the unit's `PrivateTmp=true` implies `PrivateUsers=`. This only changes what `ls -l` shows. The kernel still checks real UIDs, so the ACLs work.
+:::

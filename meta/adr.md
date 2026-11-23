@@ -98,6 +98,7 @@ One number, one file. Every file in `meta/adr/` is listed here; a number that ap
 | 0088 | [Expunge Coverage is per-account identity, bounded by the store](./adr/0088-expunge-coverage-is-per-account-identity-bounded-by-the-store.md)                   |
 | 0089 | [A run resolves only the `!` values it reads](./adr/0089-a-run-resolves-only-the-bang-values-it-reads.md)                                                       |
 | 0090 | [A run resolves only the Zone tokens it reads](./adr/0090-a-run-resolves-only-the-zone-tokens-it-reads.md)                                                      |
+| 0091 | [An App reaches the Knowledge Vault through ACLs, held by `ignorePerms`](./adr/0091-an-app-reaches-the-knowledge-vault-through-acls.md)                         |
 
 ## Native systemd by default
 

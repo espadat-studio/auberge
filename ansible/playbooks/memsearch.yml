@@ -11,11 +11,12 @@
         # third-party discovery servers and dialling relays over the public
         # internet would be the one way it reached anything off-tailnet.
         syncthing_discovery_enabled: false
-        syncthing_configure_workspace: true
-        syncthing_workspace_id: agent-memory
-        syncthing_workspace_label: Agent memory
-        syncthing_workspace_path: "{{ memsearch_memory_dir }}"
-        syncthing_device_id: "{{ memsearch_sync_device_id }}"
-        syncthing_device_name: "{{ memsearch_sync_device_name }}"
+        syncthing_folders:
+          - id: agent-memory
+            label: Agent memory
+            path: "{{ memsearch_memory_dir }}"
+            devices: "{{ memsearch_sync_devices }}"
+            ignore_perms: false
+            versioning: ~
     - role: memsearch
       tags: [memsearch, memory]

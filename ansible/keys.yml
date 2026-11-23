@@ -215,6 +215,13 @@ keys:
     secret: true
     doc: "Intervals.icu API key; when set, Hermes installs intervals-mcp-server and gets INTERVALS_API_KEY in .env"
 
+  hermes_knowledge_vault_write_paths:
+    secret: false
+    doc: >-
+      Grants hermes the Knowledge Vault: read on all of it, write on these comma-separated,
+      Vault-relative subtrees. Unset = no access; "" = read-only. A subtree dropped from the list
+      is revoked on the next deploy. Needs knowledge_vault_path on the same Host.
+
   hermes_llm_api_key:
     secret: true
     doc: "API key for the LLM provider used by Hermes"
@@ -255,15 +262,36 @@ keys:
     secret: false
     doc: "Subdomain for the Immich photo server"
 
-  memsearch_sync_device_id:
+  knowledge_vault_devices:
     secret: false
     doc: >-
-      Syncthing device ID of the peer holding the off-box copy of the agent memory store.
-      The peer initiates: the tailnet ACL denies `tag:agent -> tag:trusted` (ADR-0055).
+      Comma-separated names, from syncthing_devices, of the peers the Knowledge Vault folder is
+      shared with. Every peer holding the Vault must be listed: the folder write replaces its
+      device list.
 
-  memsearch_sync_device_name:
+  knowledge_vault_folder_id:
     secret: false
-    doc: "Display name for that Syncthing peer, as it appears in the agent Host's device list."
+    doc: >-
+      Syncthing folder ID of the Knowledge Vault. Syncthing cannot rename an ID; to change it,
+      remove the old ID on every device before deploying.
+
+  knowledge_vault_folder_label:
+    secret: false
+    doc: "Syncthing folder label of the Knowledge Vault (default `Knowledge Vault`)."
+
+  knowledge_vault_path:
+    secret: false
+    doc: >-
+      Absolute path of the Knowledge Vault on this Host, owned by the admin user. Setting it
+      declares the Syncthing folder, with ignorePerms and 30-day staggered versioning.
+      Host-scope it under [hosts.<name>].
+
+  memsearch_sync_devices:
+    secret: false
+    doc: >-
+      Comma-separated names, from syncthing_devices, of the peers holding the off-box copy of the
+      agent memory store. The peer initiates: the tailnet ACL denies `tag:agent -> tag:trusted`
+      (ADR-0055).
 
   navidrome_subdomain:
     secret: false
@@ -338,6 +366,12 @@ keys:
   stirling_subdomain:
     secret: false
     doc: "Subdomain for the Stirling-PDF editor (default pdf)"
+
+  syncthing_devices:
+    secret: false
+    doc: >-
+      The Host's Syncthing peers, declared once as comma-separated `name=DEVICE-ID` pairs. Folders
+      name their peers from this list. Host-scope it under [hosts.<name>].
 
   syncthing_gui_password:
     secret: true

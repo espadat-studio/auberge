@@ -42,15 +42,20 @@
         state: present
         timeout: 30
 
-    - name: Create workspace directory
-      ansible.builtin.file:
-        path: "{{ syncthing_workspace_path }}"
-        state: directory
-        follow: false
-        owner: "{{ syncthing_workspace_owner }}"
-        group: "{{ syncthing_workspace_group }}"
-        mode: "{{ syncthing_workspace_mode }}"
-      when: syncthing_configure_workspace | default(false)
+    - name: Validate the declared Syncthing devices and folders
+      ansible.builtin.assert:
+        that:
+          - syncthing_device_entries | reject('match', '^[^=]+=.+$') | list | length == 0
+          - syncthing_device_registry | length == syncthing_device_entries | length
+          - syncthing_folders | rejectattr('id') | list | length == 0
+          - syncthing_folders | map(attribute='path') | reject('match', '/') | list | length == 0
+          - >-
+            syncthing_folders | map(attribute='devices', default='') | map('split', ',') | flatten
+            | map('trim') | select | difference(syncthing_device_registry.keys() | list)
+            | length == 0
+        fail_msg: >-
+          syncthing_devices must be `name=ID,...` with unique names, and every folder needs an id, an
+          absolute path and devices named in syncthing_devices.
 
     # config.xml is Syncthing's file, not ansible's: it re-serializes the whole
     # document whenever it normalizes or migrates the config, dropping any
@@ -151,7 +156,7 @@
             - syncthing_listen_all_interfaces | bool
             - not (syncthing_listen_is_current | bool)
 
-        # Opt-in, like the workspace: unset means the role asserts nothing.
+        # Opt-in, like the folders: unset means the role asserts nothing.
         # Syncthing's peer discovery is also configured by hand in its web UI,
         # and a role that enforced its own default here would silently undo a
         # Host hardened to announce nowhere.
@@ -180,34 +185,35 @@
           register: syncthing_status
           changed_when: false
           no_log: true
-          when: syncthing_configure_workspace | default(false)
+          when: syncthing_folders | length > 0
 
-        - name: Declare the remote device
+        - name: Declare the remote devices
           ansible.builtin.uri:
-            url: "{{ syncthing_api }}/config/devices/{{ syncthing_device_id }}"
+            url: "{{ syncthing_api }}/config/devices/{{ item.value }}"
             method: PUT
             headers:
               X-API-Key: "{{ syncthing_api_key }}"
             body_format: json
             body:
-              deviceID: "{{ syncthing_device_id }}"
-              name: "{{ syncthing_device_name }}"
+              deviceID: "{{ item.value }}"
+              name: "{{ item.key }}"
               addresses: ["dynamic"]
+          loop: "{{ syncthing_device_registry | dict2items }}"
+          loop_control:
+            label: "{{ item.key }}"
           no_log: true
-          when:
-            - syncthing_configure_workspace | default(false)
-            - syncthing_device_id | length > 0
-            - not (syncthing_device_is_current | bool)
+          when: not (syncthing_device_is_current | bool)
 
-        - name: Declare the replicated folder
+        - name: Declare the replicated folders
           ansible.builtin.uri:
-            url: "{{ syncthing_api }}/config/folders/{{ syncthing_workspace_id }}"
+            url: "{{ syncthing_api }}/config/folders/{{ item.id }}"
             method: PUT
             headers:
               X-API-Key: "{{ syncthing_api_key }}"
             body_format: json
             body: "{{ syncthing_desired_folder }}"
+          loop: "{{ syncthing_folders }}"
+          loop_control:
+            label: "{{ item.id }}"
           no_log: true
-          when:
-            - syncthing_configure_workspace | default(false)
-            - not (syncthing_folder_is_current | bool)
+          when: not (syncthing_folder_is_current | bool)
