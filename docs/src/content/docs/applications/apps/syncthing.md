@@ -24,9 +24,11 @@ ssh -L 8384:localhost:8384 user@vps
 
 Then open http://localhost:8384 and log in as the account Syncthing runs as, with `syncthing_gui_password`.
 
-Optional workspace sync (per-host config):
+Peers are declared once per Host, and folders name them:
 
-```yaml
-syncthing_configure_workspace: true
-syncthing_device_id: "XXXXXXX-XXXXXXX-..."
+```toml
+[hosts.my-host]
+syncthing_devices = "laptop=XXXXXXX-XXXXXXX-...,phone=YYYYYYY-YYYYYYY-..."
 ```
+
+A playbook declares folders through the role's `syncthing_folders` list. A folder left out of the list is left alone: the role never removes one.

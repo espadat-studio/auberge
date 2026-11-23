@@ -39,8 +39,9 @@ const AGENT_HOST_ROLES: &[(&str, usize)] = &[
 ];
 
 /// Root-run directories handed to the agent across [`AGENT_HOST_ROLES`]: the
-/// memsearch store root and memory directory, and the syncthing workspace.
-const ROOT_DIRECTORIES_HANDED_TO_THE_AGENT: usize = 3;
+/// memsearch store root and memory directory. Syncthing creates no folder
+/// directory: it replicates the memory directory memsearch creates.
+const ROOT_DIRECTORIES_HANDED_TO_THE_AGENT: usize = 2;
 
 const AGENT_USER: &str = "{{ agent_user_name }}";
 

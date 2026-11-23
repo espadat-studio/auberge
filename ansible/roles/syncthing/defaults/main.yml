@@ -3,15 +3,14 @@ syncthing_user: "{{ admin_user_name | default(ansible_user | default(ansible_ssh
 syncthing_config_path: "/home/{{ syncthing_user }}/.local/state/syncthing"
 syncthing_listen_all_interfaces: false
 syncthing_discovery_enabled: ~
-syncthing_configure_workspace: false
-syncthing_workspace_id: ""
-syncthing_workspace_label: ""
-syncthing_workspace_path: ""
-syncthing_workspace_owner: "{{ syncthing_user }}"
-syncthing_workspace_group: "{{ syncthing_user }}"
-syncthing_workspace_mode: "0750"
-syncthing_device_id: ""
-syncthing_device_name: ""
+
+# The Host's peers, declared once: `name=ID,name=ID`. Folders name them.
+syncthing_devices: ""
+
+# Each folder: id, label, path, devices (comma-separated names from
+# `syncthing_devices`), ignore_perms, versioning (a Syncthing versioning object,
+# or ~ for none). A folder left out of the list is left alone, never removed.
+syncthing_folders: []
 
 # Derived from what the API reports, not knobs: a deploy compares these against
 # the running configuration and writes only when they differ, so a converged
@@ -41,7 +40,16 @@ syncthing_discovery_is_current: >-
 # then reports `changed` on every deploy forever. Every comparison below runs
 # on the dash-stripped, upper-cased form; every write sends the raw value and
 # lets Syncthing canonicalize it.
-syncthing_device_key: "{{ syncthing_device_id | replace('-', '') | upper }}"
+syncthing_device_entries: "{{ syncthing_devices | split(',') | map('trim') | select | list }}"
+
+syncthing_device_registry: >-
+  {{ dict(syncthing_device_entries | map('regex_replace', '=.*$', '') | map('trim')
+          | zip(syncthing_device_entries | map('regex_replace', '^[^=]*=', '') | map('trim'))) }}
+
+syncthing_folder_device_names: "{{ item.devices | default('') | split(',') | map('trim') | select | list }}"
+
+# Device loop: `item` is one registry entry, `key` its name, `value` its ID.
+syncthing_device_key: "{{ item.value | replace('-', '') | upper }}"
 
 syncthing_declared_device: >-
   {{ syncthing_running.json.devices | map(attribute='deviceID')
@@ -51,47 +59,60 @@ syncthing_declared_device: >-
      | map(attribute='1') | list | first | default({}) }}
 
 syncthing_device_is_current: >-
-  {{ syncthing_declared_device.name | default('') == syncthing_device_name
+  {{ syncthing_declared_device.name | default('') == item.key
      and syncthing_declared_device.addresses | default([]) == ['dynamic'] }}
 
-# The local device is named explicitly rather than left to Syncthing's own
-# normalisation, so the comparison below reads the same list it wrote.
-syncthing_folder_devices: >-
-  {{ [syncthing_status.json.myID, syncthing_device_id] | select | list
-     | map('community.general.dict_kv', 'deviceID') | list }}
+# Folder loop: `item` is one entry of `syncthing_folders`. The local device is
+# named explicitly rather than left to Syncthing's own normalisation, so the
+# comparison below reads the same list it wrote.
+syncthing_folder_device_ids: >-
+  {{ [syncthing_status.json.myID]
+     + syncthing_folder_device_names | map('extract', syncthing_device_registry) | list }}
 
 syncthing_folder_device_keys: >-
-  {{ [syncthing_status.json.myID, syncthing_device_id] | select
-     | map('replace', '-', '') | map('upper') | list | sort }}
+  {{ syncthing_folder_device_ids | map('replace', '-', '') | map('upper') | list | sort }}
+
+syncthing_folder_versioning: "{{ item.versioning | default(none) or {'type': '', 'params': {}} }}"
 
 # Everything the folder write sends is compared before it is sent. A field in
 # the body but not in the check is a field a human can change in the web UI and
 # keep: `paused` above all, which stops replication while every later deploy
-# reports the folder converged.
+# reports the folder converged. `syncXattrs` stays off: when on, Syncthing
+# strips local extended attributes the peer lacks, POSIX ACLs included.
 syncthing_desired_folder:
-  id: "{{ syncthing_workspace_id }}"
-  label: "{{ syncthing_workspace_label }}"
-  path: "{{ syncthing_workspace_path }}"
+  id: "{{ item.id }}"
+  label: "{{ item.label }}"
+  path: "{{ item.path }}"
   type: sendreceive
   paused: false
   fsWatcherEnabled: true
   fsWatcherDelayS: 10
   rescanIntervalS: 60
-  devices: "{{ syncthing_folder_devices }}"
+  ignorePerms: "{{ item.ignore_perms | default(false) | bool }}"
+  syncXattrs: false
+  versioning: "{{ syncthing_folder_versioning }}"
+  devices: "{{ syncthing_folder_device_ids | map('community.general.dict_kv', 'deviceID') | list }}"
 
 syncthing_declared_folder: >-
   {{ syncthing_running.json.folders
-     | selectattr('id', 'eq', syncthing_workspace_id)
+     | selectattr('id', 'eq', item.id)
      | list | first | default({}) }}
 
+syncthing_declared_versioning_params: "{{ syncthing_declared_folder.versioning.params | default({}) }}"
+
 syncthing_folder_is_current: >-
-  {{ syncthing_declared_folder.path | default('') == syncthing_workspace_path
-     and syncthing_declared_folder.label | default('') == syncthing_workspace_label
+  {{ syncthing_declared_folder.path | default('') == item.path
+     and syncthing_declared_folder.label | default('') == item.label
      and syncthing_declared_folder.type | default('') == 'sendreceive'
      and syncthing_declared_folder.paused | default(true) == false
      and syncthing_declared_folder.fsWatcherEnabled | default(false) == true
      and syncthing_declared_folder.fsWatcherDelayS | default(0) == 10
      and syncthing_declared_folder.rescanIntervalS | default(0) == 60
+     and syncthing_declared_folder.ignorePerms | default(false) == (item.ignore_perms | default(false) | bool)
+     and syncthing_declared_folder.syncXattrs | default(true) == false
+     and syncthing_declared_folder.versioning.type | default('') == syncthing_folder_versioning.type
+     and syncthing_declared_versioning_params | combine(syncthing_folder_versioning.params)
+         == syncthing_declared_versioning_params
      and syncthing_declared_folder.devices | default([])
          | map(attribute='deviceID') | map('replace', '-', '') | map('upper')
          | list | sort == syncthing_folder_device_keys }}

@@ -139,10 +139,6 @@ fn test_the_store_is_agent_syncthing_2770() {
     assert!(text(&vars, "memsearch_store_group").contains("agent_syncthing_user_name"));
     assert_eq!(text(&vars, "memsearch_store_mode"), "2770");
 
-    assert!(text(&vars, "syncthing_workspace_owner").contains("agent_user_name"));
-    assert!(text(&vars, "syncthing_workspace_group").contains("agent_syncthing_user_name"));
-    assert_eq!(text(&vars, "syncthing_workspace_mode"), "2770");
-
     let memsearch = std::fs::read_to_string(role_dir("memsearch").join("tasks/main.yml")).unwrap();
     assert_eq!(
         memsearch

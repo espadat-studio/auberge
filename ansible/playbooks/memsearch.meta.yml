@@ -1,7 +1,7 @@
 required_keys:
   - admin_user_name
-  - memsearch_sync_device_id
-  - memsearch_sync_device_name
+  - memsearch_sync_devices
+  - syncthing_devices
 version:
   value: "0.4.23"
   datasource: github-releases

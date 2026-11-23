@@ -255,15 +255,12 @@ keys:
     secret: false
     doc: "Subdomain for the Immich photo server"
 
-  memsearch_sync_device_id:
+  memsearch_sync_devices:
     secret: false
     doc: >-
-      Syncthing device ID of the peer holding the off-box copy of the agent memory store.
-      The peer initiates: the tailnet ACL denies `tag:agent -> tag:trusted` (ADR-0055).
-
-  memsearch_sync_device_name:
-    secret: false
-    doc: "Display name for that Syncthing peer, as it appears in the agent Host's device list."
+      Comma-separated names, from syncthing_devices, of the peers holding the off-box copy of the
+      agent memory store. The peer initiates: the tailnet ACL denies `tag:agent -> tag:trusted`
+      (ADR-0055).
 
   navidrome_subdomain:
     secret: false
@@ -338,6 +335,12 @@ keys:
   stirling_subdomain:
     secret: false
     doc: "Subdomain for the Stirling-PDF editor (default pdf)"
+
+  syncthing_devices:
+    secret: false
+    doc: >-
+      The Host's Syncthing peers, declared once as comma-separated `name=DEVICE-ID` pairs. Folders
+      name their peers from this list. Host-scope it under [hosts.<name>].
 
   syncthing_gui_password:
     secret: true
