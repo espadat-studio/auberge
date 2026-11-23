@@ -10,7 +10,24 @@ syncthing_devices: ""
 # Each folder: id, label, path, devices (comma-separated names from
 # `syncthing_devices`), ignore_perms, versioning (a Syncthing versioning object,
 # or ~ for none). A folder left out of the list is left alone, never removed.
-syncthing_folders: []
+syncthing_folders: >-
+  {{ [syncthing_knowledge_vault_folder]
+     if knowledge_vault_path | default('') | length > 0 else [] }}
+
+# ignorePerms is load-bearing: without it Syncthing creates pulled files with
+# the peer's mode and re-chmods them on every metadata update, which caps the
+# ACL mask of an App's write grant at the group bits. Versioning is staggered,
+# 30 days, on this Host's copy only.
+syncthing_knowledge_vault_folder:
+  id: "{{ knowledge_vault_folder_id }}"
+  label: "{{ knowledge_vault_folder_label | default('Knowledge Vault') }}"
+  path: "{{ knowledge_vault_path }}"
+  devices: "{{ knowledge_vault_devices }}"
+  ignore_perms: true
+  versioning:
+    type: staggered
+    params:
+      maxAge: "2592000"
 
 # Derived from what the API reports, not knobs: a deploy compares these against
 # the running configuration and writes only when they differ, so a converged

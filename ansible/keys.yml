@@ -255,6 +255,30 @@ keys:
     secret: false
     doc: "Subdomain for the Immich photo server"
 
+  knowledge_vault_devices:
+    secret: false
+    doc: >-
+      Comma-separated names, from syncthing_devices, of the peers the Knowledge Vault folder is
+      shared with. Every peer holding the Vault must be listed: the folder write replaces its
+      device list.
+
+  knowledge_vault_folder_id:
+    secret: false
+    doc: >-
+      Syncthing folder ID of the Knowledge Vault. Syncthing cannot rename an ID; to change it,
+      remove the old ID on every device before deploying.
+
+  knowledge_vault_folder_label:
+    secret: false
+    doc: "Syncthing folder label of the Knowledge Vault (default `Knowledge Vault`)."
+
+  knowledge_vault_path:
+    secret: false
+    doc: >-
+      Absolute path of the Knowledge Vault on this Host, owned by the admin user. Setting it
+      declares the Syncthing folder, with ignorePerms and 30-day staggered versioning.
+      Host-scope it under [hosts.<name>].
+
   memsearch_sync_devices:
     secret: false
     doc: >-

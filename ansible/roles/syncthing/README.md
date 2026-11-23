@@ -27,15 +27,16 @@ The web UI requires a login as `syncthing_user` with `syncthing_gui_password` on
 
 ## Variables
 
-| Variable                          | Default                                                                              | Description                                                                     |
-| --------------------------------- | ------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------- |
-| `syncthing_user`                  | `admin_user_name` / `ansible_user`; `agent_syncthing_user_name` on the `agent` group | User to run Syncthing as                                                        |
-| `syncthing_gui_password`          | required (Key Registry)                                                              | Web UI login password, set on every Host                                        |
-| `syncthing_config_path`           | `~/.config/syncthing`                                                                | Syncthing configuration directory (`config.xml`)                                |
-| `syncthing_listen_all_interfaces` | `false`                                                                              | `true` = bind the web UI to 0.0.0.0; `false` leaves the address untouched       |
-| `syncthing_discovery_enabled`     | unset                                                                                | `false` = announce nowhere, no relays, no NAT mapping; unset = untouched        |
-| `syncthing_devices`               | `""`                                                                                 | Peers as `name=DEVICE-ID,...`                                                   |
-| `syncthing_folders`               | `[]`                                                                                 | Folders: `id`, `label`, `path`, `devices` (names), `ignore_perms`, `versioning` |
+| Variable                          | Default                                                                              | Description                                                                      |
+| --------------------------------- | ------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------- |
+| `syncthing_user`                  | `admin_user_name` / `ansible_user`; `agent_syncthing_user_name` on the `agent` group | User to run Syncthing as                                                         |
+| `syncthing_gui_password`          | required (Key Registry)                                                              | Web UI login password, set on every Host                                         |
+| `syncthing_config_path`           | `~/.config/syncthing`                                                                | Syncthing configuration directory (`config.xml`)                                 |
+| `syncthing_listen_all_interfaces` | `false`                                                                              | `true` = bind the web UI to 0.0.0.0; `false` leaves the address untouched        |
+| `syncthing_discovery_enabled`     | unset                                                                                | `false` = announce nowhere, no relays, no NAT mapping; unset = untouched         |
+| `syncthing_devices`               | `""`                                                                                 | Peers as `name=DEVICE-ID,...`                                                    |
+| `knowledge_vault_path`            | unset                                                                                | Declares the Knowledge Vault folder (`ignorePerms`, 30-day staggered versioning) |
+| `syncthing_folders`               | the Knowledge Vault when `knowledge_vault_path` is set, else `[]`                    | Folders: `id`, `label`, `path`, `devices` (names), `ignore_perms`, `versioning`  |
 
 ## Usage
 
