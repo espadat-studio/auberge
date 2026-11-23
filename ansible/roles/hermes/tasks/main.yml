@@ -244,6 +244,10 @@
         auberge config set hermes_llm_api_key <VALUE>
         auberge config set hermes_telegram_bot_token <VALUE>
 
+- name: Converge hermes's grant into the Knowledge Vault
+  ansible.builtin.include_tasks: knowledge_vault.yml
+  when: knowledge_vault_path | default('') | length > 0
+
 - name: Deploy Hermes environment file
   ansible.builtin.template:
     src: env.j2

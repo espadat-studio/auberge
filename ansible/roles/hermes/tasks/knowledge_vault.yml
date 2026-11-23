@@ -1,0 +1,32 @@
+---
+- name: Grant hermes read on the Knowledge Vault and write on its declared subtrees
+  ansible.builtin.script:
+    cmd: >-
+      knowledge-vault-grant.sh grant {{ knowledge_vault_path | quote }}
+      {{ admin_user_name | quote }} {{ hermes_user | quote }}
+      {{ hermes_knowledge_vault_subtrees | map('quote') | join(' ') }}
+    chdir: /
+  register: hermes_knowledge_vault_grant
+  changed_when: hermes_knowledge_vault_grant.stdout | length > 0
+  when: hermes_knowledge_vault_write_paths is defined
+
+- name: Probe the Knowledge Vault as hermes
+  become: true
+  become_user: "{{ hermes_user }}"
+  ansible.builtin.script:
+    cmd: >-
+      knowledge-vault-grant.sh probe {{ knowledge_vault_path | quote }}
+      {{ hermes_knowledge_vault_subtrees | map('quote') | join(' ') }}
+    chdir: /
+  changed_when: false
+  when: hermes_knowledge_vault_write_paths is defined
+
+- name: Revoke hermes's access to the Knowledge Vault
+  ansible.builtin.script:
+    cmd: >-
+      knowledge-vault-grant.sh revoke {{ knowledge_vault_path | quote }}
+      {{ admin_user_name | quote }} {{ hermes_user | quote }}
+    chdir: /
+  register: hermes_knowledge_vault_revoke
+  changed_when: hermes_knowledge_vault_revoke.stdout | length > 0
+  when: hermes_knowledge_vault_write_paths is not defined
