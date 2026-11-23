@@ -203,6 +203,7 @@ pub fn preflight_for(
         .collect();
     assert_host_overrides_known(config, &known)?;
     zone::assert_no_fleet_wide_zone(config)?;
+    assert_knowledge_vault_keys_cohere(config, Some(host))?;
     assert_zones_resolve(ansible_dir, config, playbook, tags, host)?;
     let metas = crate::playbook_meta::load_all_metas(&ansible_dir.join(PLAYBOOKS_DIR))?;
     let read_set = read_set_for(ansible_dir, playbook, tags)?;
@@ -292,6 +293,37 @@ fn assert_zones_resolve(
         let zone = zone::effective_zone(&meta, config, &app, Some(host))?;
         zone::resolve(&zone, config, Some(host))
             .map_err(|e| eyre::eyre!("{app} cannot be deployed: {e}"))?;
+    }
+    Ok(())
+}
+
+/// The Knowledge Vault's keys hang together per Host. A Vault path declares a
+/// Syncthing folder, which needs its ID and peers. A grant into a Vault on a
+/// Host that declares none is a typo or a half-removed setup; either way the
+/// run would grant nothing while the operator believes otherwise. `""` is a
+/// grant (read-only), so the grant side asks "is it set", and the Vault side
+/// asks "is it answered".
+pub(crate) fn assert_knowledge_vault_keys_cohere(
+    config: &Config,
+    host: Option<&str>,
+) -> Result<()> {
+    let answered = |key| crate::hosts::gate_answered(config, key, host);
+    let scope = host.unwrap_or("the fleet");
+    if answered("knowledge_vault_path") {
+        for key in ["knowledge_vault_folder_id", "knowledge_vault_devices"] {
+            if !answered(key) {
+                eyre::bail!("knowledge_vault_path is set for {scope} but {key} is not");
+            }
+        }
+        return Ok(());
+    }
+    if config
+        .get_for_host("hermes_knowledge_vault_write_paths", host)
+        .is_some()
+    {
+        eyre::bail!(
+            "hermes_knowledge_vault_write_paths is set for {scope} but knowledge_vault_path is not"
+        );
     }
     Ok(())
 }
@@ -881,6 +913,52 @@ mod tests {
     fn test_repo_hardening_requires_nothing() {
         let keys = required_keys_for(&repo_ansible_dir(), "hardening.yml", None).unwrap();
         assert!(keys.is_empty(), "{keys:?}");
+    }
+
+    #[test]
+    fn test_a_vault_write_grant_needs_a_vault_on_the_same_host() {
+        let config = Config::from_toml_str(
+            r#"
+            knowledge_vault_path = "/home/op/vault"
+            knowledge_vault_folder_id = "knowledge"
+            knowledge_vault_devices = "laptop"
+            [hosts.auberge]
+            hermes_knowledge_vault_write_paths = ""
+            knowledge_vault_path = ""
+            [hosts.other]
+            hermes_knowledge_vault_write_paths = "journal"
+        "#,
+        )
+        .unwrap();
+        let err = assert_knowledge_vault_keys_cohere(&config, Some("auberge")).unwrap_err();
+        assert!(err.to_string().contains("knowledge_vault_path"), "{err}");
+        assert!(assert_knowledge_vault_keys_cohere(&config, Some("other")).is_ok());
+
+        let ungranted =
+            Config::from_toml_str("[hosts.auberge]\nhermes_llm_provider = \"x\"\n").unwrap();
+        assert!(assert_knowledge_vault_keys_cohere(&ungranted, Some("auberge")).is_ok());
+    }
+
+    #[test]
+    fn test_a_vault_needs_its_folder_id_and_devices() {
+        let config = Config::from_toml_str(
+            r#"
+            [hosts.auberge]
+            knowledge_vault_path = "/home/op/vault"
+            knowledge_vault_devices = "laptop"
+            [hosts.other]
+            knowledge_vault_path = "/home/op/vault"
+            knowledge_vault_folder_id = "knowledge"
+            knowledge_vault_devices = "laptop"
+        "#,
+        )
+        .unwrap();
+        let err = assert_knowledge_vault_keys_cohere(&config, Some("auberge")).unwrap_err();
+        assert!(
+            err.to_string().contains("knowledge_vault_folder_id"),
+            "{err}"
+        );
+        assert!(assert_knowledge_vault_keys_cohere(&config, Some("other")).is_ok());
     }
 
     #[test]

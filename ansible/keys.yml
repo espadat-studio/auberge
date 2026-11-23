@@ -215,6 +215,13 @@ keys:
     secret: true
     doc: "Intervals.icu API key; when set, Hermes installs intervals-mcp-server and gets INTERVALS_API_KEY in .env"
 
+  hermes_knowledge_vault_write_paths:
+    secret: false
+    doc: >-
+      Grants hermes the Knowledge Vault: read on all of it, write on these comma-separated,
+      Vault-relative subtrees. Unset = no access; "" = read-only. A subtree dropped from the list
+      is revoked on the next deploy. Needs knowledge_vault_path on the same Host.
+
   hermes_llm_api_key:
     secret: true
     doc: "API key for the LLM provider used by Hermes"
