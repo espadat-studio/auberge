@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.25.1](https://github.com/espadat-studio/auberge/compare/v0.25.0...v0.25.1) - 2026-11-23
+
+### Added
+
+- *(hermes)* pass an intervals.icu api key into the gateway env ([#1331](https://github.com/espadat-studio/auberge/pull/1331))
+
+### Apps
+
+- *(colporteur)* bump to 0.6.12 ([#1333](https://github.com/espadat-studio/auberge/pull/1333))
+- *(agent_users)* bump to 2026.11.12 ([#1332](https://github.com/espadat-studio/auberge/pull/1332))
+- *(caddy)* bump to v0.1.3 ([#1330](https://github.com/espadat-studio/auberge/pull/1330))
+- *(agent_users)* bump to 2026.11.8 ([#1329](https://github.com/espadat-studio/auberge/pull/1329))
+
 ## [0.25.0](https://github.com/espadat-studio/auberge/compare/v0.24.0...v0.25.0) - 2026-11-14
 
 ### Added
