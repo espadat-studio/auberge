@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.26.0](https://github.com/espadat-studio/auberge/compare/v0.25.1...v0.26.0) - 2026-11-23
+
+### Added
+
+- *(hermes)* [**breaking**] grant read/write access to the knowledge vault ([#1335](https://github.com/espadat-studio/auberge/pull/1335))
+
+### Apps
+
+- *(tailscale)* bump to 1.104.7 ([#1336](https://github.com/espadat-studio/auberge/pull/1336))
+
 ## [0.25.1](https://github.com/espadat-studio/auberge/compare/v0.25.0...v0.25.1) - 2026-11-23
 
 ### Added
