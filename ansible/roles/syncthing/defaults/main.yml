@@ -16,7 +16,7 @@ syncthing_folders: >-
 
 # ignorePerms is load-bearing: without it Syncthing creates pulled files with
 # the peer's mode and re-chmods them on every metadata update, which caps the
-# ACL mask of an App's write grant at the group bits. Versioning is staggered,
+# ACL mask of an App's write grant at the group bits (ADR-0091). Versioning is staggered,
 # 30 days, on this Host's copy only.
 syncthing_knowledge_vault_folder:
   id: "{{ knowledge_vault_folder_id }}"
