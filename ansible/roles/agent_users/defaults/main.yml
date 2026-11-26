@@ -17,5 +17,5 @@ agent_users_packages:
 # renovate: datasource=github-releases depName=jdx/mise extractVersion=^v(?<version>.+)$
 agent_users_mise_version: "2026.11.14"
 agent_users_mise_url: "https://github.com/jdx/mise/releases/download/v{{ agent_users_mise_version }}/mise-v{{ agent_users_mise_version }}-linux-x64"
-agent_users_mise_sha256: "9c12c24f5eac6b6357e5265e2629166cc3005459037f5d747680a99e375ff2ab"
+agent_users_mise_sha256: "6fa596291e9758106f761fea4f8e7fac6c3e7ff4714d5c0b9a76e16068db14f6"
 agent_users_mise_path: /usr/local/bin/mise
