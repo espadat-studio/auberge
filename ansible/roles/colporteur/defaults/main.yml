@@ -7,7 +7,7 @@ colporteur_feeds_dir: /var/lib/colporteur/feeds
 colporteur_config_dir: /etc/colporteur
 colporteur_domain: "{{ colporteur_subdomain }}.{{ colporteur_parent_domain }}"
 colporteur_binary_url: "https://github.com/espadat-studio/colporteur/releases/download/v{{ colporteur_version }}/colporteur-x86_64-unknown-linux-gnu.tar.gz"
-colporteur_binary_sha256: "23697c3f1d0500de4f39cbf9a47cf9c93541a220eccc997435bcd10f72c055bf"
+colporteur_binary_sha256: "a15475f8e534f3639a0002d19ba759b54f0878d620b926ef5a238206736ab73b"
 colporteur_check_interval: 15min
 colporteur_config_src: "~/.config/colporteur/config.toml"
 colporteur_freshrss_sync: false
